@@ -100,4 +100,10 @@
 
 ---
 
+## 与实现仓库的关系
+
+本文件侧重**需求验证与竞品对照**，不替代实现细节。具体技术栈、目录结构、数据模型与 API 方向见 [`TECH_DESIGN.md`](TECH_DESIGN.md)；运行方式见仓库根目录 [`README.md`](../README.md) 与 [`START.md`](../START.md)。
+
+---
+
 *本文件由调研提示词 `M-prompts/M1research.md` 驱动生成，用于 ForgeAgent 需求验证与竞品对照。*
