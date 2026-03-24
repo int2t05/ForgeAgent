@@ -1,0 +1,71 @@
+M-prompts
+.vscode
+
+# Dependencies
+node_modules/
+node_modules
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+*.egg
+*.whl
+
+# Local env (never commit secrets)
+.env
+.env.local
+.env.*.local
+
+# Build
+frontend/dist
+frontend/dist-ssr
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# IDE / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+
+# Test / coverage
+coverage/
+.pytest_cache/
+.mypy_cache/
+
+# SQLite (MVP)
+*.db
+*.sqlite
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+

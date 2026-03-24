@@ -12,7 +12,7 @@
 
 **技术栈（建议与实现对齐）**：
 
-- 前端：React 18、TypeScript、Vite、Tailwind CSS；React Router；TanStack Query + 轻量全局状态（如 Zustand）。
+- 前端：React、TypeScript、Vite、Tailwind CSS（具体版本以 `frontend/package.json` 为准）；React Router；TanStack Query + 轻量全局状态（如 Zustand）。
 - 后端：Python 3.11+、FastAPI；Agent 运行时以 LangGraph + LangChain 为主。
 - 数据库：SQLite + SQLAlchemy 2.0 async（MVP）。
 - API：REST 为主；单任务执行过程可用 **SSE**（`text/event-stream`）推送事件。
@@ -60,22 +60,26 @@
 
 ## 目录结构
 
-**当前仓库**以产品与架构文档为主；实现阶段推荐 **monorepo**（与技术设计一致）：
+**当前仓库**为 **monorepo**（与技术设计一致）：产品与架构文档在 `docs/`，实现代码在 `frontend/` 与 `backend/`。
 
 ```
 ForgeAgent/
+├── README.md                 # 人类入口：快速开始与文档索引
+├── START.md                  # 安装与启动命令（脚手架）
 ├── AGENTS.md                 # 本文件：AI 协作规范（勿随意删改核心约束）
-├── README.md                 # 人类入口：如何运行、环境变量说明
-├── frontend/                 # React + Vite + TS + Tailwind（实现后）
-├── backend/                  # FastAPI + SQLite + Agent 运行时（实现后）
+├── .env.example              # 环境变量模板（勿提交含密钥的 .env）
+├── .gitignore
+├── frontend/                 # React + Vite + TS + Tailwind；npm 仅在此目录执行
+├── backend/                  # FastAPI；Python 依赖见 pyproject.toml；Agent/SQLite 等随实现补充
 ├── docs/
 │   ├── PRD.md
 │   ├── RESEARCH.md
 │   └── TECH_DESIGN.md
-└── M-prompts/                # 文档/提示词模板（若保留）
+├── M-prompts/                # 文档/提示词模板（若保留）
+└── LICENSE
 ```
 
-**必须**：前后端分目录，避免前端依赖或误打包后端密钥。  
+**必须**：前后端分目录；**不得在仓库根目录**引入 `package.json` 或根级 npm workspace（Node 依赖仅存在于 `frontend/`，避免与后端工具链混淆）。避免前端依赖或误打包后端密钥。  
 **建议**：共享类型若存在，用显式包或生成 OpenAPI 客户端，避免手写双份漂移。
 
 ---

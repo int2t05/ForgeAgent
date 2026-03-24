@@ -32,17 +32,23 @@
 
 ## 2. 项目结构
 
-推荐 **前后端分仓目录**（单仓库 monorepo），避免前端误打包后端密钥。
+推荐 **前后端分目录**（单仓库 monorepo），避免前端误打包后端密钥。**Node/npm 仅用于 `frontend/`**（仓库根目录不设 `package.json`，与 Python 后端解耦，详见 [`README.md`](../README.md)、[`START.md`](../START.md)）。
 
 ```
-forgeagent/
-├──backend/...
-├──frontend/...
+ForgeAgent/
+├── README.md
+├── START.md
+├── AGENTS.md
+├── .env.example
+├── .gitignore
+├── frontend/                 # React + Vite + TypeScript + Tailwind；依赖见 frontend/package.json
+├── backend/                  # FastAPI；依赖见 backend/pyproject.toml，包名 forgeagent_backend
 ├── docs/
 │   ├── PRD.md
 │   ├── RESEARCH.md
 │   └── TECH_DESIGN.md
-└── README.md
+├── M-prompts/                # 可选：生成各文档的提示词模板
+└── LICENSE
 ```
 
 ---
