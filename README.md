@@ -28,7 +28,7 @@ cd backend
 python -m venv .venv
 # Windows: .\.venv\Scripts\Activate.ps1
 pip install -e .
-uvicorn forgeagent_backend.main:app --reload --host 127.0.0.1 --port 8000
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 从仓库根目录复制环境变量模板：`copy .env.example .env`（Windows）或 `cp .env.example .env`（Unix），再按需填写；**勿将含真实密钥的 `.env` 提交到 Git**。
