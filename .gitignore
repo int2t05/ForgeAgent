@@ -1,5 +1,9 @@
 M-prompts
 .vscode
+tests
+best_practice
+data
+.claude
 
 # Dependencies
 node_modules/
