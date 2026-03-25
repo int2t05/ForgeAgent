@@ -41,6 +41,9 @@ uvicorn forgeagent_backend.main:app --reload --host 127.0.0.1 --port 8000
 | [`AGENTS.md`](AGENTS.md) | AI 协作与工程规范（Cursor 等工具） |
 | [`docs/PRD.md`](docs/PRD.md) | 产品需求与 MVP 边界 |
 | [`docs/TECH_DESIGN.md`](docs/TECH_DESIGN.md) | 技术设计、数据模型与 API 方向 |
+| [`docs/API.md`](docs/API.md) | REST/SSE 接口契约（MVP） |
+| [`docs/PAGES.md`](docs/PAGES.md) | 前端路由与页面数据依赖（MVP） |
+| [`docs/DEVELOP_ORDER.md`](docs/DEVELOP_ORDER.md) | 全栈开发顺序与里程碑（MVP） |
 | [`docs/RESEARCH.md`](docs/RESEARCH.md) | 调研与竞品对照 |
 
 ## 许可

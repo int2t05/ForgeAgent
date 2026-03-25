@@ -77,6 +77,7 @@ npm run dev
 ```bash
 cd backend
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+uvicorn app.main:app --reload
 ```
 
 访问 `http://127.0.0.1:8000/health` 应返回 `{"status":"ok"}`；OpenAPI 文档：`http://127.0.0.1:8000/docs`。
