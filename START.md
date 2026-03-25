@@ -77,7 +77,13 @@ npm run dev
 ```bash
 cd backend
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-uvicorn app.main:app --reload
+```
+
+Git Bash（已激活 `.venv`）同上，模块路径与 [`README.md`](README.md)、[`docs/DEVELOP_ORDER.md`](docs/DEVELOP_ORDER.md) 一致：
+
+```bash
+source .venv/Scripts/activate
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 访问 `http://127.0.0.1:8000/health` 应返回 `{"status":"ok"}`；OpenAPI 文档：`http://127.0.0.1:8000/docs`。

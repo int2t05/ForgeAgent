@@ -1,1 +1,1 @@
-"""ForgeAgent 后端包。"""
+"""ForgeAgent 后端应用包。"""
