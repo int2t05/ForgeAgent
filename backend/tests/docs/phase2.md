@@ -46,7 +46,7 @@ backend/tests/
 | `test_task_unknown_session` | 不存在 `session_id` → 404，`code=NOT_FOUND` |
 | `test_settings_roundtrip_and_rejects_secret_key` | PUT/GET 一致；body 含 `api_key` 键名 → 400，`SECRET_FIELD` |
 | `test_tools_list` | `GET /api/v1/tools` 含 `builtin` |
-| `test_sse_stream_not_implemented` | SSE 路径 → 501，`NOT_IMPLEMENTED` |
+| `test_sse_stream_not_implemented` | SSE 路径 → 501，`NOT_IMPLEMENTED`；短轮询等待 Mock Agent 终态，避免后台 DB 会话与后续阶段 `drop_all` 在 Windows 上锁冲突 |
 
 ## 5. 如何运行
 

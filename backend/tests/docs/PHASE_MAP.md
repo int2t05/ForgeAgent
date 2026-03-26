@@ -7,7 +7,7 @@
 | 0 | 仓库与环境 | `tests/phase0/` | `phase0` | `test_environment.py` |
 | 1 | 数据层 | `tests/phase1/` | `phase1` | `test_data_layer.py` |
 | 2 | HTTP API（非流式） | `tests/phase2/`（预留） | `phase2` | — |
-| 3 | 工具注册表 + MCP | `tests/phase3/`（预留） | `phase3` | — |
+| 3 | 工具注册表 + MCP | `tests/phase3/` | `phase3` | `test_tool_registry.py` |
 | 4 | Agent 运行时 | `tests/phase4/`（预留） | `phase4` | — |
 | 5 | SSE | `tests/phase5/`（预留） | `phase5` | — |
 | 6 | 前端壳 | `frontend` / E2E | — | 非本后端目录 |

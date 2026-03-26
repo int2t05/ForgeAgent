@@ -10,6 +10,6 @@ router = APIRouter(prefix="/tools", tags=["tools"])
 
 @router.get("", response_model=ToolsListResponse)
 async def get_tools() -> ToolsListResponse:
-    """返回当前进程内可见的工具列表（阶段2 为内置占位；阶段3 对齐真实注册表）。"""
+    """返回当前进程内工具注册表快照（builtin / mcp mock / skill）。"""
     # 1. 委托 tool_service 组装 ToolsListResponse
     return tool_service.list_tools_public()

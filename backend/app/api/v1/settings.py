@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.deps import get_db
 from app.schemas.settings import SettingsPublic, SettingsUpdate, SettingsUpdateResponse
 from app.services import settings_service
+from app.tools.registry import tool_registry
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -27,4 +28,7 @@ async def put_settings(
     # 1. 递归校验键名不含 api_key 等片段
     # 2. upsert 写入 settings_kv
     # 3. 返回 { ok: true }
-    return await settings_service.update_settings(db, body)
+    result = await settings_service.update_settings(db, body)
+    # 3. MCP / Skills 变更后立即刷新注册表，使 GET /tools 与 DB 一致
+    await tool_registry.refresh(db)
+    return result
