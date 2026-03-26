@@ -1,7 +1,9 @@
 M-prompts
 .vscode
 tests
+!backend/tests/
 best_practice
+!best_practice/
 data
 .claude
 

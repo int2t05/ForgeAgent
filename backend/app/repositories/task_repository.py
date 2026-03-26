@@ -1,0 +1,51 @@
+"""任务表 tasks 数据访问。"""
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.task import Task
+
+
+async def add_task(session: AsyncSession, row: Task) -> Task:
+    """插入任务行并刷新主键侧字段（此处主键为客户端 UUID）。"""
+    session.add(row)
+    await session.flush()
+    await session.refresh(row)
+    return row
+
+
+async def get_task_by_id(session: AsyncSession, task_id: str) -> Task | None:
+    """按任务 id 查询单行。"""
+    stmt = select(Task).where(Task.id == task_id)
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+async def list_tasks(
+    session: AsyncSession,
+    *,
+    limit: int,
+    offset: int,
+    status: str | None,
+) -> tuple[list[Task], int]:
+    """可选 status 过滤；按 created_at 倒序分页；返回 (行列表, 总条数)。"""
+    # 1. 构造 count 与 data 查询（带或不带 status）
+    if status is not None:
+        count_stmt = select(func.count()).select_from(Task).where(Task.status == status)
+        stmt = (
+            select(Task)
+            .where(Task.status == status)
+            .order_by(Task.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+    else:
+        count_stmt = select(func.count()).select_from(Task)  # 生成 COUNT(*) SQL 函数
+        stmt = select(Task).order_by(Task.created_at.desc()).limit(limit).offset(offset)
+
+    # 2. 执行 count
+    total_result = await session.execute(count_stmt)
+    total = int(total_result.scalar_one())
+    # 3. 执行分页列表
+    result = await session.execute(stmt)
+    return list(result.scalars().all()), total

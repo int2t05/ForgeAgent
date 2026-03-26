@@ -9,6 +9,8 @@ from app.models.base import Base
 
 
 class SettingsKV(Base):
+    """键值配置行：value_json 存序列化配置；不得存用户密钥明文。"""
+
     __tablename__ = "settings_kv"
 
     key: Mapped[str] = mapped_column(Text, primary_key=True)

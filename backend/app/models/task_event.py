@@ -16,6 +16,8 @@ from app.models.base import Base
 
 
 class TaskEvent(Base):
+    """任务执行过程中追加的一条可观测事件（seq 在 task_id 维度单调递增）。"""
+
     __tablename__ = "task_events"
     __table_args__ = (
         # 联合唯一约束：同一任务内，task_id + seq 不能重复，确保事件序号不乱序

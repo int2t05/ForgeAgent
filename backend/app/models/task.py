@@ -11,6 +11,8 @@ from app.models.base import Base
 
 
 class Task(Base):
+    """单条 Agent 执行任务的持久化状态（与会话、事件一对多）。"""
+
     __tablename__ = "tasks"
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)

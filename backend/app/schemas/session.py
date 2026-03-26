@@ -1,0 +1,32 @@
+"""会话与消息相关请求/响应模型（对齐 docs/API.md）。"""
+
+from datetime import datetime
+
+from pydantic import BaseModel, Field
+
+
+class SessionCreate(BaseModel):
+    """POST /sessions 请求体。"""
+
+    title: str | None = None
+
+
+class SessionCreateResponse(BaseModel):
+    """POST /sessions 响应。"""
+
+    session_id: str
+
+
+class MessageOut(BaseModel):
+    """单条会话消息的对外表示。"""
+
+    id: int
+    role: str
+    content: str
+    created_at: datetime
+
+
+class MessagesListResponse(BaseModel):
+    """GET /sessions/{id}/messages 响应。"""
+
+    messages: list[MessageOut] = Field(default_factory=list)

@@ -4,4 +4,6 @@ from sqlalchemy.orm import DeclarativeBase
 
 
 class Base(DeclarativeBase):
+    """SQLAlchemy 声明式映射基类（全 ORM 模型继承）。"""
+
     pass

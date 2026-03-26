@@ -16,4 +16,5 @@ class Settings(BaseSettings):
 
 
 def get_settings() -> Settings:
+    """构造或读取进程内 Settings 单例使用的工厂（由调用方缓存策略决定）。"""
     return Settings()

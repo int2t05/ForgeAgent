@@ -31,7 +31,7 @@ testpaths = ["tests"]
 markers = [
   "phase0: 仓库与环境（见 docs/DEVELOP_ORDER 阶段0）",
   "phase1: 数据层（见 docs/DEVELOP_ORDER 阶段1）",
-  "phase2: HTTP API 非流式（预留）",
+  "phase2: HTTP API 非流式（REST + Mock 任务）",
   "phase3: 工具注册表与 MCP（预留）",
   "phase4: Agent 运行时（预留）",
   "phase5: SSE（预留）",

@@ -9,8 +9,10 @@ from app.models.base import Base
 
 
 class Message(Base):
+    """会话内一条消息（user / assistant / system），用于会话级记忆。"""
+
     __tablename__ = "messages"
-    # Mapped 是 SQLAlchemy 2.0 引入的类型标记，用于将 Python 类型映射到数据库列的类型。
+    # Mapped：SQLAlchemy 2.0 列类型与 Python 类型的显式绑定
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     session_id: Mapped[str] = mapped_column(
         Text,

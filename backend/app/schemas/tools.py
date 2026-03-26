@@ -1,0 +1,20 @@
+"""工具注册表只读 REST 模型。"""
+
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+
+class ToolItem(BaseModel):
+    """统一工具描述：名称、说明、来源、可选只读标记。"""
+
+    name: str
+    description: str
+    source: Literal["builtin", "mcp", "skill"]
+    read_only: bool | None = None
+
+
+class ToolsListResponse(BaseModel):
+    """GET /tools 响应。"""
+
+    tools: list[ToolItem] = Field(default_factory=list)
