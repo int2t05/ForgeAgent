@@ -25,7 +25,7 @@ async def post_session(
 async def get_session_messages(
     session_id: str,
     db: AsyncSession = Depends(get_db),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ) -> MessagesListResponse:
     """分页返回某会话下的用户/助手/系统消息。"""

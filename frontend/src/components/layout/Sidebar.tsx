@@ -24,6 +24,19 @@ function IconHome({ className }: { className?: string }) {
   )
 }
 
+function IconChat({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M8 10h8M8 14h5M5 19l-2 2v-4a3 3 0 0 1-1-2V7a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H8l-3 2Z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 function IconTasks({ className }: { className?: string }) {
   return (
     <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -71,6 +84,7 @@ function IconAbout({ className }: { className?: string }) {
 
 const NAV_ITEMS: NavItem[] = [
   { to: '/', label: '首页', icon: <IconHome className="shrink-0 opacity-80" /> },
+  { to: '/chat', label: '对话', icon: <IconChat className="shrink-0 opacity-80" /> },
   { to: '/tasks', label: '任务', icon: <IconTasks className="shrink-0 opacity-80" /> },
   { to: '/settings', label: '设置', icon: <IconSettings className="shrink-0 opacity-80" /> },
   { to: '/about', label: '关于', icon: <IconAbout className="shrink-0 opacity-80" /> },

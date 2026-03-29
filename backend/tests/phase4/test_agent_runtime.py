@@ -47,6 +47,14 @@ def test_langgraph_success_normal_message(client: TestClient) -> None:
     assert "plan_created" in kinds
     assert kinds.count("step_start") >= 2
 
+    msgs = client.get(f"/api/v1/sessions/{sid}/messages", params={"limit": 20}).json()[
+        "messages"
+    ]
+    assert len(msgs) == 2
+    assert msgs[0]["role"] == "user"
+    assert msgs[1]["role"] == "assistant"
+    assert msgs[1]["content"]
+
 
 @pytest.mark.phase4
 def test_replan_bumps_plan_version_and_emits_replan_event(

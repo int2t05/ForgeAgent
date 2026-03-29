@@ -6,6 +6,7 @@
 import { createBrowserRouter } from 'react-router'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { HomePage } from '@/pages/HomePage'
+import { ChatPage } from '@/pages/ChatPage'
 import { TaskListPage } from '@/pages/TaskListPage'
 import { TaskDetailPage } from '@/pages/TaskDetailPage'
 import { SettingsPage } from '@/pages/SettingsPage'
@@ -17,6 +18,7 @@ export const router = createBrowserRouter([
     element: <AppLayout />,
     children: [
       { index: true, element: <HomePage /> },
+      { path: 'chat', element: <ChatPage /> },
       { path: 'tasks', element: <TaskListPage /> },
       { path: 'tasks/:taskId', element: <TaskDetailPage /> },
       { path: 'settings', element: <SettingsPage /> },

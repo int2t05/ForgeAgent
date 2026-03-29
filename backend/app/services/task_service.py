@@ -103,6 +103,13 @@ async def run_agent_task(
                     task.status = "success"
                     task.summary = result.get("summary") or "任务已完成"
                     task.error_message = None
+                    # 将助手回复写入会话消息（对话记忆，与 API.md messages 一致）
+                    await message_repository.add_message(
+                        db,
+                        session_id=session_id,
+                        role="assistant",
+                        content=task.summary or "",
+                    )
                 elif outcome == "failed":
                     task.status = "failed"
                     task.error_message = result.get("error_message") or "任务失败"

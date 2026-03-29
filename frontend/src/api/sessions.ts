@@ -16,7 +16,13 @@ export function createSession(
   return post<SessionCreateResponse>('/api/v1/sessions', body ?? {})
 }
 
-/** 获取会话消息列表。 */
-export function getSessionMessages(sessionId: string): Promise<MessagesListResponse> {
-  return get<MessagesListResponse>(`/api/v1/sessions/${sessionId}/messages`)
+/** 获取会话消息列表（可选分页）。 */
+export function getSessionMessages(
+  sessionId: string,
+  params?: { limit?: number; offset?: number },
+): Promise<MessagesListResponse> {
+  const query: Record<string, string> = {}
+  if (params?.limit != null) query.limit = String(params.limit)
+  if (params?.offset != null) query.offset = String(params.offset)
+  return get<MessagesListResponse>(`/api/v1/sessions/${sessionId}/messages`, query)
 }

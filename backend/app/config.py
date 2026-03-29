@@ -24,6 +24,13 @@ class Settings(BaseSettings):
         "http://localhost:3000,http://127.0.0.1:3000"
     )
 
+    #: OpenAI 兼容 API（留空则规划/回复走内置确定性逻辑，便于 CI）；环境变量 OPENAI_API_KEY
+    openai_api_key: str | None = None
+    #: 兼容网关 Base URL；环境变量 OPENAI_API_BASE
+    openai_api_base: str | None = None
+    #: 模型名；环境变量 OPENAI_MODEL
+    openai_model: str | None = None
+
     @field_validator("cors_origins")
     @classmethod
     def _strip_cors_origins(cls, v: str) -> str:

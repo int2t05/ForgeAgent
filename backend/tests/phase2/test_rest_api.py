@@ -37,13 +37,13 @@ def test_sessions_messages_tasks_flow(client: TestClient) -> None:
     tid = body["task_id"]
     assert body["events_stream_path"] == f"/api/v1/tasks/{tid}/events/stream"
 
-    # 4. 用户消息已入库
+    # 4. 用户消息已入库（助手回复在任务成功后异步写入，快机器上可能已 2 条）
     r = client.get(f"/api/v1/sessions/{sid}/messages")
     assert r.status_code == 200
     msgs = r.json()["messages"]
-    assert len(msgs) == 1
-    assert msgs[0]["role"] == "user"
-    assert msgs[0]["content"] == "hello"
+    user_msgs = [m for m in msgs if m["role"] == "user"]
+    assert len(user_msgs) == 1
+    assert user_msgs[0]["content"] == "hello"
 
     # 5. 轮询直至 Mock 将任务置为 success
     deadline = time.time() + 3.0
@@ -56,6 +56,11 @@ def test_sessions_messages_tasks_flow(client: TestClient) -> None:
             break
         time.sleep(0.05)
     assert st == "success"
+
+    # 5b. 成功后会话内应有助手消息
+    r = client.get(f"/api/v1/sessions/{sid}/messages")
+    msgs_after = r.json()["messages"]
+    assert any(m["role"] == "assistant" for m in msgs_after)
 
     # 6. 详情含 plan.steps
     detail = client.get(f"/api/v1/tasks/{tid}").json()

@@ -6,7 +6,9 @@ import json
 import logging
 from typing import Literal
 
+from app.config import get_settings
 from app.database import AsyncSessionLocal
+from app.agent.llm_client import assistant_reply_with_llm, plan_steps_with_llm
 from app.repositories import event_repository, task_repository
 from app.agent.state import AgentState
 
@@ -22,13 +24,11 @@ def initial_force_replan_budget(user_message: str) -> int:
 
 async def planner_node(state: AgentState) -> dict:
     """规划节点：生成可展示步骤并写入 plan_created。"""
-    # 1. 组装固定两步计划（MVP 无 LLM 时的确定性行为，便于测试）
+    # 1. 有 OpenAI 兼容配置则调用 LLM 生成步骤，否则使用固定两步（便于 CI）
     task_id = state["task_id"]  # type: ignore
-
-    steps = [
-        {"id": "1", "title": "理解用户输入与上下文"},
-        {"id": "2", "title": "按步执行并汇总结果"},
-    ]
+    user_message = state.get("user_message") or ""
+    settings = get_settings()
+    steps = await plan_steps_with_llm(user_message, settings)
 
     payload = json.dumps({"steps": steps}, ensure_ascii=False)
     # 2. 追加 task_events(kind=plan_created)
@@ -94,10 +94,14 @@ async def executor_node(state: AgentState) -> dict:
             "summary": None,
             "replan_requested": False,
         }
-    # 4. 否则 outcome=success
+    # 4. 否则 outcome=success，并在配置了 LLM 时用模型生成对用户回复摘要
+    user_message = state.get("user_message") or ""
+    settings = get_settings()
+    reply = await assistant_reply_with_llm(user_message, plan_steps, settings)
+    summary = reply or "任务已完成（LangGraph 最小闭环）"
     return {
         "outcome": "success",
-        "summary": "任务已完成（LangGraph 最小闭环）",
+        "summary": summary,
         "replan_requested": False,
     }  # 节点返回的 dict 会与当前状态浅合并
 

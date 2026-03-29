@@ -43,7 +43,7 @@
 | 接口名 | 方法 | 路径 | 描述 | 请求参数 | 返回格式 |
 |--------|------|------|------|----------|----------|
 | 创建会话 | `POST` | `/api/v1/sessions` | 新建会话线程，用于挂载消息与任务 | **Body**：`{ "title"?: string }` | `{ "session_id": string }` |
-| 会话消息列表 | `GET` | `/api/v1/sessions/{session_id}/messages` | 会话级记忆（与 `messages` 表一致） | **Path**：`session_id`；**Query（可选）**：`limit`、`offset` 或 `before_id`（实现二选一约定即可） | `{ "messages": [ { "id", "role", "content", "created_at" } ] }` |
+| 会话消息列表 | `GET` | `/api/v1/sessions/{session_id}/messages` | 会话级记忆（与 `messages` 表一致） | **Path**：`session_id`；**Query（可选）**：`limit`（默认 20，上限 500）、`offset`（默认 0） | `{ "messages": [ { "id", "role", "content", "created_at" } ] }` |
 
 ---
 
