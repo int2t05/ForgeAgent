@@ -50,7 +50,7 @@ export function TaskTimeline({ events, connectionState, loadError }: TaskTimelin
         <p className="text-xs text-neutral-500">
           <span
             className={`mr-2 inline-block h-2 w-2 rounded-full align-middle ${
-              connectionState === 'streaming' ? 'bg-blue-500 animate-pulse' : 'bg-neutral-300'
+              connectionState === 'streaming' ? 'animate-pulse bg-primary-500' : 'bg-neutral-300'
             }`}
           />
           {hint}

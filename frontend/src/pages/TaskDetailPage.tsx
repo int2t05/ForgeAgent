@@ -37,10 +37,7 @@ export function TaskDetailPage() {
             message="加载任务失败"
             detail={error instanceof Error ? error.message : '任务不存在'}
           />
-          <Link
-            to="/tasks"
-            className="mt-4 inline-block text-sm text-blue-600 hover:text-blue-700"
-          >
+          <Link to="/tasks" className="fa-link mt-4 inline-block text-sm">
             ← 返回任务列表
           </Link>
         </div>
@@ -57,7 +54,10 @@ export function TaskDetailPage() {
       <Header
         title="任务详情"
         actions={
-          <Link to="/tasks" className="text-sm text-neutral-500 hover:text-neutral-700">
+          <Link
+            to="/tasks"
+            className="text-neutral-500 text-sm transition-colors hover:text-neutral-800"
+          >
             ← 返回列表
           </Link>
         }
@@ -65,23 +65,38 @@ export function TaskDetailPage() {
 
       <div className="flex flex-1 flex-col gap-6 px-6 py-6">
         {/* 顶部概览 */}
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
           <span
             className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium ${statusColors.bg} ${statusColors.text}`}
           >
             <span className={`h-2 w-2 rounded-full ${statusColors.dot}`} />
             {statusLabel}
           </span>
-          <span className="text-sm text-neutral-500">
+          <span className="text-neutral-500 text-sm tabular-nums">
             计划版本 v{task.plan_version}
           </span>
-          <span className="text-sm text-neutral-400">
+          <span className="text-neutral-400 text-sm">
             创建于 {formatDateTime(task.created_at)}
           </span>
         </div>
 
+        <dl className="flex flex-wrap gap-x-6 gap-y-1 border-neutral-200/80 border-y py-3">
+          <div className="flex min-w-0 max-w-full items-baseline gap-2">
+            <dt className="fa-kv-label shrink-0">task_id</dt>
+            <dd className="fa-kv-value-mono min-w-0 truncate" title={task.id}>
+              {task.id}
+            </dd>
+          </div>
+          <div className="flex min-w-0 max-w-full items-baseline gap-2">
+            <dt className="fa-kv-label shrink-0">session_id</dt>
+            <dd className="fa-kv-value-mono min-w-0 truncate" title={task.session_id}>
+              {task.session_id}
+            </dd>
+          </div>
+        </dl>
+
         {/* 摘要 */}
-        {task.summary && <p className="text-sm text-neutral-700">{task.summary}</p>}
+        {task.summary && <p className="text-neutral-700 text-sm leading-relaxed">{task.summary}</p>}
 
         {/* 错误信息 */}
         {task.error_message && (
@@ -94,19 +109,17 @@ export function TaskDetailPage() {
 
         {/* 计划区占位 */}
         <section>
-          <h2 className="mb-3 text-sm font-medium text-neutral-700">执行计划</h2>
+          <h2 className="fa-section-title">执行计划</h2>
           {task.plan ? (
-            <pre className="overflow-auto rounded-lg border border-neutral-200 bg-neutral-50 p-4 font-mono text-xs text-neutral-700">
-              {JSON.stringify(task.plan, null, 2)}
-            </pre>
+            <pre className="fa-panel max-h-[min(24rem,50vh)]">{JSON.stringify(task.plan, null, 2)}</pre>
           ) : (
-            <p className="text-sm text-neutral-400">暂无计划数据</p>
+            <p className="text-neutral-400 text-sm">暂无计划数据</p>
           )}
         </section>
 
-        {/* 执行时间线：REST 历史 + SSE 增量（阶段7） */}
+        {/* 执行时间线：REST 历史 + SSE 增量（GET /events + SSE） */}
         <section>
-          <h2 className="mb-3 text-sm font-medium text-neutral-700">执行时间线</h2>
+          <h2 className="fa-section-title">执行时间线</h2>
           <TaskTimeline
             events={events}
             connectionState={connectionState}

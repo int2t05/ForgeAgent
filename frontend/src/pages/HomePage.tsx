@@ -45,14 +45,14 @@ export function HomePage() {
       <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-8">
         {/* 发起任务 */}
         <section>
-          <h2 className="mb-3 text-sm font-medium text-neutral-700">发起任务</h2>
+          <h2 className="fa-section-title">发起任务</h2>
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               placeholder="描述你的任务…"
               rows={3}
-              className="w-full resize-none rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="fa-input resize-none"
             />
             {submitMutation.error && (
               <ErrorAlert
@@ -67,7 +67,7 @@ export function HomePage() {
             <button
               type="submit"
               disabled={!message.trim() || !sessionId || submitMutation.isPending}
-              className="self-end rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="fa-btn-primary self-end"
             >
               {submitMutation.isPending ? '提交中…' : '提交'}
             </button>
@@ -76,9 +76,9 @@ export function HomePage() {
 
         {/* 最近任务 */}
         <section>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-medium text-neutral-700">最近任务</h2>
-            <Link to="/tasks" className="text-sm text-blue-600 hover:text-blue-700">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="fa-section-title !mb-0">最近任务</h2>
+            <Link to="/tasks" className="fa-link shrink-0 text-sm">
               查看全部
             </Link>
           </div>
@@ -100,7 +100,7 @@ export function HomePage() {
           )}
 
           {data && data.items.length > 0 && (
-            <ul className="divide-y divide-neutral-100 rounded-lg border border-neutral-200 bg-white">
+            <ul className="fa-card divide-y divide-neutral-100 overflow-hidden p-0">
               {data.items.map((task) => {
                 const colors = STATUS_COLOR_MAP[task.status]
                 return (

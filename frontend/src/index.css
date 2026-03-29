@@ -1,28 +1,84 @@
 @import 'tailwindcss';
 
-/*
- * 全局主题 CSS 变量：
- * 遵循 PRD「中性背景 + 单一强调色区分进行中/成功/失败」。
- */
+/* 设计 tokens：中性底 + 单一强调色（primary），与 PRD/API 契约字段展示一致 */
+@theme {
+  --font-sans:
+    'DM Sans', 'Noto Sans SC', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+    'Segoe UI Emoji';
+  --font-mono:
+    'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+
+  --color-primary-50: #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+}
+
 :root {
   --color-primary: #2563eb;
   --color-primary-hover: #1d4ed8;
   --color-success: #059669;
   --color-danger: #dc2626;
   --color-warning: #d97706;
-
-  --font-mono:
-    'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, SFMono-Regular, Menlo,
-    Consolas, monospace;
 }
 
-body {
-  margin: 0;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@layer base {
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 }
 
-/* 等宽字体：用于日志 / JSON 片段（对齐 PRD §5 要求） */
+@layer components {
+  .fa-section-title {
+    @apply mb-3 text-xs font-semibold tracking-wide text-neutral-500 uppercase;
+  }
+
+  .fa-card {
+    @apply rounded-xl border border-neutral-200/90 bg-white shadow-sm;
+  }
+
+  .fa-panel {
+    @apply overflow-auto rounded-lg border border-neutral-200 bg-neutral-50/90 p-4 font-mono text-xs text-neutral-700;
+  }
+
+  .fa-input {
+    @apply w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-neutral-900 placeholder:text-neutral-400 transition-shadow focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20;
+  }
+
+  .fa-select {
+    @apply rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-700 transition-shadow focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20;
+  }
+
+  .fa-btn-primary {
+    @apply rounded-lg bg-primary-600 px-5 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .fa-btn-secondary {
+    @apply rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-600 shadow-sm transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .fa-link {
+    @apply text-primary-600 transition-colors hover:text-primary-700;
+  }
+
+  .fa-page-header {
+    @apply flex h-14 shrink-0 items-center justify-between border-neutral-200/90 border-b bg-white/90 px-6 backdrop-blur-sm;
+  }
+
+  .fa-kv-label {
+    @apply text-neutral-400 text-xs;
+  }
+
+  .fa-kv-value-mono {
+    @apply font-mono text-neutral-600 text-xs;
+  }
+}
+
 pre,
 code,
 .font-mono {

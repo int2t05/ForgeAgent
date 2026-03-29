@@ -37,5 +37,5 @@ markers = [
   "phase3: 工具注册表与 MCP（预留）",
   "phase4: Agent 运行时（LangGraph 最小图）",
   "phase5: SSE 任务事件流",
-  "phase8: 质量与总验收聚合（预留）",
+  "phase8: 质量与总验收（E2E seq、列表契约、OpenAPI）",
 ]

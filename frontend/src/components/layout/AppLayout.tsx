@@ -8,9 +8,9 @@ import { Sidebar } from '@/components/layout/Sidebar'
 
 export function AppLayout() {
   return (
-    <div className="flex h-screen overflow-hidden bg-neutral-50">
+    <div className="flex h-screen overflow-hidden bg-neutral-100/80">
       <Sidebar />
-      <main className="flex flex-1 flex-col overflow-auto">
+      <main className="flex min-w-0 flex-1 flex-col overflow-auto">
         <Outlet />
       </main>
     </div>

@@ -12,7 +12,7 @@
 | 5 | SSE | `tests/phase5/` | `phase5` | `test_sse.py` |
 | 6 | 前端壳 | `frontend` / E2E | — | 构建验证：`npm run lint && npm run build` |
 | 7 | 前端监控闭环 | `frontend` / E2E | — | 说明见 [phase7.md](phase7.md)；`npm run build` |
-| 8 | 质量与总验收 | `tests/` 各阶段聚合 + 契约 | `phase8`（可选） | 随实现补充 |
+| 8 | 质量与总验收 | `tests/phase8/` | `phase8` | `test_acceptance.py` |
 
 ## 验收语句摘录（便于写用例时对照）
 

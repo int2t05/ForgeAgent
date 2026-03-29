@@ -17,9 +17,12 @@ export function EmptyState({
   action,
 }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-      <div className="text-4xl text-neutral-300">○</div>
-      <h3 className="text-base font-medium text-neutral-700">{title}</h3>
+    <div className="fa-card flex flex-col items-center justify-center gap-2 border-dashed py-14 text-center shadow-none">
+      <div
+        className="h-10 w-10 rounded-lg border-2 border-neutral-200 border-dashed"
+        aria-hidden
+      />
+      <h3 className="font-medium text-base text-neutral-700">{title}</h3>
       {description && (
         <p className="max-w-sm text-sm text-neutral-500">{description}</p>
       )}

@@ -13,10 +13,7 @@ export function NotFoundPage() {
       <div className="flex flex-1 flex-col items-center justify-center gap-4">
         <span className="text-6xl font-bold text-neutral-200">404</span>
         <p className="text-sm text-neutral-500">请求的页面不存在</p>
-        <Link
-          to="/"
-          className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-        >
+        <Link to="/" className="fa-btn-primary inline-block text-center">
           返回首页
         </Link>
       </div>

@@ -26,9 +26,9 @@ export const STATUS_COLOR_MAP: Record<
     dot: 'bg-neutral-400',
   },
   running: {
-    bg: 'bg-blue-50',
-    text: 'text-blue-700',
-    dot: 'bg-blue-500',
+    bg: 'bg-primary-50',
+    text: 'text-primary-700',
+    dot: 'bg-primary-500',
   },
   success: {
     bg: 'bg-emerald-50',

@@ -59,7 +59,7 @@ export function TaskEventRow({ event }: TaskEventRowProps) {
     ? 'border-l-red-500 bg-red-50/40'
     : isReplan
       ? 'border-l-amber-500 bg-amber-50/30'
-      : 'border-l-blue-500/70 bg-white'
+      : 'border-l-primary-500/70 bg-white'
 
   return (
     <article
@@ -105,7 +105,7 @@ export function TaskEventRow({ event }: TaskEventRowProps) {
           aria-expanded={open}
           aria-controls={panelId}
           onClick={() => setOpen((v) => !v)}
-          className="mt-2 text-xs text-blue-600 hover:text-blue-700"
+          className="fa-link mt-2 text-xs"
         >
           {open ? '收起全文' : '展开全文'}
         </button>

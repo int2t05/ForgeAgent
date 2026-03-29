@@ -48,7 +48,7 @@ export function TaskListPage() {
               setStatusFilter(e.target.value)
               setPage(0)
             }}
-            className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="fa-select"
           >
             {STATUS_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -56,7 +56,9 @@ export function TaskListPage() {
               </option>
             ))}
           </select>
-          {data && <span className="text-sm text-neutral-500">共 {data.total} 条</span>}
+          {data && (
+            <span className="text-neutral-500 text-sm tabular-nums">共 {data.total} 条</span>
+          )}
         </div>
 
         {/* 内容区 */}
@@ -74,7 +76,7 @@ export function TaskListPage() {
             title="暂无任务"
             description="可在首页创建第一个任务"
             action={
-              <Link to="/" className="text-sm text-blue-600 hover:text-blue-700">
+              <Link to="/" className="fa-link text-sm">
                 返回首页
               </Link>
             }
@@ -82,13 +84,14 @@ export function TaskListPage() {
         )}
 
         {data && data.items.length > 0 && (
-          <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
+          <div className="fa-card overflow-hidden rounded-lg p-0">
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-neutral-200 bg-neutral-50 text-xs font-medium uppercase text-neutral-500">
-                <tr>
+              <thead className="border-neutral-200 border-b bg-neutral-50/90">
+                <tr className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">
                   <th className="px-4 py-3">状态</th>
                   <th className="px-4 py-3">摘要</th>
-                  <th className="px-4 py-3">版本</th>
+                  <th className="px-4 py-3">会话 ID</th>
+                  <th className="px-4 py-3">计划版本</th>
                   <th className="px-4 py-3">创建时间</th>
                   <th className="px-4 py-3">更新时间</th>
                 </tr>
@@ -99,7 +102,7 @@ export function TaskListPage() {
                     STATUS_COLOR_MAP[task.status as TaskStatus] ??
                     STATUS_COLOR_MAP.pending
                   return (
-                    <tr key={task.id} className="transition-colors hover:bg-neutral-50">
+                    <tr key={task.id} className="transition-colors hover:bg-neutral-50/80">
                       <td className="px-4 py-3">
                         <Link to={`/tasks/${task.id}`}>
                           <span
@@ -113,11 +116,19 @@ export function TaskListPage() {
                         </Link>
                       </td>
                       <td className="max-w-xs truncate px-4 py-3 text-neutral-800">
-                        <Link to={`/tasks/${task.id}`} className="hover:text-blue-600">
+                        <Link to={`/tasks/${task.id}`} className="hover:text-primary-600">
                           {task.summary ?? '(无摘要)'}
                         </Link>
                       </td>
-                      <td className="px-4 py-3 text-neutral-500">
+                      <td className="max-w-[8.5rem] px-4 py-3">
+                        <span
+                          className="fa-kv-value-mono block truncate"
+                          title={task.session_id}
+                        >
+                          {task.session_id}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-neutral-500 tabular-nums">
                         v{task.plan_version}
                       </td>
                       <td className="px-4 py-3 text-neutral-500">
@@ -138,19 +149,21 @@ export function TaskListPage() {
         {totalPages > 1 && (
           <div className="flex items-center justify-center gap-2 pt-2">
             <button
+              type="button"
               disabled={page === 0}
               onClick={() => setPage((p) => p - 1)}
-              className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+              className="fa-btn-secondary"
             >
               上一页
             </button>
-            <span className="text-sm text-neutral-500">
+            <span className="text-neutral-500 text-sm tabular-nums">
               {page + 1} / {totalPages}
             </span>
             <button
+              type="button"
               disabled={page + 1 >= totalPages}
               onClick={() => setPage((p) => p + 1)}
-              className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+              className="fa-btn-secondary"
             >
               下一页
             </button>
