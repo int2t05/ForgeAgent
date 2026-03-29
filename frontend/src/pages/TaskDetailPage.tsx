@@ -1,6 +1,6 @@
 /**
  * 任务详情页：计划区 + 执行时间线 + 错误高亮。
- * 阶段6 提供布局骨架；阶段7 实现 SSE 实时事件流与完整时间线组件。
+ * 阶段7：REST 分页历史 + SSE 增量合并的时间线与详情轮询刷新。
  */
 
 import { Link, useParams } from 'react-router'
@@ -8,6 +8,8 @@ import { Header } from '@/components/layout/Header'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { ErrorAlert } from '@/components/common/ErrorAlert'
 import { useTaskDetail } from '@/hooks/useTaskDetail'
+import { useTaskTimeline } from '@/hooks/useTaskTimeline'
+import { TaskTimeline } from '@/components/task/TaskTimeline'
 import { STATUS_COLOR_MAP, STATUS_LABEL_MAP } from '@/lib/constants'
 import { formatDateTime } from '@/lib/format'
 import type { TaskStatus } from '@/types/task'
@@ -15,6 +17,7 @@ import type { TaskStatus } from '@/types/task'
 export function TaskDetailPage() {
   const { taskId } = useParams<{ taskId: string }>()
   const { data: task, isLoading, error } = useTaskDetail(taskId)
+  const { events, connectionState, loadError } = useTaskTimeline(taskId)
 
   if (isLoading) {
     return (
@@ -101,12 +104,14 @@ export function TaskDetailPage() {
           )}
         </section>
 
-        {/* 执行时间线占位（阶段7实现） */}
+        {/* 执行时间线：REST 历史 + SSE 增量（阶段7） */}
         <section>
           <h2 className="mb-3 text-sm font-medium text-neutral-700">执行时间线</h2>
-          <div className="rounded-lg border border-dashed border-neutral-300 p-8 text-center text-sm text-neutral-400">
-            事件时间线将在阶段7实现（SSE 实时推送 + 增量合并）
-          </div>
+          <TaskTimeline
+            events={events}
+            connectionState={connectionState}
+            loadError={loadError}
+          />
         </section>
       </div>
     </div>

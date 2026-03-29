@@ -41,8 +41,9 @@ export function getTask(taskId: string): Promise<TaskDetail> {
 export function getTaskEvents(
   taskId: string,
   afterSeq?: number,
+  limit = 200,
 ): Promise<TaskEventsResponse> {
-  const params: Record<string, string> = {}
+  const params: Record<string, string> = { limit: String(limit) }
   if (afterSeq != null) params.after_seq = String(afterSeq)
   return get<TaskEventsResponse>(`/api/v1/tasks/${taskId}/events`, params)
 }
