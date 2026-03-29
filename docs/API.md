@@ -62,7 +62,7 @@
 
 | 接口名 | 方法 | 路径 | 描述 | 请求参数 | 返回格式 |
 |--------|------|------|------|----------|----------|
-| 订阅任务事件 | `GET` | `/api/v1/tasks/{task_id}/events/stream` | 执行过程中推送事件；结构与 `task_events` 对齐 | **Path**：`task_id`；**Header**：`Accept: text/event-stream`；可选 **Query**：`last_event_id`（兼容 `EventSource` 断线重连，可选） | **SSE**：每条消息 `event` 名可与 `kind` 对齐或固定为 `task`；`data` 为 JSON 字符串，解析后含 `seq`、`ts`、`module`、`kind`、`payload`（字段名与 GET `/events` 一致）。心跳注释行可按需发送。 |
+| 订阅任务事件 | `GET` | `/api/v1/tasks/{task_id}/events/stream` | 执行过程中推送事件；结构与 `task_events` 对齐 | **Path**：`task_id`；**Header**：`Accept: text/event-stream`；可选 **Query**：`after_seq` 或 `last_event_id`（均为「仅 `seq` 更大」）；可选 **Header**：`Last-Event-ID`（与 query 二选一，优先级：`after_seq` > `last_event_id` > 头） | **SSE**：`id` 为 `seq`；`event` 与 `kind` 对齐；`data` 为 JSON（与 GET `/events` 单条一致）。任务终态后短时无新事件则关闭流。 |
 
 说明：客户端在断线后可调用 `GET /events?after_seq=<最后收到的 seq>` 补拉缺口，再重新订阅 SSE。
 

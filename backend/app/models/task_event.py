@@ -36,9 +36,9 @@ class TaskEvent(Base):
         DateTime(timezone=True),
         server_default=func.now(),
         nullable=False,
-    )
+    )  # timestamp
     module: Mapped[str] = mapped_column(Text, nullable=False)
     kind: Mapped[str] = mapped_column(Text, nullable=False)
     payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    task: Mapped["Task"] = relationship("Task", back_populates="events") # type: ignore
+    task: Mapped["Task"] = relationship("Task", back_populates="events")  # type: ignore

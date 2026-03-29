@@ -36,6 +36,6 @@ markers = [
   "phase2: HTTP API 非流式（REST + Mock 任务）",
   "phase3: 工具注册表与 MCP（预留）",
   "phase4: Agent 运行时（LangGraph 最小图）",
-  "phase5: SSE（预留）",
+  "phase5: SSE 任务事件流",
   "phase8: 质量与总验收聚合（预留）",
 ]

@@ -120,25 +120,3 @@ def test_tools_list(client: TestClient) -> None:
     tools = r.json()["tools"]
     assert len(tools) >= 1
     assert tools[0]["source"] == "builtin"
-
-
-@pytest.mark.phase2
-def test_sse_stream_not_implemented(client: TestClient) -> None:
-    """阶段5 前 SSE 路径返回 501。"""
-    r = client.post("/api/v1/sessions", json={})
-    sid = r.json()["session_id"]
-    r = client.post(
-        "/api/v1/tasks",
-        json={"session_id": sid, "user_message": "z"},
-    )
-    tid = r.json()["task_id"]
-    r = client.get(f"/api/v1/tasks/{tid}/events/stream")
-    assert r.status_code == 501
-    assert r.json()["code"] == "NOT_IMPLEMENTED"
-    # 等待 Mock Agent 结束，避免后台 AsyncSession 仍占用 SQLite，影响后续用例 drop_all
-    deadline = time.time() + 3.0
-    while time.time() < deadline:
-        st = client.get(f"/api/v1/tasks/{tid}").json()["status"]
-        if st in ("success", "failed"):
-            break
-        time.sleep(0.05)

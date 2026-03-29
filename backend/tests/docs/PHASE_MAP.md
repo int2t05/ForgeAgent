@@ -9,7 +9,7 @@
 | 2 | HTTP API（非流式） | `tests/phase2/`（预留） | `phase2` | — |
 | 3 | 工具注册表 + MCP | `tests/phase3/` | `phase3` | `test_tool_registry.py` |
 | 4 | Agent 运行时 | `tests/phase4/` | `phase4` | `test_agent_runtime.py` |
-| 5 | SSE | `tests/phase5/`（预留） | `phase5` | — |
+| 5 | SSE | `tests/phase5/` | `phase5` | `test_sse.py` |
 | 6 | 前端壳 | `frontend` / E2E | — | 非本后端目录 |
 | 7 | 前端监控闭环 | `frontend` / E2E | — | 非本后端目录 |
 | 8 | 质量与总验收 | `tests/` 各阶段聚合 + 契约 | `phase8`（可选） | 随实现补充 |

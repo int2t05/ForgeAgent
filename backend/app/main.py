@@ -28,7 +28,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="ForgeAgent API",
-    description="MVP REST + 可观测任务；SSE 见阶段5",
+    description="MVP REST + 可观测任务 + 任务事件 SSE",
     lifespan=lifespan,
 )
 

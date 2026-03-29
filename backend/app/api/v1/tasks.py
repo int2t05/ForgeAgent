@@ -1,13 +1,20 @@
-"""任务 REST（执行：列表/创建/详情/事件；SSE 流见阶段5）。"""
+"""任务 REST（执行：列表/创建/详情/事件；SSE 流阶段5）。"""
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_db
 from app.exceptions import AppHTTPException
+from app.repositories import task_repository
 from app.schemas.event import TaskEventsResponse
-from app.schemas.task import TaskCreate, TaskCreateResponse, TaskDetail, TaskListResponse
-from app.services import task_service
+from app.schemas.task import (
+    TaskCreate,
+    TaskCreateResponse,
+    TaskDetail,
+    TaskListResponse,
+)
+from app.services import event_stream_service, task_service
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -17,7 +24,9 @@ async def get_tasks(
     db: AsyncSession = Depends(get_db),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    status: str | None = Query(None, description="pending|running|success|failed|cancelled"),
+    status: str | None = Query(
+        None, description="pending|running|success|failed|cancelled"
+    ),
 ) -> TaskListResponse:
     """仪表盘：分页列出任务，可按状态筛选。"""
     # 1. 校验 status 枚举（若传入）
@@ -32,7 +41,7 @@ async def post_task(body: TaskCreate) -> TaskCreateResponse:
     """创建任务并异步执行（阶段4：LangGraph 最小 Plan-and-Execute）。"""
     # 1. 在独立事务中写入用户消息与 running 任务
     # 2. 提交后调度 asyncio 任务执行 Agent 图
-    # 3. 返回 task_id 与 SSE 路径（流本身阶段5 可用）
+    # 3. 返回 task_id 与 SSE 路径
     return await task_service.create_task_start_mock(
         body.session_id,
         body.user_message,
@@ -40,12 +49,58 @@ async def post_task(body: TaskCreate) -> TaskCreateResponse:
 
 
 @router.get("/{task_id}/events/stream")
-async def get_task_events_stream(task_id: str) -> None:
-    """阶段5 实现 SSE；此处占位以满足 OpenAPI 与 events_stream_path 一致。"""
-    raise AppHTTPException(
-        f"SSE 未实现（task_id={task_id}）：见开发阶段5",
-        code="NOT_IMPLEMENTED",
-        status_code=501,
+async def get_task_events_stream(
+    task_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    after_seq: int | None = Query(
+        None,
+        ge=0,
+        description="仅推送 seq > after_seq 的事件；与 GET /events 语义一致",
+    ),
+    last_event_id: int | None = Query(
+        None,
+        ge=0,
+        description="与 after_seq 二选一；兼容文档中的断线重连续传",
+    ),
+) -> StreamingResponse:
+    """订阅任务事件：text/event-stream，data 与 GET /events 单条结构一致。"""
+    # 1. 校验任务存在（否则 404）。
+    task = await task_repository.get_task_by_id(db, task_id)
+    if task is None:
+        raise AppHTTPException(
+            "任务不存在",
+            code="NOT_FOUND",
+            status_code=404,
+        )
+
+    # 续传优先级：after_seq > last_event_id > Last-Event-ID 头
+    start_after = after_seq if after_seq is not None else last_event_id
+    # 2. 解析 Last-Event-ID（若 query 未传 after_seq）以支持 EventSource 重连。
+    if start_after is None:
+        # Last-Event-ID 是 SSE 规范定义的标准请求头，浏览器在断线重连时会自动带上此头
+        raw_leid = request.headers.get("Last-Event-ID")
+        if raw_leid is not None:
+            try:
+                start_after = int(raw_leid)
+            except ValueError:
+                start_after = None
+    if start_after is None:
+        start_after = 0
+
+    generator = event_stream_service.iter_task_event_sse(
+        task_id,
+        after_seq=start_after,
+    )
+    # 3. 返回流式响应（轮询已提交行 + 终态后短时结束）。
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",  # SSE 标准 Content-Type
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

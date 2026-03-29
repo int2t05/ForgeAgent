@@ -30,7 +30,7 @@ backend/tests/
 | **Mock Agent** | `POST /tasks` 后服务端 `asyncio.create_task` 写事件并置 `success`；用例中用 **短轮询** 等待终态（最多约 3s），避免 `sleep` 固定过长。 |
 | **`@pytest.mark.phase2`** | 与 `pyproject.toml` 中 marker 登记一致，支持 `pytest -m phase2` 只跑本阶段。 |
 
-**不在阶段2测的内容**：SSE 流式接口（阶段5）；此处仅断言 `GET .../events/stream` 返回 **501**。
+**不在阶段2测的内容**：SSE 流式行为与顺序（见 `tests/phase5/`）。
 
 ## 3. 覆盖的 API 与文档依据
 
@@ -46,7 +46,6 @@ backend/tests/
 | `test_task_unknown_session` | 不存在 `session_id` → 404，`code=NOT_FOUND` |
 | `test_settings_roundtrip_and_rejects_secret_key` | PUT/GET 一致；body 含 `api_key` 键名 → 400，`SECRET_FIELD` |
 | `test_tools_list` | `GET /api/v1/tools` 含 `builtin` |
-| `test_sse_stream_not_implemented` | SSE 路径 → 501，`NOT_IMPLEMENTED`；短轮询等待 Mock Agent 终态，避免后台 DB 会话与后续阶段 `drop_all` 在 Windows 上锁冲突 |
 
 ## 5. 如何运行
 
