@@ -14,6 +14,9 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite+aiosqlite:///./data/forgeagent.db"
 
+    #: Agent 单次任务内允许的重规划次数上限（与 DEVELOP_ORDER 阶段4 一致）
+    max_replan_attempts: int = 3
+
 
 def get_settings() -> Settings:
     """构造或读取进程内 Settings 单例使用的工厂（由调用方缓存策略决定）。"""

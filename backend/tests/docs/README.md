@@ -6,7 +6,9 @@
 |------|----------|----------|
 | 0 | `tests/phase0/` | （可补充 `phase0.md`）环境与健康检查基线 |
 | 1 | `tests/phase1/` | （可补充 `phase1.md`）数据层、内存 SQLite、`seq` 语义 |
-| 2 | `tests/phase2/` | [phase2.md](phase2.md) HTTP REST、`TestClient`、Mock 任务 |
+| 2 | `tests/phase2/` | [phase2.md](phase2.md) HTTP REST、`TestClient`、任务闭环 |
+| 3 | `tests/phase3/` | [phase3.md](phase3.md) 工具注册表、MCP mock、Skills |
+| 4 | `tests/phase4/` | [phase4.md](phase4.md) LangGraph 运行时与重规划 |
 
 **根目录 `tests/conftest.py`**：仅设置 `DATABASE_URL` → `tests/test_runtime.sqlite`，供 **阶段0 / 阶段2** 等经 `app.database` 访问库的调用使用；**不含** `autouse` 清表，以免波及其它阶段。
 
@@ -15,7 +17,9 @@
 ```bash
 pytest -q                          # 全量
 pytest tests/phase2 -q             # 仅阶段2 目录
+pytest tests/phase4 -q             # 仅阶段4
 pytest -m phase2 -q                # 仅带 @pytest.mark.phase2 的用例（跨目录也可用）
+pytest -m phase4 -q                # 仅阶段4 标记
 ```
 
 ## 原则

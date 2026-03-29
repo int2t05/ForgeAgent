@@ -1,4 +1,4 @@
-"""任务用例服务（执行：创建、查询、事件；阶段2 Mock 闭环）。"""
+"""任务用例服务（执行：创建、查询、事件；阶段4 LangGraph 最小闭环）。"""
 
 import asyncio
 import json
@@ -7,6 +7,9 @@ from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent.graph import get_compiled_agent_graph
+from app.agent.nodes import initial_force_replan_budget
+from app.config import get_settings
 from app.database import AsyncSessionLocal
 from app.exceptions import AppHTTPException
 from app.models.task import Task
@@ -35,7 +38,7 @@ async def create_task_start_mock(
     session_id: str,
     user_message: str,
 ) -> TaskCreateResponse:
-    """创建 running 任务并异步调度 Mock 执行器（不占用来请求的 DB 会话）。"""
+    """创建 running 任务并异步调度 LangGraph 执行器（不占用来请求的 DB 会话）。"""
     task_id = str(uuid4())
     stream_path = f"/api/v1/tasks/{task_id}/events/stream"
     async with AsyncSessionLocal() as db:
@@ -64,48 +67,51 @@ async def create_task_start_mock(
             )
             await task_repository.add_task(db, task_row)
     # 4. 事务已提交后启动后台协程，避免与 Depends(get_db) 生命周期竞态
-    asyncio.create_task(run_mock_agent(task_id))
+    asyncio.create_task(run_agent_task(task_id, session_id, user_message))
     return TaskCreateResponse(
         task_id=task_id, events_stream_path=stream_path
     )  # 立即返回
 
 
-async def run_mock_agent(task_id: str) -> None:
-    """阶段2：模拟 Planner/Executor，写事件并将任务置为终态。"""
-    plan_payload = {
-        "steps": [
-            {"id": "1", "title": "理解用户输入"},
-            {"id": "2", "title": "Mock 执行（阶段4 接入 LangGraph）"},
-        ]
-    }
+async def run_agent_task(
+    task_id: str,
+    session_id: str,
+    user_message: str,
+) -> None:
+    """阶段4：LangGraph Planner→Executor→条件重规划，写事件并收敛任务终态。"""
+    settings = get_settings()
+    graph = get_compiled_agent_graph()
+    initial = {
+        "task_id": task_id,
+        "session_id": session_id,
+        "user_message": user_message,
+        "replan_count": 0,
+        "max_replan_attempts": settings.max_replan_attempts,
+        "replan_requested": False,
+        "force_replan_budget": initial_force_replan_budget(user_message),
+    }  # 初始化状态
     try:
+        result = await graph.ainvoke(initial)  # 异步调用
+        outcome = result.get("outcome")
         async with AsyncSessionLocal() as db:
             async with db.begin():
                 task = await task_repository.get_task_by_id(db, task_id)
                 if task is None:
                     return
-                # 1. 写入规划结果事件
-                await event_repository.append_event(
-                    db,
-                    task_id,
-                    "planning",
-                    "plan_created",
-                    json.dumps(plan_payload, ensure_ascii=False),
-                )
-                # 2. 写入步骤开始事件
-                await event_repository.append_event(
-                    db,
-                    task_id,
-                    "execution",
-                    "step_start",
-                    json.dumps({"step_id": "1"}, ensure_ascii=False),
-                )
-                # 3. 更新任务为成功并写摘要
-                task.status = "success"
-                task.summary = "Mock 任务已完成"
+                # 1. 按图返回值写回终态与摘要/错误
+                if outcome == "success":
+                    task.status = "success"
+                    task.summary = result.get("summary") or "任务已完成"
+                    task.error_message = None
+                elif outcome == "failed":
+                    task.status = "failed"
+                    task.error_message = result.get("error_message") or "任务失败"
+                else:
+                    task.status = "failed"
+                    task.error_message = "Agent 未返回明确终态"
                 db.add(task)
     except Exception as exc:  # noqa: BLE001
-        logger.exception("mock agent failed for task %s", task_id)
+        logger.exception("agent graph failed for task %s", task_id)
         try:
             async with AsyncSessionLocal() as db:
                 async with db.begin():

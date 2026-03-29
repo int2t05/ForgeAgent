@@ -29,9 +29,9 @@ async def get_tasks(
 
 @router.post("", response_model=TaskCreateResponse)
 async def post_task(body: TaskCreate) -> TaskCreateResponse:
-    """创建任务并异步执行（阶段2 为 Mock Agent）。"""
+    """创建任务并异步执行（阶段4：LangGraph 最小 Plan-and-Execute）。"""
     # 1. 在独立事务中写入用户消息与 running 任务
-    # 2. 提交后调度 asyncio 任务执行 Mock
+    # 2. 提交后调度 asyncio 任务执行 Agent 图
     # 3. 返回 task_id 与 SSE 路径（流本身阶段5 可用）
     return await task_service.create_task_start_mock(
         body.session_id,

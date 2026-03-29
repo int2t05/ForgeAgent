@@ -21,6 +21,19 @@ async def get_task_by_id(session: AsyncSession, task_id: str) -> Task | None:
     return result.scalar_one_or_none()
 
 
+async def bump_plan_version(session: AsyncSession, task_id: str) -> int:
+    """在同一事务内将任务的 plan_version 加一并返回新版本号。"""
+    # 1. 加载任务行并递增版本（重规划可观测与详情展示）
+    row = await get_task_by_id(session, task_id)
+    if row is None:
+        msg = f"任务不存在: {task_id}"
+        raise ValueError(msg)
+    row.plan_version = int(row.plan_version) + 1
+    session.add(row)
+    await session.flush()
+    return int(row.plan_version)
+
+
 async def list_tasks(
     session: AsyncSession,
     *,
