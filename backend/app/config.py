@@ -1,5 +1,6 @@
 """应用配置（规划/记忆/工具/执行 之外的横切基础设施）。"""
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +17,21 @@ class Settings(BaseSettings):
 
     #: Agent 单次任务内允许的重规划次数上限（与 DEVELOP_ORDER 阶段4 一致）
     max_replan_attempts: int = 3
+
+    #: 浏览器跨域来源，逗号分隔；需覆盖前端实际访问来源（localhost 与 127.0.0.1 视为不同源）
+    cors_origins: str = (
+        "http://localhost:5173,http://127.0.0.1:5173,"
+        "http://localhost:3000,http://127.0.0.1:3000"
+    )
+
+    @field_validator("cors_origins")
+    @classmethod
+    def _strip_cors_origins(cls, v: str) -> str:
+        return v.strip()
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
 
 def get_settings() -> Settings:

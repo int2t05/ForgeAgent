@@ -1,0 +1,27 @@
+/**
+ * React Router 路由表定义（与 PAGES.md 路由对齐）。
+ * 所有业务路由共享 AppLayout（侧边栏 + 主内容区）。
+ */
+
+import { createBrowserRouter } from 'react-router'
+import { AppLayout } from '@/components/layout/AppLayout'
+import { HomePage } from '@/pages/HomePage'
+import { TaskListPage } from '@/pages/TaskListPage'
+import { TaskDetailPage } from '@/pages/TaskDetailPage'
+import { SettingsPage } from '@/pages/SettingsPage'
+import { AboutPage } from '@/pages/AboutPage'
+import { NotFoundPage } from '@/pages/NotFoundPage'
+
+export const router = createBrowserRouter([
+  {
+    element: <AppLayout />,
+    children: [
+      { index: true, element: <HomePage /> },
+      { path: 'tasks', element: <TaskListPage /> },
+      { path: 'tasks/:taskId', element: <TaskDetailPage /> },
+      { path: 'settings', element: <SettingsPage /> },
+      { path: 'about', element: <AboutPage /> },
+      { path: '*', element: <NotFoundPage /> },
+    ],
+  },
+])

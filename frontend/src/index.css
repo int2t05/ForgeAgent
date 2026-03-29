@@ -1,5 +1,30 @@
 @import 'tailwindcss';
 
+/*
+ * 全局主题 CSS 变量：
+ * 遵循 PRD「中性背景 + 单一强调色区分进行中/成功/失败」。
+ */
+:root {
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-success: #059669;
+  --color-danger: #dc2626;
+  --color-warning: #d97706;
+
+  --font-mono:
+    'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+}
+
 body {
   margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 等宽字体：用于日志 / JSON 片段（对齐 PRD §5 要求） */
+pre,
+code,
+.font-mono {
+  font-family: var(--font-mono);
 }

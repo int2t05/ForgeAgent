@@ -1,9 +1,26 @@
+/**
+ * 根组件：包裹 TanStack QueryClientProvider 与 React Router RouterProvider。
+ */
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { RouterProvider } from 'react-router/dom'
+import { router } from '@/router'
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+      staleTime: 10_000,
+    },
+  },
+})
+
 function App() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-neutral-50 text-neutral-900">
-      <h1 className="text-xl font-medium">ForgeAgent</h1>
-      <p className="mt-2 text-sm text-neutral-600">前端骨架已就绪</p>
-    </div>
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
   )
 }
 

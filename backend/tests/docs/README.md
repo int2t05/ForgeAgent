@@ -9,6 +9,8 @@
 | 2 | `tests/phase2/` | [phase2.md](phase2.md) HTTP REST、`TestClient`、任务闭环 |
 | 3 | `tests/phase3/` | [phase3.md](phase3.md) 工具注册表、MCP mock、Skills |
 | 4 | `tests/phase4/` | [phase4.md](phase4.md) LangGraph 运行时与重规划 |
+| 5 | `tests/phase5/` | [phase5.md](phase5.md) SSE 任务事件流 |
+| 6 | `frontend/` | [phase6.md](phase6.md) 前端壳（构建验证） |
 
 **根目录 `tests/conftest.py`**：仅设置 `DATABASE_URL` → `tests/test_runtime.sqlite`，供 **阶段0 / 阶段2** 等经 `app.database` 访问库的调用使用；**不含** `autouse` 清表，以免波及其它阶段。
 

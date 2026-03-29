@@ -4,9 +4,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.v1.router import api_router
+from app.config import get_settings
 from app.database import AsyncSessionLocal, close_db, init_db
 from app.exceptions import AppHTTPException
 from app.tools.registry import tool_registry
@@ -30,6 +32,15 @@ app = FastAPI(
     title="ForgeAgent API",
     description="MVP REST + 可观测任务 + 任务事件 SSE",
     lifespan=lifespan,
+)
+
+_settings = get_settings()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_settings.cors_origins_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
