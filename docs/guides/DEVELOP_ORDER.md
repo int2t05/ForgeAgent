@@ -1,6 +1,6 @@
 # ForgeAgent 全栈开发顺序（MVP）
 
-本文档描述 **实施顺序、里程碑、业务流程**；契约见 [`API.md`](API.md)，页面见 [`PAGES.md`](PAGES.md)，边界见 [`PRD.md`](PRD.md)。可含 **伪代码**，**不包含可运行实现代码**。
+本文档描述 **实施顺序、里程碑、业务流程**；契约见 [`API.md`](../api/API.md)，页面见 [`PAGES.md`](./PAGES.md)，边界见 [`PRD.md`](../product/PRD.md)。可含 **伪代码**，**不包含可运行实现代码**。
 
 ---
 
@@ -8,8 +8,8 @@
 
 | 层级     | 基线                         | 说明                                                                                                                                                                                            |
 | -------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Python   | `>=3.11`（建议 3.12）        | 与 [`backend/pyproject.toml`](../backend/pyproject.toml) `requires-python` 一致                                                                                                                 |
-| Node     | 20 LTS 或 22 LTS             | 与 [`TECH_DESIGN.md`](TECH_DESIGN.md) §6、[`frontend/package.json`](../frontend/package.json) 生态一致                                                                                          |
+| Python   | `>=3.11`（建议 3.12）        | 与 [`backend/pyproject.toml`](../../backend/pyproject.toml) `requires-python` 一致                                                                                                                 |
+| Node     | 20 LTS 或 22 LTS             | 与 [`TECH_DESIGN.md`](../architecture/TECH_DESIGN.md) §6、[`frontend/package.json`](../../frontend/package.json) 生态一致                                                                                          |
 | 后端依赖 | 当前：`fastapi`、`uvicorn`   | 引入 **SQLAlchemy 2.0 async**、**aiosqlite**、**LangChain/LangGraph**、MCP 适配时，**以官方文档与 `uv add` / `pip` 解析的兼容版本为准**，在本仓库 `pyproject.toml` 中锁范围并跑通导入与最小用例 |
 | 前端依赖 | React 19、Vite 8、Tailwind 4 | 按计划增量添加 **react-router**、**@tanstack/react-query**；可选 **zustand**                                                                                                                    |
 
@@ -39,7 +39,7 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 若使用 **uv**：`uv venv`、`uv pip install -e .` 等价替代；以团队统一工具为准。
 
-环境变量：从仓库根复制 `.env.example` → `.env`；**机密仅在后端进程与部署环境**，前端仅 `VITE_API_BASE_URL` 等非密钥（见 [`TECH_DESIGN.md`](TECH_DESIGN.md) §6）。
+环境变量：从仓库根复制 `.env.example` → `.env`；**机密仅在后端进程与部署环境**，前端仅 `VITE_API_BASE_URL` 等非密钥（见 [`TECH_DESIGN.md`](../architecture/TECH_DESIGN.md) §6）。
 
 ---
 
@@ -49,13 +49,13 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 | ----- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **0** | 仓库与环境         | Git Bash 下前端 `npm run dev`、后端 `uvicorn` 可访问 `GET /health`；无密钥进前端构建产物                                                                                                                  |
 | **1** | 数据层             | SQLite + SQLAlchemy 2.0 async；表 `tasks`、`task_events`、`sessions`、`messages`、`settings_kv` 可迁移/创建并可读写；同一 `task_id` 下 `seq` **严格递增、唯一**                                           |
-| **2** | HTTP API（非流式） | FastAPI + Pydantic 覆盖 [`API.md`](API.md) 中 REST 部分（会话、任务 CR、事件 GET、设置、工具列表）；可先对任务执行 **mock**；OpenAPI 文档可导出                                                           |
+| **2** | HTTP API（非流式） | FastAPI + Pydantic 覆盖 [`API.md`](../api/API.md) 中 REST 部分（会话、任务 CR、事件 GET、设置、工具列表）；可先对任务执行 **mock**；OpenAPI 文档可导出                                                           |
 | **3** | 工具注册表 + MCP   | 启动或按需刷新：内置工具 + **至少一种** 真实 MCP 或文档化 mock；`GET /api/v1/tools` 与注册表一致；Skills 约定加载后进入同一注册表（`source=skill`）                                                       |
 | **4** | Agent 运行时       | LangGraph **最小图**：Planner → Executor → 条件边重规划；配置 `max_replan_attempts`；每次重规划 `plan_version++` 并写 `task_events`（`kind=replan`）；任务终态 `success`/`failed` 与 `error_message` 一致 |
 | **5** | SSE                | `POST /tasks` 触发的执行与 `GET .../events/stream` 事件顺序一致；客户端断线后 `after_seq` 补拉语义明确                                                                                                    |
-| **6** | 前端壳             | React Router 挂载 [`PAGES.md`](PAGES.md) 路由；TanStack Query 请求封装（`VITE_API_BASE_URL`）；布局与导航                                                                                                 |
+| **6** | 前端壳             | React Router 挂载 [`PAGES.md`](./PAGES.md) 路由；TanStack Query 请求封装（`VITE_API_BASE_URL`）；布局与导航                                                                                                 |
 | **7** | 前端监控闭环       | 任务详情页 SSE + 时间线；错误与高亮；列表/详情性能满足 PRD（摘要、分页）                                                                                                                                  |
-| **8** | 质量与验收         | **pytest**：任务状态迁移、`task_id + seq` 顺序、关键 API 契约；手工走通 PRD 端到端场景（见 §6）                                                                                                           |
+| **8** | 质量与验收         | **手工与评审**：以 §6 清单、`task_id + seq` 与 OpenAPI/API 文档在联调中一致为准；迭代中可按需恢复自动化测试                                                                                                           |
 
 ---
 
@@ -131,7 +131,7 @@ client:
 
 ---
 
-## 5. 与最佳实践对齐的要点
+## 5. 与工程约定对齐的要点（实现时同步维护 [`docs/backend/业务流程文档.md`](../backend/业务流程文档.md)）
 
 - **FastAPI**：路由分层（`dependencies` 注入 DB session）、Pydantic v2 模型与 `response_model`；异步路由中 **避免** 阻塞 IO。
 - **SQLAlchemy 2.0**：`AsyncSession`、声明式模型；迁移可用 Alembic 或 MVP 启动时 `create_all`（团队择一并在仓库约定）。
@@ -153,7 +153,7 @@ client:
 
 ## 7. 明确不在 MVP 范围
 
-与 [`PRD.md`](PRD.md) 一致：**多 Agent 生产编排**、**通用多租户 SaaS**、**完整 OpenTelemetry 全链路**、**完整长期记忆/RAG 治理**、**拖拽式复杂工作流画布** 等 — **默认不做**，勿将其实现为必达路径。
+与 [`PRD.md`](../product/PRD.md) 一致：**多 Agent 生产编排**、**通用多租户 SaaS**、**完整 OpenTelemetry 全链路**、**完整长期记忆/RAG 治理**、**拖拽式复杂工作流画布** 等 — **默认不做**，勿将其实现为必达路径。
 
 ---
 

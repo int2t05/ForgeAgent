@@ -1,4 +1,4 @@
-"""HTTP 层统一异常与错误体（契约见 docs/API.md §1.1）。"""
+"""HTTP 层统一异常与错误体（契约见 docs/api/API.md §1.1）。"""
 
 from typing import Any
 

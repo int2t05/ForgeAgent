@@ -54,7 +54,7 @@ def _event_row_to_payload(row: TaskEvent) -> dict:
 
 
 def _format_sse_message(*, event: str, event_id: int, data: dict) -> bytes:
-    """封装一条 SSE 消息（id / event / data 与 docs/API.md 一致）。"""
+    """封装一条 SSE 消息（id / event / data 与 docs/api/API.md 一致）。"""
     payload = json.dumps(data, ensure_ascii=False, default=_json_default)
     lines = [
         f"id: {event_id}",

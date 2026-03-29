@@ -1,6 +1,6 @@
 # ForgeAgent 技术设计文档
 
-本文档依据 `docs/PRD.md` 的 MVP 边界与 `docs/RESEARCH.md` 的架构建议编写，与「单 Agent + Plan-and-Execute + 会话记忆 + 工具/MCP 注册表 + 可观测执行」一致。
+本文档依据 `docs/product/PRD.md` 的 MVP 边界与 `docs/guides/RESEARCH.md` 的架构建议编写，与「单 Agent + Plan-and-Execute + 会话记忆 + 工具/MCP 注册表 + 可观测执行」一致。
 
 ---
 
@@ -28,7 +28,7 @@
 
 ## 2. 项目结构
 
-推荐 **前后端分目录**（单仓库 monorepo），避免前端误打包后端密钥。**Node/npm 仅用于 `frontend/`**（仓库根目录不设 `package.json`，与 Python 后端解耦，详见 [`README.md`](../README.md)、[`START.md`](../START.md)）。
+推荐 **前后端分目录**（单仓库 monorepo），避免前端误打包后端密钥。**Node/npm 仅用于 `frontend/`**（仓库根目录不设 `package.json`，与 Python 后端解耦，详见 [`README.md`](../../README.md)、[`START.md`](../../START.md)）。
 
 ```
 ForgeAgent/
@@ -40,9 +40,11 @@ ForgeAgent/
 ├── frontend/                 # React + Vite + TypeScript + Tailwind；依赖见 frontend/package.json
 ├── backend/                  # FastAPI；依赖见 backend/pyproject.toml，应用包名 app
 ├── docs/
-│   ├── PRD.md
-│   ├── RESEARCH.md
-│   └── TECH_DESIGN.md
+│   ├── product/              # PRD
+│   ├── architecture/         # TECH_DESIGN、ARCH
+│   ├── api/                  # API 契约
+│   ├── guides/               # DEVELOP_ORDER、PAGES、RESEARCH
+│   └── backend/              # TODO、业务流程说明
 ├── M-prompts/                # 可选：生成各文档的提示词模板
 └── LICENSE
 ```

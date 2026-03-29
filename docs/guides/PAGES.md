@@ -1,6 +1,6 @@
 # ForgeAgent 前端页面设计（MVP）
 
-本文档将 [`PRD.md`](PRD.md) §4 页面结构落实为 **路由、区块与数据依赖**；API 契约见 [`API.md`](API.md)。**不包含组件/代码实现。**
+本文档将 [`PRD.md`](../product/PRD.md) §4 页面结构落实为 **路由、区块与数据依赖**；API 契约见 [`API.md`](../api/API.md)。**不包含组件/代码实现。**
 
 ---
 
@@ -14,7 +14,7 @@
 | `/settings` | 设置（最小） | MCP/Skills 非密钥配置、密钥说明 |
 | `/about` | 关于 / 帮助 | MVP 边界、Skills 说明 |
 
-**默认会话策略（建议）**：首次进入应用时若无 `session_id`，可自动调用 **创建会话**（[`API.md`](API.md) §3），将 `session_id` 存于内存或 `sessionStorage`，首页与发起任务共用；用户清空站点数据后重新创建。**不**在 MVP 强制做多用户会话隔离 UI。
+**默认会话策略（建议）**：首次进入应用时若无 `session_id`，可自动调用 **创建会话**（[`API.md`](../api/API.md) §3），将 `session_id` 存于内存或 `sessionStorage`，首页与发起任务共用；用户清空站点数据后重新创建。**不**在 MVP 强制做多用户会话隔离 UI。
 
 ---
 
@@ -43,7 +43,7 @@
 |------|------|
 | 主要区块 | ① **顶栏**：任务状态、`plan_version`、返回列表；② **计划区**：步骤列表（与 `GET /api/v1/tasks/{id}` 中 `plan` 一致）；③ **执行时间线**：按 `seq` 展示 `task_events`（模块标签、kind、耗时若 payload 含）；④ **错误区**：`error_message` 与 `kind=error` 事件高亮；⑤ **重规划记录**：`kind=replan` 折叠列表或融入时间线；⑥ **原始日志（可选）**：大块 `payload` 折叠，等宽字体。 |
 | 调用的 API | 首屏：`GET /api/v1/tasks/{task_id}`、`GET /api/v1/tasks/{task_id}/events`（可从 `after_seq=0` 或省略换全量第一页）；**实时**：`GET /api/v1/tasks/{task_id}/events/stream`（SSE）。 |
-| 实时策略 | **主路径 SSE**；断线后先用 `GET .../events?after_seq=<最后 seq>` **补拉**，再重连 SSE（与 [`TECH_DESIGN.md`](TECH_DESIGN.md) 一致）。 |
+| 实时策略 | **主路径 SSE**；断线后先用 `GET .../events?after_seq=<最后 seq>` **补拉**，再重连 SSE（与 [`TECH_DESIGN.md`](../architecture/TECH_DESIGN.md) 一致）。 |
 | TanStack Query | `task` 详情 query；`events` 初始 query + SSE 增量合并或 invalidate；注意 `seq` 单调避免乱序覆盖。 |
 
 ### 2.4 设置 `/settings`

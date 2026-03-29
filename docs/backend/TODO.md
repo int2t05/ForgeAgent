@@ -239,10 +239,10 @@ async def planner_node(state: AgentState):
 
 ---
 
-### 11. [TODO] Phase2 REST API 自动化测试完善
+### 11. [TODO] REST API 自动化测试（可选）
 
-**现状**: `tests/phase2/test_rest_api.py` 存在但仅预留。
-**目标**: 覆盖所有 API 契约（会话创建/消息/任务 CRUD）。
+**现状**: 仓库当前以手工验收与联调为主；无 `backend/tests/` 套件。
+**目标**: 若恢复 pytest，覆盖会话创建/消息/任务 CRUD 等与 `docs/api/API.md` 一致的契约。
 
 ---
 

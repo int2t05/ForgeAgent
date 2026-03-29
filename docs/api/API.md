@@ -1,6 +1,6 @@
 # ForgeAgent REST / SSE API 说明（MVP）
 
-本文档与 [`PRD.md`](PRD.md) MVP 边界、[`TECH_DESIGN.md`](TECH_DESIGN.md) 数据模型一致；**仅规划与契约**，实现以 OpenAPI 为准。
+本文档与 [`PRD.md`](../product/PRD.md) MVP 边界、[`TECH_DESIGN.md`](../architecture/TECH_DESIGN.md) 数据模型一致；**仅规划与契约**，实现以 OpenAPI 为准。
 
 ---
 
@@ -87,7 +87,7 @@
 
 ## 8. 附录：与数据模型对齐的枚举
 
-与 [`TECH_DESIGN.md`](TECH_DESIGN.md) §3 一致，便于前后端与 OpenAPI 对齐：
+与 [`TECH_DESIGN.md`](../architecture/TECH_DESIGN.md) §3 一致，便于前后端与 OpenAPI 对齐：
 
 | 字段/类型 | 取值说明 |
 |-----------|----------|

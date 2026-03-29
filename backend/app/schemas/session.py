@@ -1,4 +1,4 @@
-"""会话与消息相关请求/响应模型（对齐 docs/API.md）。"""
+"""会话与消息相关请求/响应模型（对齐 docs/api/API.md）。"""
 
 from datetime import datetime
 

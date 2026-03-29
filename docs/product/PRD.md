@@ -110,14 +110,14 @@
 
 | 路径 | 说明 |
 |------|------|
-| [`README.md`](../README.md) | 人类入口、快速开始、文档索引 |
-| [`START.md`](../START.md) | 脚手架安装与前后端启动命令 |
-| [`AGENTS.md`](../AGENTS.md) | AI 协作与工程规范 |
-| [`docs/TECH_DESIGN.md`](TECH_DESIGN.md) | 技术设计、数据模型与 API 方向 |
-| [`docs/RESEARCH.md`](RESEARCH.md) | 调研与竞品对照 |
+| [`README.md`](../../README.md) | 人类入口、快速开始、文档索引 |
+| [`START.md`](../../START.md) | 脚手架安装与前后端启动命令 |
+| [`AGENTS.md`](../../AGENTS.md) | AI 协作与工程规范 |
+| [`docs/architecture/TECH_DESIGN.md`](../architecture/TECH_DESIGN.md) | 技术设计、数据模型与 API 方向 |
+| [`docs/guides/RESEARCH.md`](../guides/RESEARCH.md) | 调研与竞品对照 |
 
-实现代码布局：**`frontend/`**（Node/React，npm 仅在此目录）、**`backend/`**（Python/FastAPI），与 [`docs/TECH_DESIGN.md`](TECH_DESIGN.md) 第 2 节一致。
+实现代码布局：**`frontend/`**（Node/React，npm 仅在此目录）、**`backend/`**（Python/FastAPI），与 [`docs/architecture/TECH_DESIGN.md`](../architecture/TECH_DESIGN.md) 第 2 节一致。
 
 ---
 
-*本文档由 `M-prompts/M2PRD.md` 驱动生成，并吸收 `docs/RESEARCH.md` 中的范围与 MVP 边界建议。*
+*本文档由 `M-prompts/M2PRD.md` 驱动生成，并吸收 `docs/guides/RESEARCH.md` 中的范围与 MVP 边界建议。*

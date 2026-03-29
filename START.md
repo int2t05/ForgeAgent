@@ -79,7 +79,7 @@ cd backend
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Git Bash（已激活 `.venv`）同上，模块路径与 [`README.md`](README.md)、[`docs/DEVELOP_ORDER.md`](docs/DEVELOP_ORDER.md) 一致：
+Git Bash（已激活 `.venv`）同上，模块路径与 [`README.md`](README.md)、[`docs/guides/DEVELOP_ORDER.md`](docs/guides/DEVELOP_ORDER.md) 一致：
 
 ```bash
 source .venv/Scripts/activate
@@ -100,9 +100,9 @@ npm run build
 
 ---
 
-## 4. 目录约定（与 `AGENTS.md` / `docs/TECH_DESIGN.md` 一致）
+## 4. 目录约定（与 `AGENTS.md` / `docs/architecture/TECH_DESIGN.md` 一致）
 
 - `frontend/`：React + Vite + TypeScript + Tailwind + ESLint + Prettier；**所有** `npm` 命令在此目录执行
 - `backend/`：Python 3.11+、FastAPI、可编辑安装 `pip install -e .`
-- `docs/`：产品与技术文档（`PRD.md`、`TECH_DESIGN.md`、`RESEARCH.md`）
+- `docs/`：按主题分子目录（`product/`、`architecture/`、`api/`、`guides/`、`backend/`），见 [`README.md`](README.md) 文档索引
 - 仓库根目录：`README.md`、`AGENTS.md`、`.env.example`、**无** `package.json`

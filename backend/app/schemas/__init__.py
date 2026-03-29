@@ -1,4 +1,4 @@
-"""Pydantic 请求/响应模型（与 docs/API.md 对齐）。"""
+"""Pydantic 请求/响应模型（与 docs/api/API.md 对齐）。"""
 
 from app.schemas.session import (
     MessageOut,
