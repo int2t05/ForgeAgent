@@ -99,22 +99,19 @@ export function SessionListPanel({
   }
 
   return (
-    <aside className="flex min-h-0 w-[min(17.5rem,88vw)] shrink-0 flex-col border-violet-100 border-r bg-white">
-      <div className="border-neutral-100 border-b px-3 py-3">
-        <p className="mb-2 px-1 font-medium text-[10px] text-neutral-400 uppercase tracking-[0.12em]">
-          会话
-        </p>
+    <aside className="flex min-h-0 w-[min(17.5rem,88vw)] shrink-0 flex-col border-neutral-200/80 border-r bg-neutral-50/95">
+      <div className="border-neutral-200/70 border-b px-3 py-3.5">
         <button
           type="button"
           onClick={() => createMutation.mutate()}
           disabled={createMutation.isPending}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 py-2.5 font-medium text-sm text-white hover:bg-primary-700 disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary-600 py-2.5 font-medium text-base text-white shadow-sm hover:bg-primary-700 disabled:opacity-50"
         >
-          {createMutation.isPending ? '创建中…' : '+ 新会话'}
+          {createMutation.isPending ? '创建中…' : '+ 新对话'}
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
         {listQuery.isLoading && (
           <div className="flex justify-center py-10">
             <LoadingSpinner />
@@ -136,8 +133,14 @@ export function SessionListPanel({
         )}
 
         {!listQuery.isLoading && !listQuery.error && items.length === 0 && (
-          <p className="px-3 py-10 text-center text-neutral-400 text-sm leading-relaxed">
+          <p className="px-3 py-10 text-center text-base text-neutral-400 leading-relaxed">
             暂无会话，点击上方新建后与 Agent 对话
+          </p>
+        )}
+
+        {!listQuery.isLoading && !listQuery.error && items.length > 0 && (
+          <p className="fa-text-caption mb-2 px-2 font-medium text-neutral-400 uppercase tracking-[0.12em]">
+            历史对话
           </p>
         )}
 
@@ -149,11 +152,11 @@ export function SessionListPanel({
 
             if (isEditing) {
               return (
-                <li key={s.id} className="rounded-xl border border-primary-200/80 bg-primary-50/40 p-2">
+                <li key={s.id} className="rounded-xl border border-primary-200/70 bg-primary-50/60 p-2">
                   <input
                     value={titleDraft}
                     onChange={(e) => setTitleDraft(e.target.value)}
-                    className="fa-input mb-2 py-2 text-sm"
+                    className="fa-input mb-2 py-2"
                     placeholder="会话标题"
                     disabled={patchTitleMutation.isPending}
                     autoFocus
@@ -173,7 +176,7 @@ export function SessionListPanel({
                     </button>
                     <button
                       type="button"
-                      className="rounded-lg bg-primary-600 px-2.5 py-1 text-white text-xs hover:bg-primary-700 disabled:opacity-50"
+                      className="rounded-lg bg-primary-600 px-2.5 py-1 text-white text-xs shadow-sm hover:bg-primary-700 disabled:opacity-50"
                       disabled={patchTitleMutation.isPending}
                       onClick={() => saveRename(s.id)}
                     >
@@ -192,18 +195,20 @@ export function SessionListPanel({
               <li key={s.id}>
                 <div
                   className={`group flex items-stretch rounded-xl transition-colors ${
-                    active ? 'bg-primary-600 text-white' : 'hover:bg-violet-50'
+                    active
+                      ? 'bg-primary-100/90 text-primary-900 ring-1 ring-primary-200/60'
+                      : 'text-neutral-800 hover:bg-neutral-100/90'
                   }`}
                 >
                   <button
                     type="button"
                     onClick={() => setSessionId(s.id)}
-                    className={`min-w-0 flex-1 px-3 py-2.5 text-left ${active ? '' : 'text-neutral-800'}`}
+                    className="min-w-0 flex-1 px-3 py-2.5 text-left"
                   >
-                    <span className="block truncate font-medium text-sm">{label}</span>
+                    <span className="block truncate font-medium text-base">{label}</span>
                     <span
-                      className={`mt-0.5 block text-[11px] ${
-                        active ? 'text-primary-100' : 'text-neutral-400'
+                      className={`fa-text-caption mt-0.5 block ${
+                        active ? 'text-primary-700/80' : 'text-neutral-400'
                       }`}
                     >
                       {formatRelativeTime(s.created_at)}
@@ -212,7 +217,7 @@ export function SessionListPanel({
                   <div
                     className={`flex shrink-0 flex-col justify-center border-l sm:flex-row ${
                       active
-                        ? 'border-primary-400/35 divide-primary-400/25 divide-y sm:divide-x sm:divide-y-0'
+                        ? 'border-primary-200/50 divide-primary-100 divide-y sm:divide-x sm:divide-y-0'
                         : 'border-transparent opacity-0 divide-neutral-200/80 divide-y group-hover:border-neutral-200/60 group-hover:opacity-100 sm:divide-x sm:divide-y-0'
                     }`}
                   >
@@ -226,7 +231,7 @@ export function SessionListPanel({
                       }}
                       className={`flex items-center justify-center px-2.5 py-2 transition sm:px-2 ${
                         active
-                          ? 'text-primary-100 hover:bg-primary-500/40 disabled:opacity-40'
+                          ? 'text-primary-800 hover:bg-primary-200/50 disabled:opacity-40'
                           : 'text-neutral-500 hover:bg-neutral-200/80 disabled:opacity-40'
                       }`}
                     >
@@ -251,7 +256,7 @@ export function SessionListPanel({
                       }}
                       className={`flex min-h-[2.5rem] min-w-[2.5rem] items-center justify-center px-2 py-2 transition sm:min-w-0 ${
                         active
-                          ? 'text-primary-100 hover:bg-red-500/35 disabled:cursor-not-allowed disabled:opacity-40'
+                          ? 'text-red-600 hover:bg-red-100/70 disabled:cursor-not-allowed disabled:opacity-40'
                           : 'text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40'
                       }`}
                     >

@@ -32,20 +32,61 @@ from app.schemas.task import (
 logger = logging.getLogger(__name__)
 
 _VALID_TASK_STATUS = frozenset(
-    {"pending", "running", "success", "failed", "cancelled"}  # 不可变的集合
+    {"pending", "running", "success", "failed", "cancelled"}
 )
+
+
+async def _apply_reuse_user_message(
+    db: AsyncSession,
+    *,
+    session_id: str,
+    reuse_user_message_id: int,
+    content: str,
+) -> None:
+    """在已有事务内：校验并更新指定用户消息，取消会话内活跃任务，删除该消息之后的记忆。"""
+    row = await message_repository.get_message_by_id(db, reuse_user_message_id)
+    if row is None or row.session_id != session_id:
+        raise AppHTTPException(
+            "消息不存在",
+            code="NOT_FOUND",
+            status_code=404,
+        )
+    if row.role != "user":
+        raise AppHTTPException(
+            "仅可基于用户消息重新执行",
+            code="VALIDATION_ERROR",
+            status_code=400,
+        )
+    await message_repository.update_message_content(db, row, content)
+    await task_repository.cancel_active_tasks_for_session(db, session_id)
+    await message_repository.delete_messages_after(db, session_id, row.id)
 
 
 async def create_task_start_mock(
     session_id: str,
     user_message: str,
+    *,
+    reuse_user_message_id: int | None = None,
 ) -> TaskCreateResponse:
-    """创建 running 任务并异步调度 LangGraph 执行器（不占用来请求的 DB 会话）。"""
+    """创建 running 任务并异步调度 LangGraph。
+
+    使用独立 ``AsyncSessionLocal`` 事务写入数据库，提交后再 ``asyncio.create_task`` 执行图，
+    避免与请求内 ``Depends(get_db)`` 会话生命周期重叠。
+
+    - 默认：追加一条 role=user 消息，再建任务。
+    - ``reuse_user_message_id``：更新该条用户消息、截断后续 messages、取消本会话未结束任务，不追加新用户行。
+    """
+    content = (user_message or "").strip()
+    if not content:
+        raise AppHTTPException(
+            "用户消息不能为空",
+            code="VALIDATION_ERROR",
+            status_code=400,
+        )
     task_id = str(uuid4())
     stream_path = f"/api/v1/tasks/{task_id}/events/stream"
     async with AsyncSessionLocal() as db:
         async with db.begin():
-            # 1. 校验会话存在
             chat = await session_repository.get_session_by_id(db, session_id)
             if chat is None:
                 raise AppHTTPException(
@@ -53,14 +94,20 @@ async def create_task_start_mock(
                     code="NOT_FOUND",
                     status_code=404,
                 )
-            # 2. 追加一条用户消息（记忆）
-            await message_repository.add_message(
-                db,
-                session_id=session_id,
-                role="user",
-                content=user_message,
-            )
-            # 3. 创建任务行，状态 running
+            if reuse_user_message_id is None:
+                await message_repository.add_message(
+                    db,
+                    session_id=session_id,
+                    role="user",
+                    content=content,
+                )
+            else:
+                await _apply_reuse_user_message(
+                    db,
+                    session_id=session_id,
+                    reuse_user_message_id=reuse_user_message_id,
+                    content=content,
+                )
             task_row = Task(
                 id=task_id,
                 session_id=session_id,
@@ -68,8 +115,7 @@ async def create_task_start_mock(
                 plan_version=1,
             )
             await task_repository.add_task(db, task_row)
-    # 4. 事务已提交后启动后台协程，避免与 Depends(get_db) 生命周期竞态
-    asyncio.create_task(run_agent_task(task_id, session_id, user_message))
+    asyncio.create_task(run_agent_task(task_id, session_id, content))
     return TaskCreateResponse(
         task_id=task_id, events_stream_path=stream_path
     )  # 立即返回
@@ -91,7 +137,7 @@ async def run_agent_task(
         "max_replan_attempts": settings.max_replan_attempts,
         "replan_requested": False,
         "force_replan_budget": initial_force_replan_budget(user_message),
-    }  # 初始化状态
+    }
     try:
         result = await graph.ainvoke(initial)  # 异步调用
         outcome = result.get("outcome")
@@ -155,6 +201,7 @@ async def list_tasks_page(
     limit: int,
     offset: int,
     status: str | None,
+    session_id: str | None = None,
 ) -> TaskListResponse:
     """分页任务列表，含符合过滤条件的 total。"""
     # 1. 若带 status 则校验合法
@@ -166,7 +213,11 @@ async def list_tasks_page(
         )
     # 2. 仓储层查询 items + total
     rows, total = await task_repository.list_tasks(
-        db, limit=limit, offset=offset, status=status
+        db,
+        limit=limit,
+        offset=offset,
+        status=status,
+        session_id=session_id,
     )
     # 3. 组装 TaskSummary 列表
     return TaskListResponse(

@@ -111,7 +111,7 @@ export function TaskListPage() {
             ))}
           </select>
           {data && (
-            <span className="text-neutral-500 text-sm tabular-nums">共 {data.total} 条</span>
+            <span className="text-base text-neutral-500 tabular-nums">共 {data.total} 条</span>
           )}
         </div>
 
@@ -152,7 +152,7 @@ export function TaskListPage() {
             title="暂无任务"
             description="可在「对话」或「概览」中创建任务"
             action={
-              <Link to="/" className="fa-link text-sm">
+              <Link to="/" className="fa-link text-base">
                 前往对话
               </Link>
             }
@@ -162,9 +162,9 @@ export function TaskListPage() {
         {data && data.items.length > 0 && (
           <div className="fa-reveal fa-reveal-delay-1 fa-card overflow-hidden rounded-lg p-0">
             <div className="max-w-full overflow-x-auto [-webkit-overflow-scrolling:touch]">
-            <table className="w-full min-w-[48rem] text-left text-sm">
+            <table className="w-full min-w-[48rem] text-left text-base">
               <thead className="border-neutral-200 border-b bg-neutral-50/95">
-                <tr className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">
+                <tr className="fa-text-caption font-semibold text-neutral-500 uppercase tracking-wide">
                   <th className="px-4 py-3">状态</th>
                   <th className="px-4 py-3">摘要</th>
                   <th className="px-4 py-3">会话 ID</th>
@@ -271,7 +271,7 @@ export function TaskListPage() {
             >
               上一页
             </button>
-            <span className="text-neutral-500 text-sm tabular-nums">
+            <span className="text-base text-neutral-500 tabular-nums">
               {page + 1} / {totalPages}
             </span>
             <button

@@ -89,7 +89,7 @@ export function HomePage() {
         <section className="fa-reveal fa-reveal-delay-1">
           <div className="mb-3 flex items-center justify-between gap-3">
             <h2 className="fa-section-title !mb-0">最近任务</h2>
-            <Link to="/tasks" className="fa-link shrink-0 text-sm">
+            <Link to="/tasks" className="fa-link shrink-0 text-base">
               查看全部
             </Link>
           </div>
@@ -126,7 +126,7 @@ export function HomePage() {
                         <span className={`h-1.5 w-1.5 rounded-full ${colors.dot}`} />
                         {STATUS_LABEL_MAP[task.status]}
                       </span>
-                      <span className="flex-1 truncate text-sm text-neutral-800">
+                      <span className="flex-1 truncate text-base text-neutral-800">
                         {task.summary ?? '(无摘要)'}
                       </span>
                       <span className="shrink-0 text-xs text-neutral-400">

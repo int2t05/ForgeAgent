@@ -49,13 +49,9 @@ function SettingsForm({
   }
 
   return (
-    <form onSubmit={handleSave} className="flex max-w-3xl flex-col gap-8">
+    <form onSubmit={handleSave} className="flex max-w-3xl flex-col gap-6">
       <section>
-        <h2 className="fa-section-title">MCP 服务</h2>
-        <p className="-mt-2 mb-4 text-neutral-500 text-xs leading-relaxed">
-          通过下方表单维护 <code className="font-mono text-[11px]">PUT /api/v1/settings</code> 中的{' '}
-          <code className="font-mono text-[11px]">mcp</code> 数组。保存后工具注册表会刷新。
-        </p>
+        <h2 className="mb-3 text-base font-semibold text-neutral-800">MCP</h2>
         <McpServersEditor servers={mcpServers} onChange={setMcpServers} />
       </section>
 
@@ -68,32 +64,22 @@ function SettingsForm({
         />
       )}
 
-      {/* Skills 路径 */}
       <section>
-        <h2 className="fa-section-title">Skills 路径</h2>
-        <p className="-mt-2 mb-3 text-neutral-500 text-xs">skills_paths，每行一个目录。</p>
+        <h2 className="mb-3 text-base font-semibold text-neutral-800">Skills</h2>
         <textarea
           value={skillsPaths}
           onChange={(e) => setSkillsPaths(e.target.value)}
-          rows={4}
+          rows={3}
           className="fa-input resize-none font-mono"
-          placeholder="skills/"
+          placeholder="每行一个目录，例如 skills/"
         />
       </section>
 
-      {/* 安全提示 */}
-      <section className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-        <p className="font-medium">安全提示</p>
-        <p className="mt-1 text-xs text-amber-700">
-          LLM API Key、MCP 访问密钥等敏感信息仅通过后端环境变量或服务端配置文件提供，
-          请勿在本页填写；请求体中若出现 api_key、secret、token 等字段名将被服务端拒绝。
-        </p>
-      </section>
+      <p className="fa-text-caption text-neutral-400">密钥请使用环境变量，勿在此填写。</p>
 
-      {/* 提交 */}
       <div className="flex flex-wrap items-center gap-3">
         <button type="submit" disabled={isUpdating} className="fa-btn-primary">
-          {isUpdating ? '保存中…' : '保存设置'}
+          {isUpdating ? '保存中…' : '保存'}
         </button>
       </div>
     </form>
@@ -137,7 +123,7 @@ export function SettingsPage() {
       ...options,
       onSuccess: (data, variables, onMutateResult, context) => {
         options?.onSuccess?.(data, variables, onMutateResult, context)
-        showNotice('设置已保存，工具列表已刷新。')
+        showNotice('已保存')
       },
     })
   }
@@ -147,7 +133,7 @@ export function SettingsPage() {
       ...options,
       onSuccess: (data, variables, onMutateResult, context) => {
         options?.onSuccess?.(data, variables, onMutateResult, context)
-        showNotice('已清空 MCP 与 Skills 路径配置。')
+        showNotice('已重置')
       },
     })
   }
@@ -161,8 +147,8 @@ export function SettingsPage() {
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <ConfirmDialog
         open={confirmReset}
-        title="重置设置"
-        description="将 MCP 列表与 Skills 路径清空为默认空列表（不修改环境变量中的密钥）。"
+        title="重置"
+        description="清空 MCP 与 Skills 列表。"
         confirmLabel="重置"
         pending={isResetting}
         onCancel={() => !isResetting && setConfirmReset(false)}
@@ -179,25 +165,25 @@ export function SettingsPage() {
         actions={
           <button
             type="button"
-            className="fa-btn-secondary border-amber-200 py-1.5 text-amber-900 text-xs hover:bg-amber-50"
+            className="fa-btn-secondary py-1.5"
             disabled={isResetting || isLoading}
             onClick={() => setConfirmReset(true)}
           >
-            重置列表
+            重置
           </button>
         }
       />
       </div>
 
       <div className="fa-reveal min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <div className="mx-auto w-full max-w-3xl px-6 py-8 pb-12">
+        <div className="mx-auto w-full max-w-3xl px-6 py-6 pb-10">
         {notice && (
           <div
             role="status"
             aria-live="polite"
-            className="mb-6 flex items-start justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 shadow-sm"
+            className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-emerald-200/90 bg-emerald-50/90 px-3 py-2 text-base text-emerald-900"
           >
-            <p className="font-medium leading-relaxed">{notice}</p>
+            <p className="leading-snug">{notice}</p>
             <button
               type="button"
               className="shrink-0 text-emerald-600 transition-colors hover:text-emerald-800"

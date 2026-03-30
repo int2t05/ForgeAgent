@@ -16,7 +16,7 @@ export function NotFoundPage() {
           <p className="font-display text-[clamp(4rem,14vw,7rem)] font-bold leading-none tracking-tighter text-neutral-200/95">
             404
           </p>
-          <p className="mt-4 text-neutral-500 text-sm leading-relaxed">
+          <p className="mt-4 text-base text-neutral-500 leading-relaxed">
             请求的页面不存在，或链接已失效
           </p>
           <Link

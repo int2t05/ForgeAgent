@@ -78,7 +78,7 @@ export function TaskDetailPage() {
             message="加载任务失败"
             detail={error instanceof Error ? error.message : '任务不存在'}
           />
-          <Link to="/tasks" className="fa-link mt-4 inline-block text-sm">
+          <Link to="/tasks" className="fa-link mt-4 inline-block text-base">
             ← 返回任务列表
           </Link>
         </div>
@@ -141,7 +141,7 @@ export function TaskDetailPage() {
               </button>
               <Link
                 to="/tasks"
-                className="text-neutral-500 text-sm transition-colors hover:text-neutral-800"
+                className="text-base text-neutral-500 transition-colors hover:text-neutral-800"
               >
                 ← 返回列表
               </Link>
@@ -166,15 +166,15 @@ export function TaskDetailPage() {
         {/* 顶部概览 */}
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
           <span
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium ${statusColors.bg} ${statusColors.text}`}
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-base font-medium ${statusColors.bg} ${statusColors.text}`}
           >
             <span className={`h-2 w-2 rounded-full ${statusColors.dot}`} />
             {statusLabel}
           </span>
-          <span className="text-neutral-500 text-sm tabular-nums">
+          <span className="text-base text-neutral-500 tabular-nums">
             计划版本 v{task.plan_version}
           </span>
-          <span className="text-neutral-400 text-sm">
+          <span className="fa-text-caption text-neutral-400">
             创建于 {formatDateTime(task.created_at)}
           </span>
         </div>
@@ -195,7 +195,7 @@ export function TaskDetailPage() {
         </dl>
 
         {/* 摘要 */}
-        {task.summary && <p className="text-neutral-700 text-sm leading-relaxed">{task.summary}</p>}
+        {task.summary && <p className="text-base text-neutral-700 leading-relaxed">{task.summary}</p>}
 
         {deleteMutation.error && (
           <ErrorAlert
@@ -223,9 +223,9 @@ export function TaskDetailPage() {
           {planSteps?.length ? (
             <TaskPlanSteps steps={planSteps} />
           ) : task.status === 'running' || task.status === 'pending' ? (
-            <p className="text-neutral-400 text-sm">规划生成中…</p>
+            <p className="fa-text-caption text-neutral-400">规划生成中…</p>
           ) : (
-            <p className="text-neutral-400 text-sm">暂无计划数据</p>
+            <p className="fa-text-caption text-neutral-400">暂无计划数据</p>
           )}
         </section>
 

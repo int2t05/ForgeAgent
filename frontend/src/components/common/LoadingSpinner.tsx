@@ -18,7 +18,7 @@ export function LoadingSpinner({
       className={`flex flex-col items-center justify-center gap-3 py-12 ${className}`}
     >
       <div className="h-8 w-8 animate-spin rounded-full border-2 border-neutral-200 border-t-primary-600" />
-      {text && <span className="text-sm text-neutral-500">{text}</span>}
+      {text && <span className="text-base text-neutral-500">{text}</span>}
     </div>
   )
 }

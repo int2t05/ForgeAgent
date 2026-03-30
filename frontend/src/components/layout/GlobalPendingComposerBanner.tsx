@@ -23,7 +23,7 @@ export function GlobalPendingComposerBanner() {
     <div
       role="status"
       aria-live="polite"
-      className="shrink-0 border-amber-200/90 border-b bg-amber-50 px-4 py-2.5 text-amber-950 text-sm"
+      className="shrink-0 border-amber-200/90 border-b bg-amber-50 px-4 py-2.5 text-base text-amber-950"
     >
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-2">
         <span className="inline-flex items-center gap-2 font-medium">
@@ -33,7 +33,7 @@ export function GlobalPendingComposerBanner() {
           </span>
           有回复生成中
         </span>
-        <div className="flex flex-wrap gap-3 text-xs font-medium">
+        <div className="fa-text-caption flex flex-wrap gap-3 font-medium">
           <Link to="/" className="text-primary-700 underline-offset-2 hover:underline">
             返回对话
           </Link>

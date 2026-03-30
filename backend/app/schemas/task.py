@@ -11,6 +11,13 @@ class TaskCreate(BaseModel):
 
     session_id: str
     user_message: str
+    reuse_user_message_id: int | None = Field(
+        default=None,
+        description=(
+            "复用已有用户消息并重新执行：更新该条正文、删除其后的消息、取消本会话未结束任务，"
+            "且不追加新的用户消息行"
+        ),
+    )
 
 
 class TaskCreateResponse(BaseModel):

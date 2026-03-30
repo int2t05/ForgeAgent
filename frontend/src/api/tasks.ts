@@ -18,6 +18,8 @@ export interface GetTasksParams {
   limit?: number
   offset?: number
   status?: string
+  /** 仅返回该会话下的任务（按 created_at 倒序） */
+  session_id?: string
 }
 
 /** 创建并启动任务。 */
@@ -31,6 +33,7 @@ export function getTasks(params?: GetTasksParams): Promise<TaskListResponse> {
   if (params?.limit != null) query.limit = String(params.limit)
   if (params?.offset != null) query.offset = String(params.offset)
   if (params?.status) query.status = params.status
+  if (params?.session_id) query.session_id = params.session_id
   return get<TaskListResponse>('/api/v1/tasks', query)
 }
 

@@ -19,7 +19,7 @@ export function ErrorAlert({ message, detail, dismissible = true }: ErrorAlertPr
   if (!visible) return null
 
   return (
-    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-base text-red-700">
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="font-medium">{message}</p>

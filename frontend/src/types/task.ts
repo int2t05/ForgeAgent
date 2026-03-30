@@ -53,6 +53,8 @@ export interface TaskEvent {
 export interface TaskCreateBody {
   session_id: string
   user_message: string
+  /** 复用该条用户消息并重新执行（后端会更新正文、截断后续消息、取消未结束任务）。 */
+  reuse_user_message_id?: number
 }
 
 /** POST /tasks 响应。 */

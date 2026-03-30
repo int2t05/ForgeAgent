@@ -1,41 +1,82 @@
 @import 'tailwindcss';
 
-/* 简洁淡紫主题；优先减少 blur / 多层渐变 / 动画，降低合成与滚动开销 */
+/* 全局：冷灰界面 + 天青强调。字号：--fa-text-base/sm/xs 与 body 对齐；对话 --fa-chat-fs 通常同 base */
 @theme {
   --font-sans:
-    'Plus Jakarta Sans', 'Noto Sans SC', ui-sans-serif, system-ui, sans-serif,
-    'Apple Color Emoji', 'Segoe UI Emoji';
-  --font-display: 'Outfit', 'Plus Jakarta Sans', 'Noto Sans SC', ui-sans-serif, system-ui,
-    sans-serif;
+    'DM Sans', 'Noto Sans SC', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+    'Segoe UI Emoji';
+  --font-display:
+    'Outfit', 'DM Sans', 'Noto Sans SC', ui-sans-serif, system-ui, sans-serif;
   --font-mono:
     'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, SFMono-Regular, Menlo,
     Consolas, monospace;
 
-  --color-primary-50: #faf5ff;
-  --color-primary-100: #f3e8ff;
-  --color-primary-300: #d8b4fe;
-  --color-primary-400: #c084fc;
-  --color-primary-500: #a855f7;
-  --color-primary-600: #9333ea;
-  --color-primary-700: #7e22ce;
+  /* 相对默认刻度整体小一号（与 :root --fa-text-* 一致） */
+  --text-xs: 0.6875rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-lg: 1rem;
+  --text-xl: 1.125rem;
+  --text-2xl: 1.25rem;
+  --text-3xl: 1.5rem;
+  --text-4xl: 1.875rem;
+
+  --color-primary-50: #f0f9ff;
+  --color-primary-100: #e0f2fe;
+  --color-primary-200: #bae6fd;
+  --color-primary-300: #7dd3fc;
+  --color-primary-400: #38bdf8;
+  --color-primary-500: #0ea5e9;
+  --color-primary-600: #0284c7;
+  --color-primary-700: #0369a1;
+  --color-primary-800: #075985;
+  --color-primary-900: #0c4a6e;
 }
 
 :root {
-  --color-primary: #9333ea;
-  --color-primary-hover: #7e22ce;
+  --color-primary: #0284c7;
+  --color-primary-hover: #0369a1;
   --color-success: #059669;
   --color-danger: #dc2626;
   --color-warning: #d97706;
-  --fa-shadow-card: 0 1px 3px rgb(15 23 42 / 0.06);
-  --fa-shadow-btn: 0 1px 2px rgb(88 28 135 / 0.12);
+  --fa-shadow-card: 0 1px 3px rgb(15 23 42 / 0.05);
+  --fa-shadow-btn: 0 1px 2px rgb(3 105 161 / 0.14);
+
+  /* 全站字号（在默认基础上小一档） */
+  --fa-text-base: 0.875rem;
+  --fa-text-sm: 0.8125rem;
+  --fa-text-xs: 0.6875rem;
+
+  /* 对话区：与正文同基准字阶 */
+  --fa-chat-fs: var(--fa-text-base);
+  --fa-chat-lh: 1.5;
+  --fa-chat-py: 0.5rem;
+  --fa-chat-px: 0.75rem;
+  --fa-chat-thread-gap: 0.5rem;
+  --fa-chat-composer-min-h: 2.875rem;
+  --fa-md-p-my: 0.5rem;
+  --fa-md-li-my: 0.1875rem;
+  --fa-md-h1-mult: 1.2;
+  --fa-md-h2-mult: 1.12;
+  --fa-md-h3-mult: 1.06;
+  --fa-radius-chat: 0.75rem;
+  --fa-meta-fs: calc(var(--fa-chat-fs) * 0.85);
 }
 
 @layer base {
   body {
     margin: 0;
     font-family: var(--font-sans);
+    font-size: var(--fa-text-base);
+    line-height: 1.5;
+    color: rgb(23 23 23);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background-color: rgb(224 242 254 / 0.85);
+    color: rgb(12 74 110);
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -51,180 +92,358 @@
 
 @layer components {
   .fa-app-shell {
-    background-color: rgb(250 248 255);
+    background-color: #f4f6f8;
     background-image: radial-gradient(
-      120% 80% at 50% -30%,
-      rgb(237 233 254 / 0.65),
-      transparent 55%
+      100% 60% at 50% -10%,
+      rgb(224 242 254 / 0.5),
+      transparent 52%
     );
   }
 
   .fa-section-title {
-    @apply mb-3 text-xs font-semibold tracking-wide text-neutral-500 uppercase;
+    @apply mb-3 font-semibold tracking-wide text-neutral-500 uppercase;
+    font-size: var(--fa-text-xs);
   }
 
   .fa-card {
-    @apply rounded-xl border border-violet-100 bg-white shadow-[var(--fa-shadow-card)];
+    @apply rounded-xl border border-neutral-200/90 bg-white shadow-[var(--fa-shadow-card)];
   }
 
   .fa-panel {
-    @apply overflow-auto rounded-lg border border-neutral-200 bg-neutral-50 p-4 font-mono text-xs text-neutral-700;
+    @apply overflow-auto rounded-lg border border-neutral-200 bg-neutral-50 p-4 font-mono text-neutral-700;
+    font-size: var(--fa-text-sm);
   }
 
   .fa-input {
-    @apply w-full rounded-lg border border-violet-100 bg-white px-4 py-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20;
+    @apply w-full rounded-xl border border-neutral-200/95 bg-white px-4 py-3 text-base text-neutral-900 placeholder:text-neutral-400 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/15;
   }
 
   .fa-select {
-    @apply rounded-lg border border-violet-100 bg-white px-3 py-2 text-sm text-neutral-700 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20;
+    @apply rounded-xl border border-neutral-200/95 bg-white px-3 py-2 text-base text-neutral-700 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/15;
   }
 
   .fa-btn-primary {
-    @apply rounded-lg bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[var(--fa-shadow-btn)] hover:bg-primary-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply rounded-xl bg-primary-600 px-5 py-2.5 text-base font-semibold text-white shadow-[var(--fa-shadow-btn)] hover:bg-primary-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .fa-btn-secondary {
-    @apply rounded-lg border border-violet-200 bg-white px-3 py-1.5 text-sm text-violet-950/85 shadow-sm hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-40;
+    @apply rounded-xl border border-neutral-200 bg-white px-3 py-1.5 text-base text-neutral-800 shadow-sm hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40;
   }
 
   .fa-btn-danger {
-    @apply rounded-lg bg-red-600 px-5 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply rounded-xl bg-red-600 px-5 py-2 text-base font-medium text-white shadow-sm hover:bg-red-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .fa-btn-text-danger {
-    @apply rounded-lg px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40;
+    @apply rounded-xl px-2 py-1 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40;
   }
 
   .fa-link {
-    @apply font-medium text-primary-600 hover:text-primary-700;
+    @apply font-medium text-primary-700 hover:text-primary-800;
   }
 
   .fa-page-header {
-    @apply flex h-14 shrink-0 items-center justify-between border-violet-100 border-b bg-violet-50/80 px-6;
+    @apply flex h-14 shrink-0 items-center justify-between border-neutral-200/90 border-b bg-white/90 px-6 backdrop-blur-sm;
   }
 
   .fa-kv-label {
-    @apply text-neutral-400 text-xs;
+    @apply text-neutral-400;
+    font-size: var(--fa-text-xs);
   }
 
   .fa-kv-value-mono {
-    @apply font-mono text-neutral-600 text-xs;
+    @apply font-mono text-neutral-600;
+    font-size: var(--fa-text-xs);
   }
 
   .fa-chat-canvas {
-    @apply flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-violet-100 bg-white shadow-[var(--fa-shadow-card)];
+    @apply flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-neutral-200/90 bg-white shadow-[var(--fa-shadow-card)];
   }
 
   .fa-chat-messages {
-    @apply min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-5 [-webkit-overflow-scrolling:touch] sm:px-6;
+    @apply min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 [-webkit-overflow-scrolling:touch] sm:px-5 sm:py-4;
+    display: flex;
+    flex-direction: column;
+    gap: var(--fa-chat-thread-gap);
+    scrollbar-gutter: stable;
   }
 
   .fa-chat-composer {
-    @apply border-violet-100 border-t bg-violet-50/30 px-4 py-4 sm:px-6;
+    @apply border-neutral-200/90 border-t bg-neutral-50/80 px-3 py-2 sm:px-5 sm:py-2.5;
+  }
+
+  .fa-chat-composer-inner {
+    @apply flex w-full max-w-none flex-col gap-2 sm:flex-row sm:items-stretch;
+  }
+
+  .fa-chat-composer-hint {
+    @apply mt-1.5 w-full max-w-none text-left text-neutral-400 leading-snug;
+    font-size: var(--fa-meta-fs);
+  }
+
+  .fa-chat-thread {
+    @apply flex w-full justify-start;
+  }
+
+  .fa-chat-block-user,
+  .fa-chat-block-assistant,
+  .fa-chat-block-plan,
+  .fa-chat-block-stream,
+  .fa-chat-block-thinking {
+    width: 100%;
+    max-width: none;
+    border-radius: var(--fa-radius-chat);
+    font-size: var(--fa-chat-fs);
+    line-height: var(--fa-chat-lh);
+  }
+
+  .fa-chat-block-user,
+  .fa-chat-block-assistant,
+  .fa-chat-block-plan,
+  .fa-chat-block-stream {
+    padding: var(--fa-chat-py) var(--fa-chat-px);
+  }
+
+  .fa-chat-block-thinking {
+    padding-block: calc(var(--fa-chat-py) * 0.85);
+    padding-inline: var(--fa-chat-px);
+  }
+
+  .fa-chat-block-user {
+    @apply relative border border-neutral-200/80 border-l-2 border-l-primary-500/90 bg-neutral-50 text-neutral-900;
+  }
+
+  .fa-chat-block-assistant {
+    @apply border border-neutral-200/80 border-l-2 border-l-slate-400/70 bg-white text-neutral-800;
+  }
+
+  .fa-chat-block-plan {
+    @apply border border-amber-200/55 border-l-2 border-l-amber-400/75 bg-amber-50/20 text-neutral-800;
+  }
+
+  .fa-chat-block-stream {
+    @apply border border-primary-100/90 border-l-2 border-l-primary-500/75 bg-primary-50/40 text-primary-900;
+  }
+
+  .fa-chat-block-thinking {
+    @apply border border-slate-200/80 border-l-2 border-l-slate-400/70 bg-slate-50/40 text-neutral-800;
+  }
+
+  .fa-chat-block-thinking .fa-thinking-fold {
+    @apply border-0 bg-transparent shadow-none;
+  }
+
+  .fa-chat-thinking-pre {
+    @apply max-h-[min(20rem,45vh)] overflow-y-auto font-mono text-slate-800 leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere];
+    font-size: calc(var(--fa-chat-fs) * 0.88);
+  }
+
+  .fa-task-plan-steps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--fa-md-li-my);
+  }
+
+  .fa-chat-stream-status {
+    @apply inline-flex items-center gap-1.5 font-medium text-neutral-800;
+    font-size: calc(var(--fa-chat-fs) * 0.97);
+  }
+
+  .fa-chat-edit-corner {
+    @apply absolute top-1.5 right-1.5 rounded-md px-1.5 py-0.5 font-medium text-neutral-400 hover:bg-neutral-200/50 hover:text-primary-800;
+    font-size: var(--fa-meta-fs);
+  }
+
+  .fa-chat-stream-nested {
+    @apply max-h-[min(50vh,28rem)] overflow-y-auto overscroll-contain border border-neutral-200/65 bg-neutral-50/50 text-neutral-800;
+    margin-top: calc(var(--fa-chat-thread-gap) * 0.5);
+    border-radius: calc(var(--fa-radius-chat) - 2px);
+    padding: calc(var(--fa-chat-py) * 0.65) calc(var(--fa-chat-px) * 0.65);
+    font-size: var(--fa-chat-fs);
+    line-height: var(--fa-chat-lh);
+  }
+
+  .fa-chat-composer-input {
+    @apply flex-1 resize-y rounded-xl border border-neutral-200/95 bg-white text-neutral-900 placeholder:text-neutral-400 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/15;
+    min-height: var(--fa-chat-composer-min-h);
+    max-height: min(36vh, 11rem);
+    padding: 0.5rem 0.875rem;
+    font-size: var(--fa-chat-fs);
+    line-height: var(--fa-chat-lh);
+  }
+
+  .fa-chat-composer-submit {
+    @apply shrink-0 rounded-xl bg-primary-600 font-semibold text-white shadow-[var(--fa-shadow-btn)] transition-colors hover:bg-primary-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 disabled:cursor-not-allowed disabled:opacity-50;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    align-self: stretch;
+    min-height: var(--fa-chat-composer-min-h);
+    padding-inline: 1.25rem;
+    font-size: var(--fa-chat-fs);
+    min-width: 5.25rem;
   }
 
   .fa-md-chat {
-    @apply text-[15px] leading-relaxed text-violet-950/92 [word-break:break-word];
+    font-size: var(--fa-chat-fs);
+    line-height: var(--fa-chat-lh);
+    @apply text-neutral-900/92 [word-break:break-word];
   }
 
   .fa-md-chat :where(h1, h2, h3, h4) {
-    @apply font-display font-semibold text-violet-950 tracking-tight first:mt-0;
+    @apply font-display font-semibold text-neutral-950 tracking-tight first:mt-0;
   }
 
   .fa-md-chat h1 {
-    @apply mt-3 mb-2 text-lg;
+    margin-top: calc(var(--fa-md-p-my) * 1.75);
+    margin-bottom: var(--fa-md-p-my);
+    font-size: calc(var(--fa-chat-fs) * var(--fa-md-h1-mult));
+    line-height: var(--fa-chat-lh);
   }
 
   .fa-md-chat h2 {
-    @apply mt-3 mb-1.5 text-base;
+    margin-top: calc(var(--fa-md-p-my) * 1.5);
+    margin-bottom: calc(var(--fa-md-p-my) * 0.85);
+    font-size: calc(var(--fa-chat-fs) * var(--fa-md-h2-mult));
+    line-height: var(--fa-chat-lh);
   }
 
   .fa-md-chat h3 {
-    @apply mt-2 mb-1 text-sm;
+    margin-top: calc(var(--fa-md-p-my) * 1.25);
+    margin-bottom: calc(var(--fa-md-p-my) * 0.65);
+    font-size: calc(var(--fa-chat-fs) * var(--fa-md-h3-mult));
+    line-height: var(--fa-chat-lh);
   }
 
   .fa-md-chat :where(p) {
-    @apply my-2.5 first:mt-0 last:mb-0;
+    margin-top: var(--fa-md-p-my);
+    margin-bottom: var(--fa-md-p-my);
+  }
+
+  .fa-md-chat :where(p):first-child {
+    margin-top: 0;
+  }
+
+  .fa-md-chat :where(p):last-child {
+    margin-bottom: 0;
+  }
+
+  .fa-md-chat :where(h1 + p),
+  .fa-md-chat :where(h2 + p),
+  .fa-md-chat :where(h3 + p) {
+    margin-top: calc(var(--fa-md-p-my) * 0.5);
   }
 
   .fa-md-chat :where(strong) {
-    @apply font-semibold text-violet-950;
+    @apply font-semibold text-neutral-950;
   }
 
   .fa-md-chat :where(ul, ol) {
-    @apply my-2.5 pl-5 marker:text-primary-500;
+    margin-top: var(--fa-md-p-my);
+    margin-bottom: var(--fa-md-p-my);
+    @apply pl-5 marker:text-primary-600;
   }
 
   .fa-md-chat :where(li) {
-    @apply my-1;
+    margin-top: var(--fa-md-li-my);
+    margin-bottom: var(--fa-md-li-my);
   }
 
   .fa-md-chat :where(hr) {
-    @apply my-4 border-violet-200;
+    @apply border-neutral-200;
+    margin-top: calc(var(--fa-md-p-my) * 2);
+    margin-bottom: calc(var(--fa-md-p-my) * 2);
   }
 
   .fa-md-chat :where(blockquote) {
-    @apply my-2.5 border-primary-300/50 border-l-[3px] pl-3 text-neutral-600 italic;
+    margin-top: var(--fa-md-p-my);
+    margin-bottom: var(--fa-md-p-my);
+    @apply border-primary-200/80 border-l-[3px] pl-3 text-neutral-600 italic;
   }
 
   .fa-md-chat :where(:not(pre) > code) {
-    @apply rounded bg-violet-100 px-1.5 py-0.5 font-mono text-[0.88em] text-violet-900;
+    @apply rounded-md bg-neutral-100 px-1.5 py-0.5 font-mono text-primary-900;
+    font-size: 0.9em;
   }
 
   .fa-md-chat :where(pre) {
-    @apply my-3 max-h-[min(24rem,50vh)] overflow-auto rounded-lg border border-violet-100 bg-violet-950 p-3.5;
+    @apply max-h-[min(24rem,50vh)] overflow-auto border border-neutral-200 bg-slate-950;
+    border-radius: var(--fa-radius-chat);
+    margin-top: var(--fa-md-p-my);
+    margin-bottom: var(--fa-md-p-my);
+    padding: calc(var(--fa-chat-py) + 0.25rem) calc(var(--fa-chat-px) + 0.15rem);
   }
 
   .fa-md-chat :where(pre code) {
-    @apply bg-transparent p-0 text-[13px] text-violet-50/95;
+    @apply bg-transparent text-slate-100/95;
+    font-size: 0.92em;
+    line-height: var(--fa-chat-lh);
+    padding: 0;
   }
 
   .fa-md-chat :where(table) {
-    @apply my-3 w-full border-collapse text-sm;
+    @apply w-full border-collapse;
+    margin-top: var(--fa-md-p-my);
+    margin-bottom: var(--fa-md-p-my);
+    font-size: 1em;
   }
 
   .fa-md-chat :where(th, td) {
-    @apply border border-violet-200 px-2 py-1.5 text-left;
+    @apply border border-neutral-200 text-left;
+    padding: calc(var(--fa-chat-py) * 0.65) calc(var(--fa-chat-px) * 0.55);
   }
 
   .fa-md-chat :where(th) {
-    @apply bg-violet-50 font-semibold text-violet-900;
+    @apply bg-neutral-50 font-semibold text-neutral-900;
   }
 
   .fa-md-chat-user {
-    @apply text-white/95;
+    @apply text-neutral-800;
   }
 
   .fa-md-chat-user :where(h1, h2, h3, h4, strong) {
-    @apply text-white;
+    @apply text-neutral-900;
   }
 
   .fa-md-chat-user :where(:not(pre) > code) {
-    @apply bg-white/18 text-white;
+    @apply rounded-md bg-neutral-200/75 px-1.5 py-0.5 font-mono text-neutral-900;
+    font-size: 0.9em;
   }
 
   .fa-md-chat-user :where(pre) {
-    @apply border-white/20 bg-black/30;
+    @apply max-h-[min(24rem,50vh)] overflow-auto border border-neutral-200 bg-neutral-900;
+    margin-top: var(--fa-md-p-my);
+    margin-bottom: var(--fa-md-p-my);
+    border-radius: var(--fa-radius-chat);
+    padding: calc(var(--fa-chat-py) + 0.25rem) calc(var(--fa-chat-px) + 0.15rem);
   }
 
   .fa-md-chat-user :where(pre code) {
-    @apply text-violet-50;
+    @apply bg-transparent text-neutral-50/95;
+    font-size: 0.92em;
+    line-height: var(--fa-chat-lh);
+    padding: 0;
   }
 
   .fa-md-chat-user :where(blockquote) {
-    @apply border-white/40 text-neutral-100;
+    @apply border-neutral-300 border-l-[3px] pl-3 text-neutral-600 italic;
+    margin-top: var(--fa-md-p-my);
+    margin-bottom: var(--fa-md-p-my);
   }
 
   .fa-md-chat-user :where(li)::marker {
-    @apply text-violet-200;
+    @apply text-neutral-500;
   }
 
   .fa-thinking-fold {
-    @apply rounded-lg border border-violet-200 bg-violet-50 text-violet-950/90;
+    @apply border border-neutral-200 bg-white text-neutral-900/92;
+    border-radius: var(--fa-radius-chat);
   }
 
   .fa-thinking-summary {
-    @apply flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-xs font-semibold tracking-wide select-none;
+    @apply flex cursor-pointer list-none items-center gap-1.5 px-2.5 font-semibold tracking-wide select-none;
+    padding-block: calc(var(--fa-chat-py) * 0.65);
+    font-size: calc(var(--fa-chat-fs) * 0.88);
   }
 
   .fa-thinking-summary::-webkit-details-marker {
@@ -233,7 +452,7 @@
 
   .fa-thinking-summary::before {
     content: '';
-    @apply inline-block h-0 w-0 shrink-0 border-x-[5px] border-t-[6px] border-x-transparent border-t-violet-500;
+    @apply inline-block h-0 w-0 shrink-0 border-x-[5px] border-t-[6px] border-x-transparent border-t-primary-500;
   }
 
   .fa-thinking-fold[open] .fa-thinking-summary::before {
@@ -241,11 +460,13 @@
   }
 
   .fa-thinking-hint {
-    @apply ml-auto font-normal text-[10px] text-violet-400 tracking-normal;
+    @apply ml-auto font-normal text-primary-600/90 tracking-normal;
+    font-size: calc(var(--fa-chat-fs) * 0.82);
   }
 
   .fa-thinking-body {
-    @apply max-h-56 overflow-y-auto border-violet-100 border-t px-3 py-2.5 font-mono text-[12px] text-violet-900/85 leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere];
+    @apply max-h-52 overflow-y-auto border-neutral-200 border-t px-2.5 py-2 font-mono text-neutral-800/90 leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere];
+    font-size: var(--fa-meta-fs);
   }
 
   @keyframes fa-chat-body-in {
@@ -269,7 +490,6 @@
     }
   }
 
-  /** 性能：不做入场动画（类名可保留以兼容页面，无开销） */
   .fa-reveal,
   .fa-reveal-delay-1,
   .fa-reveal-delay-2,
@@ -286,13 +506,13 @@
   }
 
   .fa-blueprint-grid {
-    opacity: 0.06;
+    opacity: 0.05;
     background-image: repeating-linear-gradient(
       -12deg,
       transparent,
       transparent 40px,
-      rgb(147 51 234) 40px,
-      rgb(147 51 234) 41px
+      rgb(2 132 199) 40px,
+      rgb(2 132 199) 41px
     );
   }
 }
@@ -300,6 +520,12 @@
 @layer utilities {
   .font-display {
     font-family: var(--font-display);
+  }
+
+  /** 辅文、时间戳、法律提示等 */
+  .fa-text-caption {
+    font-size: var(--fa-text-xs);
+    line-height: 1.45;
   }
 }
 

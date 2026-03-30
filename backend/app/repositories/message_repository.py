@@ -1,6 +1,6 @@
 """会话消息表 messages 数据访问。"""
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.message import Message
@@ -61,4 +61,16 @@ async def update_message_content(
 async def delete_message_row(session: AsyncSession, row: Message) -> None:
     """删除一条消息行。"""
     await session.delete(row)
+    await session.flush()
+
+
+async def delete_messages_after(
+    session: AsyncSession, session_id: str, after_message_id: int
+) -> None:
+    """删除某会话内 id 大于 after_message_id 的全部消息（用于从该用户消息起重做对话）。"""
+    stmt = delete(Message).where(
+        Message.session_id == session_id,
+        Message.id > after_message_id,
+    )
+    await session.execute(stmt)
     await session.flush()

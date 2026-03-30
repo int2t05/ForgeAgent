@@ -26,7 +26,7 @@ const userAnchors: Partial<Components> = {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="fa-md-link-user underline decoration-white/35 underline-offset-2 hover:decoration-white/70"
+      className="fa-md-link underline decoration-primary-500/40 underline-offset-2 transition-colors hover:decoration-primary-600"
     >
       {children}
     </a>

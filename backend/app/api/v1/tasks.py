@@ -29,24 +29,23 @@ async def get_tasks(
     status: str | None = Query(
         None, description="pending|running|success|failed|cancelled"
     ),
+    session_id: str | None = Query(
+        None, description="仅返回该会话下的任务（仍按 created_at 倒序）"
+    ),
 ) -> TaskListResponse:
-    """仪表盘：分页列出任务，可按状态筛选。"""
-    # 1. 校验 status 枚举（若传入）
-    # 2. 查总数与当前页 items
+    """仪表盘：分页列出任务，可按状态 / 会话筛选。"""
     return await task_service.list_tasks_page(
-        db, limit=limit, offset=offset, status=status
+        db, limit=limit, offset=offset, status=status, session_id=session_id
     )
 
 
 @router.post("", response_model=TaskCreateResponse)
 async def post_task(body: TaskCreate) -> TaskCreateResponse:
-    """创建任务并异步执行（阶段4：LangGraph 最小 Plan-and-Execute）。"""
-    # 1. 在独立事务中写入用户消息与 running 任务
-    # 2. 提交后调度 asyncio 任务执行 Agent 图
-    # 3. 返回 task_id 与 SSE 路径
+    """创建任务并异步执行；可选 ``reuse_user_message_id`` 时由 service 层截断记忆并取消活跃任务。"""
     return await task_service.create_task_start_mock(
         body.session_id,
         body.user_message,
+        reuse_user_message_id=body.reuse_user_message_id,
     )
 
 

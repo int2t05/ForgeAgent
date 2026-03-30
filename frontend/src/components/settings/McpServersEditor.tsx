@@ -24,9 +24,9 @@ interface McpServersEditorProps {
 type ServerEditMode = 'form' | 'json'
 
 const TRANSPORT_OPTIONS: Array<{ value: McpTransport; label: string }> = [
-  { value: 'mock', label: 'Mock（内嵌工具元数据，当前可注册到工具表）' },
-  { value: 'stdio', label: 'Stdio（命令行；配置可先保存，运行时接入后生效）' },
-  { value: 'sse', label: 'SSE（URL；配置可先保存，运行时接入后生效）' },
+  { value: 'mock', label: 'Mock' },
+  { value: 'stdio', label: 'Stdio' },
+  { value: 'sse', label: 'SSE' },
 ]
 
 function updateServer(
@@ -204,28 +204,14 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-        <p className="text-neutral-500 text-xs leading-relaxed sm:max-w-[75%]">
-          当前进程内仅 <strong className="text-neutral-700">transport=mock</strong>{' '}
-          且提供 <code className="rounded bg-neutral-100 px-1 font-mono text-[11px]">tools[]</code>{' '}
-          时会将工具注册到{' '}
-          <code className="rounded bg-neutral-100 px-1 font-mono text-[11px]">GET /api/v1/tools</code>
-          ；Stdio/SSE 可先填写并保存。请勿在 JSON 中含 api_key、secret、token 等字段名（服务端会拒绝）。
-        </p>
-      </div>
-
       <details className="group/full fa-card border-neutral-200/85 overflow-hidden open:shadow-sm">
-        <summary className="cursor-pointer list-none px-4 py-3 font-medium text-neutral-800 text-sm [&::-webkit-details-marker]:hidden">
+        <summary className="cursor-pointer list-none px-4 py-2.5 font-medium text-base text-neutral-800 [&::-webkit-details-marker]:hidden">
           <span className="mr-2 inline-block text-neutral-400 transition-transform group-open/full:rotate-90">
             ▸
           </span>
-          完整 mcp[] JSON（与 GET/PUT <code className="font-mono text-xs">settings.mcp</code> 一致）
+          完整 JSON
         </summary>
         <div className="space-y-2 border-neutral-100 border-t px-4 py-3">
-          <p className="text-neutral-500 text-xs leading-relaxed">
-            可直接编辑后端形态的数组；失焦单项卡片后此处会随列表更新（正在编辑本框时不会覆盖）。
-            修改后点「应用全文」替换下方全部 MCP。
-          </p>
           <textarea
             value={fullMcpText}
             onChange={(e) => setFullMcpText(e.target.value)}
@@ -237,7 +223,7 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
             }}
             spellCheck={false}
             rows={12}
-            className="fa-input max-h-[min(360px,50vh)] w-full resize-y font-mono text-xs leading-relaxed"
+            className="fa-input max-h-[min(360px,50vh)] w-full resize-y font-mono leading-relaxed"
           />
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -245,7 +231,7 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
               className="fa-btn-secondary text-xs"
               onClick={applyFullMcpJson}
             >
-              应用全文到列表
+              应用到列表
             </button>
             <button
               type="button"
@@ -255,7 +241,7 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
                 setFullMcpError(null)
               }}
             >
-              从当前列表重置文本
+              重置文本
             </button>
           </div>
           {fullMcpError && (
@@ -265,22 +251,13 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
       </details>
 
       <div className="fa-card border-neutral-200/85 p-3">
-        <p className="fa-kv-label mb-2 block">快速导入：粘贴 mcp.json 全文</p>
-        <p className="mb-2 text-neutral-500 text-xs leading-relaxed">
-          支持 Cursor / VS Code 的{' '}
-          <code className="rounded bg-neutral-100 px-1 font-mono text-[11px]">
-            mcpServers
-          </code>{' '}
-          结构，或本应用{' '}
-          <code className="rounded bg-neutral-100 px-1 font-mono text-[11px]">mcp</code>{' '}
-          数组。将替换下方当前列表（不含 env 等密钥字段，请勿粘贴含密钥的片段）。
-        </p>
+        <p className="mb-2 text-base font-medium text-neutral-800">粘贴导入</p>
         <textarea
           value={importPaste}
           onChange={(e) => setImportPaste(e.target.value)}
           rows={5}
           spellCheck={false}
-          className="fa-input mb-2 max-h-40 w-full resize-y font-mono text-xs"
+          className="fa-input mb-2 max-h-40 w-full resize-y font-mono"
           placeholder={`{\n  "mcpServers": {\n    "filesystem": {\n      "command": "npx",\n      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path"]\n    }\n  }\n}`}
         />
         <button
@@ -288,7 +265,7 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
           className="fa-btn-secondary text-xs"
           onClick={applyPastedJson}
         >
-          识别并替换列表
+          导入
         </button>
       </div>
 
@@ -297,8 +274,8 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
       )}
 
       {servers.length === 0 && (
-        <div className="fa-card border-dashed border-neutral-300/80 bg-neutral-50/50 px-4 py-8 text-center text-neutral-500 text-sm">
-          暂无 MCP 条目，点击下方按钮添加。
+        <div className="fa-card border-dashed border-neutral-300/80 bg-neutral-50/50 px-4 py-6 text-center text-base text-neutral-500">
+          暂无条目
         </div>
       )}
 
@@ -310,20 +287,20 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
           return (
             <li key={s.localId}>
               <details className="fa-card group border-neutral-200/85 overflow-hidden open:shadow-sm">
-                <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm [&::-webkit-details-marker]:hidden">
+                <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 text-base [&::-webkit-details-marker]:hidden">
                   <span className="text-neutral-400 select-none transition-transform group-open:rotate-90">
                     ▸
                   </span>
                   <span className="font-medium text-neutral-900">{title}</span>
-                  <code className="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-[11px] text-neutral-600">
+                  <code className="fa-text-caption rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-neutral-600">
                     {s.transport}
                   </code>
                   {!s.enabled && (
-                    <span className="rounded bg-neutral-200/80 px-1.5 py-0.5 text-[11px] text-neutral-600">
+                    <span className="fa-text-caption rounded bg-neutral-200/80 px-1.5 py-0.5 text-neutral-600">
                       已禁用
                     </span>
                   )}
-                  <span className="ml-auto font-display text-neutral-400 text-xs tabular-nums">
+                  <span className="fa-text-caption ml-auto font-display text-neutral-400 tabular-nums">
                     #{idx + 1}
                   </span>
                 </summary>
@@ -368,15 +345,12 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
                         removeServer(s.localId)
                       }}
                     >
-                      移除此项
+                      删除
                     </button>
                   </div>
 
                   {mode === 'json' ? (
                     <div className="space-y-2">
-                      <p className="text-neutral-500 text-xs">
-                        单条对象格式与写入 <code className="font-mono">mcp[]</code> 的元素一致（无 localId）。
-                      </p>
                       <textarea
                         value={
                           serverJsonDraft[s.localId] ??
@@ -390,7 +364,7 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
                         }
                         spellCheck={false}
                         rows={14}
-                        className="fa-input max-h-[min(320px,40vh)] w-full resize-y font-mono text-xs leading-relaxed"
+                        className="fa-input max-h-[min(320px,40vh)] w-full resize-y font-mono leading-relaxed"
                       />
                       <div className="flex flex-wrap gap-2">
                         <button
@@ -398,7 +372,7 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
                           className="fa-btn-secondary text-xs"
                           onClick={() => applyServerJson(s.localId)}
                         >
-                          应用 JSON 到此项
+                          应用
                         </button>
                         <button
                           type="button"
@@ -414,7 +388,7 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
                             }))
                           }
                         >
-                          从当前项重置
+                          重置
                         </button>
                       </div>
                       {serverJsonError[s.localId] && (
@@ -427,14 +401,14 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
                     <>
                       <div className="grid gap-3 sm:grid-cols-2">
                         <label className="block sm:col-span-2">
-                          <span className="fa-kv-label mb-1 block">显示名称 / name</span>
+                          <span className="fa-kv-label mb-1 block">名称</span>
                           <input
                             type="text"
                             value={s.name}
                             onChange={(e) =>
                               patchServer(s.localId, { name: e.target.value })
                             }
-                            className="fa-input py-2 text-sm"
+                            className="fa-input py-2"
                             placeholder="例如 filesystem"
                             autoComplete="off"
                           />
@@ -449,11 +423,11 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
                             }
                             className="rounded border-neutral-300 text-primary-600 focus:ring-primary-500/30"
                           />
-                          <span className="text-neutral-700 text-sm">启用该 MCP</span>
+                          <span className="text-base text-neutral-700">启用</span>
                         </label>
 
                         <label className="block sm:col-span-2">
-                          <span className="fa-kv-label mb-1 block">传输方式 / transport</span>
+                          <span className="fa-kv-label mb-1 block">传输</span>
                           <select
                             value={s.transport}
                             onChange={(e) =>
@@ -473,7 +447,7 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
                       {s.transport === 'mock' && (
                         <div className="mt-2 border-neutral-100 border-t pt-4">
                           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                            <span className="fa-section-title !mb-0">Mock 工具列表</span>
+                            <span className="fa-section-title !mb-0">工具</span>
                             <button
                               type="button"
                               className="fa-btn-secondary text-xs"
@@ -486,11 +460,11 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
                             {s.tools.map((t, ti) => (
                               <li key={`${s.localId}-tool-${ti}`}>
                                 <details className="group/tool rounded-lg border border-neutral-200/80 bg-neutral-50/50 open:bg-white/60">
-                                  <summary className="cursor-pointer list-none px-3 py-2 text-sm [&::-webkit-details-marker]:hidden">
+                                  <summary className="cursor-pointer list-none px-3 py-2 text-base [&::-webkit-details-marker]:hidden">
                                     <span className="mr-2 inline-block text-neutral-400 transition-transform group-open/tool:rotate-90">
                                       ▸
                                     </span>
-                                    <code className="font-mono text-[13px]">
+                                    <code className="font-mono text-base">
                                       {t.name.trim() || `(工具 #${ti + 1})`}
                                     </code>
                                   </summary>
@@ -509,7 +483,7 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
                                     </div>
                                     <div className="grid gap-2 sm:grid-cols-2">
                                       <label className="block">
-                                        <span className="fa-kv-label mb-1 block">工具名 name</span>
+                                        <span className="fa-kv-label mb-1 block">工具名</span>
                                         <input
                                           type="text"
                                           value={t.name}
@@ -533,14 +507,10 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
                                           }
                                           className="rounded border-neutral-300 text-primary-600"
                                         />
-                                        <span className="text-neutral-600 text-xs">
-                                          只读 read_only
-                                        </span>
+                                        <span className="text-neutral-600 text-xs">只读</span>
                                       </label>
                                       <label className="block sm:col-span-2">
-                                        <span className="fa-kv-label mb-1 block">
-                                          描述 description
-                                        </span>
+                                        <span className="fa-kv-label mb-1 block">描述</span>
                                         <input
                                           type="text"
                                           value={t.description}
@@ -549,7 +519,7 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
                                               description: e.target.value,
                                             })
                                           }
-                                          className="fa-input py-2 text-sm"
+                                          className="fa-input py-2"
                                           placeholder="工具说明（展示在工具表）"
                                         />
                                       </label>
@@ -572,7 +542,7 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
                               onChange={(e) =>
                                 patchServer(s.localId, { command: e.target.value })
                               }
-                              className="fa-input py-2 font-mono text-sm"
+                              className="fa-input py-2 font-mono"
                               placeholder="npx"
                               autoComplete="off"
                             />
@@ -587,7 +557,7 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
                                 patchServer(s.localId, { argsText: e.target.value })
                               }
                               rows={3}
-                              className="fa-input resize-none font-mono text-sm"
+                              className="fa-input resize-none font-mono"
                               placeholder={
                                 '-y\n@modelcontextprotocol/server-filesystem\n/path'
                               }
@@ -606,7 +576,7 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
                               onChange={(e) =>
                                 patchServer(s.localId, { url: e.target.value })
                               }
-                              className="fa-input py-2 font-mono text-sm"
+                              className="fa-input py-2 font-mono"
                               placeholder="https://example.com/mcp/sse"
                               autoComplete="off"
                             />
@@ -623,7 +593,7 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
       </ul>
 
       <button type="button" onClick={addServer} className="fa-btn-secondary w-full sm:w-auto">
-        + 添加 MCP 服务
+        + MCP
       </button>
     </div>
   )

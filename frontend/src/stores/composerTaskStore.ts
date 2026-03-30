@@ -1,3 +1,6 @@
+/**
+ * 对话页「当前任务」的客户端状态：pending 任务 id、SSE 聚合出的事件列表、按会话缓存的规划等。
+ */
 import { create } from 'zustand'
 import { latestPlanStepsFromEvents } from '@/lib/normalizeTaskPlan'
 import type { PlanStep } from '@/lib/normalizeTaskPlan'

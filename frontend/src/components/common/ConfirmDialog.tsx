@@ -50,7 +50,7 @@ export function ConfirmDialog({
         >
           {title}
         </h2>
-        <p className="mt-2 text-sm text-neutral-600 leading-relaxed">{description}</p>
+        <p className="mt-2 text-base text-neutral-600 leading-relaxed">{description}</p>
         <div className="mt-6 flex flex-wrap justify-end gap-2">
           <button
             type="button"

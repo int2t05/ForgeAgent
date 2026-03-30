@@ -58,8 +58,8 @@
 
 | 接口名 | 方法 | 路径 | 描述 | 请求参数 | 返回格式 |
 |--------|------|------|------|----------|----------|
-| 创建并启动任务 | `POST` | `/api/v1/tasks` | 创建任务并异步执行 Plan-and-Execute；写入用户消息并启动 Agent | **Body**：`{ "session_id": string, "user_message": string }` | `{ "task_id": string, "events_stream_path": string }`（`events_stream_path` 如 `/api/v1/tasks/{task_id}/events/stream`，便于前端拼 `VITE_API_BASE_URL`） |
-| 任务列表 | `GET` | `/api/v1/tasks` | 仪表盘与列表页 | **Query**：`limit`、`offset`；`status?`（`pending`/`running`/`success`/`failed`/`cancelled`） | `{ "items": [ { "id", "session_id", "status", "summary", "plan_version", "created_at", "updated_at" } ], "total": number }` |
+| 创建并启动任务 | `POST` | `/api/v1/tasks` | 创建任务并异步执行 Plan-and-Execute；默认追加一条用户消息后启动 Agent | **Body**：`{ "session_id": string, "user_message": string, "reuse_user_message_id"?: number }`；若提供 `reuse_user_message_id`，则将该条用户消息更新为 `user_message`、删除其后的会话消息、取消该会话未结束任务，并**不**追加新用户消息行 | `{ "task_id": string, "events_stream_path": string }`（`events_stream_path` 如 `/api/v1/tasks/{task_id}/events/stream`，便于前端拼 `VITE_API_BASE_URL`） |
+| 任务列表 | `GET` | `/api/v1/tasks` | 仪表盘与列表页 | **Query**：`limit`、`offset`；`status?`（`pending`/`running`/`success`/`failed`/`cancelled`）；`session_id?`（仅该会话下的任务，仍按创建时间倒序） | `{ "items": [ { "id", "session_id", "status", "summary", "plan_version", "created_at", "updated_at" } ], "total": number }` |
 | 任务详情 | `GET` | `/api/v1/tasks/{task_id}` | 含当前计划结构，供详情页展示 | **Path**：`task_id` | `{ "id", "session_id", "status", "summary", "plan_version", "plan"?: { "steps": unknown[] }, "created_at", "updated_at", "error_message"?: string }`（`plan` 形状实现可细化，须可序列化展示） |
 | 更新任务 | `PATCH` | `/api/v1/tasks/{task_id}` | 部分更新；MVP 仅支持取消 | **Path**：`task_id`；**Body**：`{ "status": "cancelled" }` | 同任务详情；若任务已终态则 **409**（`code`: `CONFLICT`） |
 | 任务事件历史 | `GET` | `/api/v1/tasks/{task_id}/events` | 可观测事件分页/增量；与 `task_events` 一致 | **Path**：`task_id`；**Query**：`after_seq?`（仅返回 `seq > after_seq`）；可选 `limit` | `{ "events": [ { "seq", "ts", "module", "kind", "payload" } ] }` |

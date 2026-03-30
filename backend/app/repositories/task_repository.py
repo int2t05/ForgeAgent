@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.task import Task
 
+# 与「删除会话」「取消并重建任务」等互斥的进行中状态
 _ACTIVE_DELETE_BLOCK_STATUSES = ("pending", "running")
 
 
@@ -42,28 +43,42 @@ async def list_tasks(
     limit: int,
     offset: int,
     status: str | None,
+    session_id: str | None = None,
 ) -> tuple[list[Task], int]:
-    """可选 status 过滤；按 created_at 倒序分页；返回 (行列表, 总条数)。"""
-    # 1. 构造 count 与 data 查询（带或不带 status）
+    """可选 status / session_id 过滤；按 created_at 倒序分页；返回 (行列表, 总条数)。"""
+    filters = []
     if status is not None:
-        count_stmt = select(func.count()).select_from(Task).where(Task.status == status)
-        stmt = (
-            select(Task)
-            .where(Task.status == status)
-            .order_by(Task.created_at.desc())
-            .limit(limit)
-            .offset(offset)
-        )
-    else:
-        count_stmt = select(func.count()).select_from(Task)  # 生成 COUNT(*) SQL 函数
-        stmt = select(Task).order_by(Task.created_at.desc()).limit(limit).offset(offset)
+        filters.append(Task.status == status)
+    if session_id is not None:
+        filters.append(Task.session_id == session_id)
 
-    # 2. 执行 count
+    count_stmt = select(func.count()).select_from(Task)
+    stmt = select(Task).order_by(Task.created_at.desc()).limit(limit).offset(offset)
+    for f in filters:
+        count_stmt = count_stmt.where(f)
+        stmt = stmt.where(f)
+
     total_result = await session.execute(count_stmt)
     total = int(total_result.scalar_one())
-    # 3. 执行分页列表
     result = await session.execute(stmt)
     return list(result.scalars().all()), total
+
+
+async def cancel_active_tasks_for_session(
+    session: AsyncSession, session_id: str
+) -> None:
+    """将该会话下 pending/running 任务标为 cancelled（用于用户从某条消息重新执行）。"""
+    stmt = select(Task).where(
+        Task.session_id == session_id,
+        Task.status.in_(_ACTIVE_DELETE_BLOCK_STATUSES),
+    )
+    result = await session.execute(stmt)
+    for row in result.scalars().all():
+        row.status = "cancelled"
+        if not row.error_message:
+            row.error_message = "用户已取消"
+        session.add(row)
+    await session.flush()
 
 
 async def session_has_active_tasks(session: AsyncSession, session_id: str) -> bool:

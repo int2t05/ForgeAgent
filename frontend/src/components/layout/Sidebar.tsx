@@ -77,8 +77,8 @@ const NAV_ITEMS: NavItem[] = [
 
 export function Sidebar() {
   return (
-    <aside className="flex h-screen w-56 shrink-0 flex-col overflow-hidden border-violet-100 border-r bg-white shadow-[var(--fa-shadow-card)]">
-      <div className="flex h-14 shrink-0 items-center gap-1.5 border-violet-100 border-b px-5">
+    <aside className="flex h-screen w-56 shrink-0 flex-col overflow-hidden border-neutral-200/80 border-r bg-neutral-50/95 shadow-[var(--fa-shadow-card)]">
+      <div className="flex h-14 shrink-0 items-center gap-1.5 border-neutral-200/70 border-b px-5">
         <span className="font-display font-bold text-lg text-primary-600 tracking-tight">
           Forge
         </span>
@@ -87,17 +87,17 @@ export function Sidebar() {
         </span>
       </div>
 
-      <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain px-3 py-4">
+      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 py-4">
         {NAV_ITEMS.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
             end={item.to === '/'}
             className={({ isActive }) =>
-              `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
+              `flex items-center gap-3 rounded-xl px-3 py-2.5 text-base transition-colors ${
                 isActive
-                  ? 'bg-primary-600 font-medium text-white'
-                  : 'text-neutral-600 hover:bg-violet-50 hover:text-neutral-900'
+                  ? 'bg-primary-100 font-medium text-primary-900 ring-1 ring-primary-200/60'
+                  : 'text-neutral-600 hover:bg-neutral-100/90 hover:text-neutral-900'
               }`
             }
           >
@@ -107,8 +107,8 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="shrink-0 border-violet-100 border-t px-5 py-3">
-        <p className="text-[10px] text-neutral-400 uppercase tracking-wider">ForgeAgent MVP</p>
+      <div className="shrink-0 border-neutral-200/70 border-t px-5 py-3">
+        <p className="fa-text-caption text-neutral-400 uppercase tracking-wider">ForgeAgent MVP</p>
       </div>
     </aside>
   )

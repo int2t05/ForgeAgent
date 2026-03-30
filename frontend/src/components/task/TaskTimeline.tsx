@@ -41,13 +41,13 @@ export function TaskTimeline({ events, connectionState, loadError }: TaskTimelin
       )}
 
       {loadError && events.length > 0 && (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-base text-amber-900">
           部分实时数据可能未完整：{loadError}
         </p>
       )}
 
       {hint && (
-        <p className="text-xs text-neutral-500">
+        <p className="fa-text-caption text-neutral-500">
           <span
             className={`mr-2 inline-block h-2 w-2 rounded-full align-middle ${
               connectionState === 'streaming' ? 'animate-pulse bg-primary-500' : 'bg-neutral-300'
@@ -62,7 +62,7 @@ export function TaskTimeline({ events, connectionState, loadError }: TaskTimelin
       )}
 
       {events.length === 0 && connectionState === 'bootstrapping' && (
-        <p className="text-sm text-neutral-400">加载中…</p>
+        <p className="text-base text-neutral-400">加载中…</p>
       )}
 
       {events.length > 0 && (

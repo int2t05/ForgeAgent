@@ -1,3 +1,7 @@
+/**
+ * 对话 composer 与执行任务绑定：REST 拉全量事件 + SSE 增量，写入 composerTaskStore；
+ * ChatPage 只消费 liveTaskEvents / busy 状态，与具体传输层解耦。
+ */
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { buildTaskEventsStreamUrl, consumeTaskEventStream } from '@/api/sse'
