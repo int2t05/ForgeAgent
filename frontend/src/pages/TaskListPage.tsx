@@ -4,14 +4,17 @@
 
 import { useState } from 'react'
 import { Link } from 'react-router'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Header } from '@/components/layout/Header'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { ErrorAlert } from '@/components/common/ErrorAlert'
 import { EmptyState } from '@/components/common/EmptyState'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { useTasks } from '@/hooks/useTasks'
+import { deleteTask, patchTask } from '@/api/tasks'
 import { STATUS_COLOR_MAP, STATUS_LABEL_MAP, DEFAULT_PAGE_SIZE } from '@/lib/constants'
 import { formatDateTime } from '@/lib/format'
-import type { TaskStatus } from '@/types/task'
+import type { TaskStatus, TaskSummary } from '@/types/task'
 
 const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
   { value: '', label: '全部状态' },
@@ -23,8 +26,11 @@ const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
 ]
 
 export function TaskListPage() {
+  const queryClient = useQueryClient()
   const [statusFilter, setStatusFilter] = useState('')
   const [page, setPage] = useState(0)
+  const [taskToDelete, setTaskToDelete] = useState<TaskSummary | null>(null)
+  const [taskToCancel, setTaskToCancel] = useState<TaskSummary | null>(null)
 
   const offset = page * DEFAULT_PAGE_SIZE
   const { data, isLoading, error } = useTasks({
@@ -35,13 +41,61 @@ export function TaskListPage() {
 
   const totalPages = data ? Math.ceil(data.total / DEFAULT_PAGE_SIZE) : 0
 
+  const deleteMutation = useMutation({
+    mutationFn: (taskId: string) => deleteTask(taskId),
+    onSuccess: () => {
+      setTaskToDelete(null)
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    },
+  })
+
+  const cancelMutation = useMutation({
+    mutationFn: (taskId: string) => patchTask(taskId, { status: 'cancelled' }),
+    onSuccess: () => {
+      setTaskToCancel(null)
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    },
+  })
+
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <Header title="任务列表" />
+
+      <ConfirmDialog
+        open={taskToCancel != null}
+        title="取消任务"
+        description={
+          taskToCancel
+            ? '取消后 Agent 将停止写回成功结果，状态变为「已取消」。确定吗？'
+            : ''
+        }
+        confirmLabel="取消任务"
+        pending={cancelMutation.isPending}
+        onCancel={() => !cancelMutation.isPending && setTaskToCancel(null)}
+        onConfirm={() => {
+          if (taskToCancel) cancelMutation.mutate(taskToCancel.id)
+        }}
+      />
+
+      <ConfirmDialog
+        open={taskToDelete != null}
+        title="删除任务"
+        description={
+          taskToDelete
+            ? `确定删除任务「${taskToDelete.summary?.slice(0, 80) || taskToDelete.id}」？此操作不可恢复。`
+            : ''
+        }
+        confirmLabel="删除"
+        pending={deleteMutation.isPending}
+        onCancel={() => !deleteMutation.isPending && setTaskToDelete(null)}
+        onConfirm={() => {
+          if (taskToDelete) deleteMutation.mutate(taskToDelete.id)
+        }}
+      />
 
       <div className="flex flex-1 flex-col gap-4 px-6 py-6">
         {/* 筛选栏 */}
-        <div className="flex items-center gap-3">
+        <div className="fa-reveal fa-card flex flex-wrap items-center gap-3 border-neutral-200/85 p-4">
           <select
             value={statusFilter}
             onChange={(e) => {
@@ -71,22 +125,45 @@ export function TaskListPage() {
           />
         )}
 
+        {cancelMutation.error && (
+          <ErrorAlert
+            message="取消任务失败"
+            detail={
+              cancelMutation.error instanceof Error
+                ? cancelMutation.error.message
+                : '未知错误'
+            }
+          />
+        )}
+
+        {deleteMutation.error && (
+          <ErrorAlert
+            message="删除失败"
+            detail={
+              deleteMutation.error instanceof Error
+                ? deleteMutation.error.message
+                : '未知错误'
+            }
+          />
+        )}
+
         {data && data.items.length === 0 && (
           <EmptyState
             title="暂无任务"
-            description="可在首页创建第一个任务"
+            description="可在「对话」或「概览」中创建任务"
             action={
               <Link to="/" className="fa-link text-sm">
-                返回首页
+                前往对话
               </Link>
             }
           />
         )}
 
         {data && data.items.length > 0 && (
-          <div className="fa-card overflow-hidden rounded-lg p-0">
-            <table className="w-full text-left text-sm">
-              <thead className="border-neutral-200 border-b bg-neutral-50/90">
+          <div className="fa-reveal fa-reveal-delay-1 fa-card overflow-hidden rounded-lg p-0">
+            <div className="max-w-full overflow-x-auto [-webkit-overflow-scrolling:touch]">
+            <table className="w-full min-w-[48rem] text-left text-sm">
+              <thead className="border-neutral-200 border-b bg-neutral-50/95">
                 <tr className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">
                   <th className="px-4 py-3">状态</th>
                   <th className="px-4 py-3">摘要</th>
@@ -94,6 +171,7 @@ export function TaskListPage() {
                   <th className="px-4 py-3">计划版本</th>
                   <th className="px-4 py-3">创建时间</th>
                   <th className="px-4 py-3">更新时间</th>
+                  <th className="min-w-[7rem] px-4 py-3 text-right">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
@@ -101,6 +179,9 @@ export function TaskListPage() {
                   const colors =
                     STATUS_COLOR_MAP[task.status as TaskStatus] ??
                     STATUS_COLOR_MAP.pending
+                  const blockDelete =
+                    task.status === 'pending' || task.status === 'running'
+                  const canCancel = blockDelete
                   return (
                     <tr key={task.id} className="transition-colors hover:bg-neutral-50/80">
                       <td className="px-4 py-3">
@@ -137,11 +218,45 @@ export function TaskListPage() {
                       <td className="px-4 py-3 text-neutral-500">
                         {formatDateTime(task.updated_at)}
                       </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex flex-wrap justify-end gap-1">
+                          {canCancel && (
+                            <button
+                              type="button"
+                              className="fa-btn-secondary py-1 px-2 text-xs text-amber-800 border-amber-200 hover:bg-amber-50"
+                              disabled={cancelMutation.isPending}
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                setTaskToCancel(task)
+                              }}
+                            >
+                              取消
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="fa-btn-text-danger"
+                            disabled={blockDelete}
+                            title={
+                              blockDelete ? '进行中的任务请稍后再删' : '删除任务'
+                            }
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              setTaskToDelete(task)
+                            }}
+                          >
+                            删除
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   )
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         )}
 

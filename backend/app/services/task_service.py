@@ -19,11 +19,13 @@ from app.repositories import (
     session_repository,
     task_repository,
 )
+from app.schemas.common import OperationOkResponse
 from app.schemas.event import TaskEventItem, TaskEventsResponse
 from app.schemas.task import (
     TaskCreateResponse,
     TaskDetail,
     TaskListResponse,
+    TaskPatch,
     TaskSummary,
 )
 
@@ -98,6 +100,8 @@ async def run_agent_task(
                 task = await task_repository.get_task_by_id(db, task_id)
                 if task is None:
                     return
+                if task.status == "cancelled":
+                    return
                 # 1. 按图返回值写回终态与摘要/错误
                 if outcome == "success":
                     task.status = "success"
@@ -124,6 +128,8 @@ async def run_agent_task(
                 async with db.begin():
                     task = await task_repository.get_task_by_id(db, task_id)
                     if task is None:
+                        return
+                    if task.status == "cancelled":
                         return
                     # 1. 标记任务失败并记录错误信息
                     task.status = "failed"
@@ -191,6 +197,34 @@ def _payload_to_dict(raw: str | None) -> dict | None:
         return None
 
 
+async def patch_task(
+    db: AsyncSession,
+    task_id: str,
+    body: TaskPatch,
+) -> TaskDetail:
+    """部分更新任务；当前仅支持将 pending/running 标为 cancelled。"""
+    task = await task_repository.get_task_by_id(db, task_id)
+    if task is None:
+        raise AppHTTPException(
+            "任务不存在",
+            code="NOT_FOUND",
+            status_code=404,
+        )
+    if body.status == "cancelled":
+        if task.status not in ("pending", "running"):
+            raise AppHTTPException(
+                "仅可对未结束任务执行取消",
+                code="CONFLICT",
+                status_code=409,
+            )
+        task.status = "cancelled"
+        if not task.error_message:
+            task.error_message = "用户已取消"
+        db.add(task)
+        await db.flush()
+    return await get_task_detail(db, task_id)
+
+
 async def get_task_detail(db: AsyncSession, task_id: str) -> TaskDetail:
     """单任务详情：表字段 + 最近一次 plan_created 推导出的 plan。"""
     # 1. 读取任务行
@@ -217,6 +251,29 @@ async def get_task_detail(db: AsyncSession, task_id: str) -> TaskDetail:
         updated_at=task.updated_at,
         error_message=task.error_message,
     )
+
+
+async def delete_task(db: AsyncSession, task_id: str) -> OperationOkResponse:
+    """删除单条任务及其事件；执行中或排队中的任务不可删。"""
+    # 1. 加载任务
+    task = await task_repository.get_task_by_id(db, task_id)
+    if task is None:
+        raise AppHTTPException(
+            "任务不存在",
+            code="NOT_FOUND",
+            status_code=404,
+        )
+    # 2. 未终态则与后台执行冲突
+    if task.status in ("pending", "running"):
+        raise AppHTTPException(
+            "任务仍在执行或排队中，无法删除",
+            code="CONFLICT",
+            status_code=409,
+        )
+    # 3. 删除任务行（事件随 ORM cascade 清除）
+    await db.delete(task)
+    await db.flush()
+    return OperationOkResponse()
 
 
 async def list_task_events(

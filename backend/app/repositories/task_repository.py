@@ -5,6 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.task import Task
 
+_ACTIVE_DELETE_BLOCK_STATUSES = ("pending", "running")
+
 
 async def add_task(session: AsyncSession, row: Task) -> Task:
     """插入任务行并刷新主键侧字段（此处主键为客户端 UUID）。"""
@@ -62,3 +64,19 @@ async def list_tasks(
     # 3. 执行分页列表
     result = await session.execute(stmt)
     return list(result.scalars().all()), total
+
+
+async def session_has_active_tasks(session: AsyncSession, session_id: str) -> bool:
+    """会话下是否存在尚未终态的任务（pending/running），用于删除会话前的冲突检测。"""
+    stmt = (
+        select(Task.id)
+        .where(
+            Task.session_id == session_id,
+            Task.status.in_(_ACTIVE_DELETE_BLOCK_STATUSES),
+        )
+        .limit(1)
+    )
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none() is not None
+
+

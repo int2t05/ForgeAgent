@@ -12,8 +12,13 @@ interface HeaderProps {
 export function Header({ title, actions }: HeaderProps) {
   return (
     <header className="fa-page-header">
-      <h1 className="text-base font-semibold tracking-tight text-neutral-900">{title}</h1>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <span className="h-6 w-1 shrink-0 rounded-full bg-primary-600" aria-hidden />
+        <h1 className="font-display min-w-0 truncate text-base font-semibold tracking-tight text-neutral-900">
+          {title}
+        </h1>
+      </div>
+      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
     </header>
   )
 }

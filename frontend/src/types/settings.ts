@@ -12,3 +12,9 @@ export interface Settings {
 export interface SettingsUpdateResponse {
   ok: boolean
 }
+
+/** PATCH /settings：部分字段。 */
+export interface SettingsPatch {
+  mcp?: unknown[]
+  skills_paths?: string[]
+}

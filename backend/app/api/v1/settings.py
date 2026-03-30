@@ -4,7 +4,12 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_db
-from app.schemas.settings import SettingsPublic, SettingsUpdate, SettingsUpdateResponse
+from app.schemas.settings import (
+    SettingsPatch,
+    SettingsPublic,
+    SettingsUpdate,
+    SettingsUpdateResponse,
+)
 from app.services import settings_service
 from app.tools.registry import tool_registry
 
@@ -30,5 +35,24 @@ async def put_settings(
     # 3. 返回 { ok: true }
     result = await settings_service.update_settings(db, body)
     # 3. MCP / Skills 变更后立即刷新注册表，使 GET /tools 与 DB 一致
+    await tool_registry.refresh(db)
+    return result
+
+
+@router.patch("", response_model=SettingsUpdateResponse)
+async def patch_settings(
+    body: SettingsPatch,
+    db: AsyncSession = Depends(get_db),
+) -> SettingsUpdateResponse:
+    """部分更新设置（未传字段保持不变）。"""
+    result = await settings_service.patch_settings(db, body)
+    await tool_registry.refresh(db)
+    return result
+
+
+@router.delete("", response_model=SettingsUpdateResponse)
+async def delete_settings(db: AsyncSession = Depends(get_db)) -> SettingsUpdateResponse:
+    """将可 API 读写的设置恢复为空列表（非密钥项）。"""
+    result = await settings_service.reset_settings(db)
     await tool_registry.refresh(db)
     return result

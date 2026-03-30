@@ -17,6 +17,48 @@ class SessionCreateResponse(BaseModel):
     session_id: str
 
 
+class SessionSummary(BaseModel):
+    """GET /sessions 列表单项。"""
+
+    id: str
+    title: str | None
+    created_at: datetime
+
+
+class SessionListResponse(BaseModel):
+    """GET /sessions 分页响应。"""
+
+    items: list[SessionSummary] = Field(default_factory=list)
+    total: int
+
+
+class SessionDetail(BaseModel):
+    """GET /sessions/{id} 与 PATCH 后的会话元数据。"""
+
+    id: str
+    title: str | None
+    created_at: datetime
+
+
+class SessionUpdate(BaseModel):
+    """PATCH /sessions/{id} 请求体。"""
+
+    title: str | None = None
+
+
+class MessageCreate(BaseModel):
+    """POST /sessions/{id}/messages 请求体。"""
+
+    role: str
+    content: str
+
+
+class MessageUpdate(BaseModel):
+    """PATCH .../messages/{id} 请求体。"""
+
+    content: str
+
+
 class MessageOut(BaseModel):
     """单条会话消息的对外表示。"""
 

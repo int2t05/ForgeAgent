@@ -7,7 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import AppHTTPException
 from app.repositories import settings_repository
-from app.schemas.settings import SettingsPublic, SettingsUpdate, SettingsUpdateResponse
+from app.schemas.settings import (
+    SettingsPatch,
+    SettingsPublic,
+    SettingsUpdate,
+    SettingsUpdateResponse,
+)
 
 _SETTINGS_KEY_MCP = "mcp"
 _SETTINGS_KEY_SKILLS = "skills_paths"
@@ -82,4 +87,23 @@ async def update_settings(
         json.dumps(body.skills_paths, ensure_ascii=False),
     )
     # 3. 固定响应 ok
+    return SettingsUpdateResponse()
+
+
+async def patch_settings(
+    db: AsyncSession, body: SettingsPatch
+) -> SettingsUpdateResponse:
+    """合并部分字段后写回 settings_kv；未传字段保持原值。"""
+    current = await get_settings_public(db)
+    new_mcp = body.mcp if body.mcp is not None else current.mcp
+    new_paths = (
+        body.skills_paths if body.skills_paths is not None else current.skills_paths
+    )
+    merged = SettingsUpdate(mcp=new_mcp, skills_paths=new_paths)
+    return await update_settings(db, merged)
+
+
+async def reset_settings(db: AsyncSession) -> SettingsUpdateResponse:
+    """清空对外 MCP 与 Skills 路径配置（空列表），仅影响可 API 读写的键。"""
+    await update_settings(db, SettingsUpdate(mcp=[], skills_paths=[]))
     return SettingsUpdateResponse()

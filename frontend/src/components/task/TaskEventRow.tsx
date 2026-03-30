@@ -20,6 +20,7 @@ const KIND_LABEL: Record<string, string> = {
   tool_result: '工具结果',
   error: '错误',
   replan: '重规划',
+  llm_stream_delta: '流式输出',
 }
 
 function moduleLabel(m: string): string {

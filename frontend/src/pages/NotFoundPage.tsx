@@ -7,15 +7,25 @@ import { Header } from '@/components/layout/Header'
 
 export function NotFoundPage() {
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
       <Header title="页面未找到" />
 
-      <div className="flex flex-1 flex-col items-center justify-center gap-4">
-        <span className="text-6xl font-bold text-neutral-200">404</span>
-        <p className="text-sm text-neutral-500">请求的页面不存在</p>
-        <Link to="/" className="fa-btn-primary inline-block text-center">
-          返回首页
-        </Link>
+      <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-6 px-6 py-8">
+        <div className="fa-blueprint-grid pointer-events-none absolute inset-0" aria-hidden />
+        <div className="fa-reveal relative text-center">
+          <p className="font-display text-[clamp(4rem,14vw,7rem)] font-bold leading-none tracking-tighter text-neutral-200/95">
+            404
+          </p>
+          <p className="mt-4 text-neutral-500 text-sm leading-relaxed">
+            请求的页面不存在，或链接已失效
+          </p>
+          <Link
+            to="/"
+            className="fa-btn-primary mt-8 inline-flex min-w-[9rem] justify-center text-center"
+          >
+            返回对话
+          </Link>
+        </div>
       </div>
     </div>
   )

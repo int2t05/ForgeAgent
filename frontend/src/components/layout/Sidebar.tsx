@@ -1,5 +1,5 @@
 /**
- * 侧边导航组件：首页、任务、设置、关于。
+ * 侧边导航：对话、概览、任务、设置。
  */
 
 import type { ReactNode } from 'react'
@@ -68,37 +68,26 @@ function IconSettings({ className }: { className?: string }) {
   )
 }
 
-function IconAbout({ className }: { className?: string }) {
-  return (
-    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.75" />
-      <path
-        d="M12 16v-4M12 8h.01"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-      />
-    </svg>
-  )
-}
-
 const NAV_ITEMS: NavItem[] = [
-  { to: '/', label: '首页', icon: <IconHome className="shrink-0 opacity-80" /> },
-  { to: '/chat', label: '对话', icon: <IconChat className="shrink-0 opacity-80" /> },
+  { to: '/', label: '对话', icon: <IconChat className="shrink-0 opacity-80" /> },
+  { to: '/overview', label: '概览', icon: <IconHome className="shrink-0 opacity-80" /> },
   { to: '/tasks', label: '任务', icon: <IconTasks className="shrink-0 opacity-80" /> },
   { to: '/settings', label: '设置', icon: <IconSettings className="shrink-0 opacity-80" /> },
-  { to: '/about', label: '关于', icon: <IconAbout className="shrink-0 opacity-80" /> },
 ]
 
 export function Sidebar() {
   return (
-    <aside className="flex h-screen w-56 shrink-0 flex-col border-neutral-200/90 border-r bg-white shadow-sm">
-      <div className="flex h-14 items-center gap-2 border-neutral-200/90 border-b px-5">
-        <span className="font-semibold text-lg text-primary-600 tracking-tight">Forge</span>
-        <span className="font-semibold text-lg text-neutral-800 tracking-tight">Agent</span>
+    <aside className="flex h-screen w-56 shrink-0 flex-col overflow-hidden border-violet-100 border-r bg-white shadow-[var(--fa-shadow-card)]">
+      <div className="flex h-14 shrink-0 items-center gap-1.5 border-violet-100 border-b px-5">
+        <span className="font-display font-bold text-lg text-primary-600 tracking-tight">
+          Forge
+        </span>
+        <span className="font-display font-bold text-lg text-neutral-800 tracking-tight">
+          Agent
+        </span>
       </div>
 
-      <nav className="flex-1 space-y-0.5 px-3 py-4">
+      <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain px-3 py-4">
         {NAV_ITEMS.map((item) => (
           <NavLink
             key={item.to}
@@ -107,8 +96,8 @@ export function Sidebar() {
             className={({ isActive }) =>
               `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
                 isActive
-                  ? 'bg-primary-50 font-medium text-primary-800'
-                  : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
+                  ? 'bg-primary-600 font-medium text-white'
+                  : 'text-neutral-600 hover:bg-violet-50 hover:text-neutral-900'
               }`
             }
           >
@@ -118,8 +107,8 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="border-neutral-200/90 border-t px-5 py-3">
-        <p className="text-neutral-400 text-xs">ForgeAgent MVP</p>
+      <div className="shrink-0 border-violet-100 border-t px-5 py-3">
+        <p className="text-[10px] text-neutral-400 uppercase tracking-wider">ForgeAgent MVP</p>
       </div>
     </aside>
   )

@@ -2,13 +2,15 @@
  * 任务资源 API 请求函数（与 API.md §4 对齐）。
  */
 
-import { get, post } from '@/api/client'
+import { del, get, patch, post } from '@/api/client'
+import type { OkResponse } from '@/types/api'
 import type {
   TaskCreateBody,
   TaskCreateResponse,
   TaskDetail,
   TaskEventsResponse,
   TaskListResponse,
+  TaskPatchBody,
 } from '@/types/task'
 
 /** 查询参数：任务列表。 */
@@ -37,6 +39,17 @@ export function getTask(taskId: string): Promise<TaskDetail> {
   return get<TaskDetail>(`/api/v1/tasks/${taskId}`)
 }
 
+/** 部分更新任务（如取消）。 */
+export function patchTask(
+  taskId: string,
+  body: TaskPatchBody,
+): Promise<TaskDetail> {
+  return patch<TaskDetail>(
+    `/api/v1/tasks/${encodeURIComponent(taskId)}`,
+    body,
+  )
+}
+
 /** 获取任务事件历史（支持增量 after_seq）。 */
 export function getTaskEvents(
   taskId: string,
@@ -46,4 +59,9 @@ export function getTaskEvents(
   const params: Record<string, string> = { limit: String(limit) }
   if (afterSeq != null) params.after_seq = String(afterSeq)
   return get<TaskEventsResponse>(`/api/v1/tasks/${taskId}/events`, params)
+}
+
+/** 删除已结束任务（running/pending 时后端返回 409）。 */
+export function deleteTask(taskId: string): Promise<OkResponse> {
+  return del<OkResponse>(`/api/v1/tasks/${encodeURIComponent(taskId)}`)
 }

@@ -1,27 +1,33 @@
 @import 'tailwindcss';
 
-/* 设计 tokens：中性底 + 单一强调色（primary），与 PRD/API 契约字段展示一致 */
+/* 简洁淡紫主题；优先减少 blur / 多层渐变 / 动画，降低合成与滚动开销 */
 @theme {
   --font-sans:
-    'DM Sans', 'Noto Sans SC', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
-    'Segoe UI Emoji';
+    'Plus Jakarta Sans', 'Noto Sans SC', ui-sans-serif, system-ui, sans-serif,
+    'Apple Color Emoji', 'Segoe UI Emoji';
+  --font-display: 'Outfit', 'Plus Jakarta Sans', 'Noto Sans SC', ui-sans-serif, system-ui,
+    sans-serif;
   --font-mono:
     'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, SFMono-Regular, Menlo,
     Consolas, monospace;
 
-  --color-primary-50: #eff6ff;
-  --color-primary-100: #dbeafe;
-  --color-primary-500: #3b82f6;
-  --color-primary-600: #2563eb;
-  --color-primary-700: #1d4ed8;
+  --color-primary-50: #faf5ff;
+  --color-primary-100: #f3e8ff;
+  --color-primary-300: #d8b4fe;
+  --color-primary-400: #c084fc;
+  --color-primary-500: #a855f7;
+  --color-primary-600: #9333ea;
+  --color-primary-700: #7e22ce;
 }
 
 :root {
-  --color-primary: #2563eb;
-  --color-primary-hover: #1d4ed8;
+  --color-primary: #9333ea;
+  --color-primary-hover: #7e22ce;
   --color-success: #059669;
   --color-danger: #dc2626;
   --color-warning: #d97706;
+  --fa-shadow-card: 0 1px 3px rgb(15 23 42 / 0.06);
+  --fa-shadow-btn: 0 1px 2px rgb(88 28 135 / 0.12);
 }
 
 @layer base {
@@ -31,43 +37,70 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 }
 
 @layer components {
+  .fa-app-shell {
+    background-color: rgb(250 248 255);
+    background-image: radial-gradient(
+      120% 80% at 50% -30%,
+      rgb(237 233 254 / 0.65),
+      transparent 55%
+    );
+  }
+
   .fa-section-title {
     @apply mb-3 text-xs font-semibold tracking-wide text-neutral-500 uppercase;
   }
 
   .fa-card {
-    @apply rounded-xl border border-neutral-200/90 bg-white shadow-sm;
+    @apply rounded-xl border border-violet-100 bg-white shadow-[var(--fa-shadow-card)];
   }
 
   .fa-panel {
-    @apply overflow-auto rounded-lg border border-neutral-200 bg-neutral-50/90 p-4 font-mono text-xs text-neutral-700;
+    @apply overflow-auto rounded-lg border border-neutral-200 bg-neutral-50 p-4 font-mono text-xs text-neutral-700;
   }
 
   .fa-input {
-    @apply w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-neutral-900 placeholder:text-neutral-400 transition-shadow focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20;
+    @apply w-full rounded-lg border border-violet-100 bg-white px-4 py-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20;
   }
 
   .fa-select {
-    @apply rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-700 transition-shadow focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20;
+    @apply rounded-lg border border-violet-100 bg-white px-3 py-2 text-sm text-neutral-700 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20;
   }
 
   .fa-btn-primary {
-    @apply rounded-lg bg-primary-600 px-5 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply rounded-lg bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[var(--fa-shadow-btn)] hover:bg-primary-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .fa-btn-secondary {
-    @apply rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-600 shadow-sm transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40;
+    @apply rounded-lg border border-violet-200 bg-white px-3 py-1.5 text-sm text-violet-950/85 shadow-sm hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .fa-btn-danger {
+    @apply rounded-lg bg-red-600 px-5 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .fa-btn-text-danger {
+    @apply rounded-lg px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40;
   }
 
   .fa-link {
-    @apply text-primary-600 transition-colors hover:text-primary-700;
+    @apply font-medium text-primary-600 hover:text-primary-700;
   }
 
   .fa-page-header {
-    @apply flex h-14 shrink-0 items-center justify-between border-neutral-200/90 border-b bg-white/90 px-6 backdrop-blur-sm;
+    @apply flex h-14 shrink-0 items-center justify-between border-violet-100 border-b bg-violet-50/80 px-6;
   }
 
   .fa-kv-label {
@@ -76,6 +109,197 @@
 
   .fa-kv-value-mono {
     @apply font-mono text-neutral-600 text-xs;
+  }
+
+  .fa-chat-canvas {
+    @apply flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-violet-100 bg-white shadow-[var(--fa-shadow-card)];
+  }
+
+  .fa-chat-messages {
+    @apply min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-5 [-webkit-overflow-scrolling:touch] sm:px-6;
+  }
+
+  .fa-chat-composer {
+    @apply border-violet-100 border-t bg-violet-50/30 px-4 py-4 sm:px-6;
+  }
+
+  .fa-md-chat {
+    @apply text-[15px] leading-relaxed text-violet-950/92 [word-break:break-word];
+  }
+
+  .fa-md-chat :where(h1, h2, h3, h4) {
+    @apply font-display font-semibold text-violet-950 tracking-tight first:mt-0;
+  }
+
+  .fa-md-chat h1 {
+    @apply mt-3 mb-2 text-lg;
+  }
+
+  .fa-md-chat h2 {
+    @apply mt-3 mb-1.5 text-base;
+  }
+
+  .fa-md-chat h3 {
+    @apply mt-2 mb-1 text-sm;
+  }
+
+  .fa-md-chat :where(p) {
+    @apply my-2.5 first:mt-0 last:mb-0;
+  }
+
+  .fa-md-chat :where(strong) {
+    @apply font-semibold text-violet-950;
+  }
+
+  .fa-md-chat :where(ul, ol) {
+    @apply my-2.5 pl-5 marker:text-primary-500;
+  }
+
+  .fa-md-chat :where(li) {
+    @apply my-1;
+  }
+
+  .fa-md-chat :where(hr) {
+    @apply my-4 border-violet-200;
+  }
+
+  .fa-md-chat :where(blockquote) {
+    @apply my-2.5 border-primary-300/50 border-l-[3px] pl-3 text-neutral-600 italic;
+  }
+
+  .fa-md-chat :where(:not(pre) > code) {
+    @apply rounded bg-violet-100 px-1.5 py-0.5 font-mono text-[0.88em] text-violet-900;
+  }
+
+  .fa-md-chat :where(pre) {
+    @apply my-3 max-h-[min(24rem,50vh)] overflow-auto rounded-lg border border-violet-100 bg-violet-950 p-3.5;
+  }
+
+  .fa-md-chat :where(pre code) {
+    @apply bg-transparent p-0 text-[13px] text-violet-50/95;
+  }
+
+  .fa-md-chat :where(table) {
+    @apply my-3 w-full border-collapse text-sm;
+  }
+
+  .fa-md-chat :where(th, td) {
+    @apply border border-violet-200 px-2 py-1.5 text-left;
+  }
+
+  .fa-md-chat :where(th) {
+    @apply bg-violet-50 font-semibold text-violet-900;
+  }
+
+  .fa-md-chat-user {
+    @apply text-white/95;
+  }
+
+  .fa-md-chat-user :where(h1, h2, h3, h4, strong) {
+    @apply text-white;
+  }
+
+  .fa-md-chat-user :where(:not(pre) > code) {
+    @apply bg-white/18 text-white;
+  }
+
+  .fa-md-chat-user :where(pre) {
+    @apply border-white/20 bg-black/30;
+  }
+
+  .fa-md-chat-user :where(pre code) {
+    @apply text-violet-50;
+  }
+
+  .fa-md-chat-user :where(blockquote) {
+    @apply border-white/40 text-neutral-100;
+  }
+
+  .fa-md-chat-user :where(li)::marker {
+    @apply text-violet-200;
+  }
+
+  .fa-thinking-fold {
+    @apply rounded-lg border border-violet-200 bg-violet-50 text-violet-950/90;
+  }
+
+  .fa-thinking-summary {
+    @apply flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-xs font-semibold tracking-wide select-none;
+  }
+
+  .fa-thinking-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .fa-thinking-summary::before {
+    content: '';
+    @apply inline-block h-0 w-0 shrink-0 border-x-[5px] border-t-[6px] border-x-transparent border-t-violet-500;
+  }
+
+  .fa-thinking-fold[open] .fa-thinking-summary::before {
+    @apply rotate-180;
+  }
+
+  .fa-thinking-hint {
+    @apply ml-auto font-normal text-[10px] text-violet-400 tracking-normal;
+  }
+
+  .fa-thinking-body {
+    @apply max-h-56 overflow-y-auto border-violet-100 border-t px-3 py-2.5 font-mono text-[12px] text-violet-900/85 leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere];
+  }
+
+  @keyframes fa-chat-body-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .fa-chat-body-in {
+    animation: fa-chat-body-in 0.5s ease-out both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .fa-chat-body-in {
+      animation: none;
+    }
+  }
+
+  /** 性能：不做入场动画（类名可保留以兼容页面，无开销） */
+  .fa-reveal,
+  .fa-reveal-delay-1,
+  .fa-reveal-delay-2,
+  .fa-reveal-delay-3 {
+    animation: none;
+  }
+
+  .fa-dialog-backdrop {
+    animation: none;
+  }
+
+  .fa-dialog-panel {
+    animation: none;
+  }
+
+  .fa-blueprint-grid {
+    opacity: 0.06;
+    background-image: repeating-linear-gradient(
+      -12deg,
+      transparent,
+      transparent 40px,
+      rgb(147 51 234) 40px,
+      rgb(147 51 234) 41px
+    );
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
   }
 }
 

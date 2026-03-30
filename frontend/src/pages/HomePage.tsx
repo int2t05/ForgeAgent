@@ -1,5 +1,5 @@
 /**
- * 首页 / 仪表盘：最近任务列表 + 发起任务表单。
+ * 概览：最近任务 + 快捷发起（无会话时自动创建后再提交）。
  */
 
 import { useState } from 'react'
@@ -11,19 +11,27 @@ import { ErrorAlert } from '@/components/common/ErrorAlert'
 import { EmptyState } from '@/components/common/EmptyState'
 import { useTasks } from '@/hooks/useTasks'
 import { useSession } from '@/hooks/useSession'
+import { createSession } from '@/api/sessions'
 import { createTask } from '@/api/tasks'
 import { STATUS_COLOR_MAP, STATUS_LABEL_MAP } from '@/lib/constants'
 import { formatRelativeTime } from '@/lib/format'
 
 export function HomePage() {
   const navigate = useNavigate()
-  const { sessionId } = useSession()
+  const { sessionId, setSessionId } = useSession()
   const { data, isLoading, error } = useTasks({ limit: 5 })
   const [message, setMessage] = useState('')
 
   const submitMutation = useMutation({
-    mutationFn: (userMessage: string) =>
-      createTask({ session_id: sessionId!, user_message: userMessage }),
+    mutationFn: async (userMessage: string) => {
+      let sid = sessionId
+      if (!sid) {
+        const created = await createSession()
+        sid = created.session_id
+        setSessionId(sid)
+      }
+      return createTask({ session_id: sid, user_message: userMessage })
+    },
     onSuccess: (res) => {
       setMessage('')
       navigate(`/tasks/${res.task_id}`)
@@ -34,19 +42,22 @@ export function HomePage() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const trimmed = message.trim()
-    if (!trimmed || !sessionId) return
+    if (!trimmed) return
     submitMutation.mutate(trimmed)
   }
 
   return (
-    <div className="flex flex-1 flex-col">
-      <Header title="首页" />
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <Header title="概览" />
 
       <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-8">
         {/* 发起任务 */}
-        <section>
+        <section className="fa-reveal">
           <h2 className="fa-section-title">发起任务</h2>
-          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <form
+            onSubmit={handleSubmit}
+            className="fa-card flex flex-col gap-3 border-neutral-200/80 p-5"
+          >
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
@@ -66,7 +77,7 @@ export function HomePage() {
             )}
             <button
               type="submit"
-              disabled={!message.trim() || !sessionId || submitMutation.isPending}
+              disabled={!message.trim() || submitMutation.isPending}
               className="fa-btn-primary self-end"
             >
               {submitMutation.isPending ? '提交中…' : '提交'}
@@ -75,7 +86,7 @@ export function HomePage() {
         </section>
 
         {/* 最近任务 */}
-        <section>
+        <section className="fa-reveal fa-reveal-delay-1">
           <div className="mb-3 flex items-center justify-between gap-3">
             <h2 className="fa-section-title !mb-0">最近任务</h2>
             <Link to="/tasks" className="fa-link shrink-0 text-sm">
@@ -95,7 +106,7 @@ export function HomePage() {
           {data && data.items.length === 0 && (
             <EmptyState
               title="暂无任务"
-              description="在上方输入任务描述开始第一个任务"
+              description="在上方输入任务描述开始第一个任务，或通过左侧「对话」与 Agent 聊天"
             />
           )}
 
@@ -107,7 +118,7 @@ export function HomePage() {
                   <li key={task.id}>
                     <Link
                       to={`/tasks/${task.id}`}
-                      className="flex items-center gap-4 px-4 py-3 transition-colors hover:bg-neutral-50"
+                      className="flex items-center gap-4 px-4 py-3 transition-[background-color] duration-200 hover:bg-neutral-50/90"
                     >
                       <span
                         className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${colors.bg} ${colors.text}`}

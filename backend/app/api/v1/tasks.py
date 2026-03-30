@@ -8,11 +8,13 @@ from app.deps import get_db
 from app.exceptions import AppHTTPException
 from app.repositories import task_repository
 from app.schemas.event import TaskEventsResponse
+from app.schemas.common import OperationOkResponse
 from app.schemas.task import (
     TaskCreate,
     TaskCreateResponse,
     TaskDetail,
     TaskListResponse,
+    TaskPatch,
 )
 from app.services import event_stream_service, task_service
 
@@ -128,3 +130,22 @@ async def get_task(
     # 1. 加载 tasks 行
     # 2. 取最近一次 plan_created 事件的 payload 作为 plan
     return await task_service.get_task_detail(db, task_id)
+
+
+@router.patch("/{task_id}", response_model=TaskDetail)
+async def patch_task(
+    task_id: str,
+    body: TaskPatch,
+    db: AsyncSession = Depends(get_db),
+) -> TaskDetail:
+    """部分更新任务；当前支持取消未结束任务。"""
+    return await task_service.patch_task(db, task_id, body)
+
+
+@router.delete("/{task_id}", response_model=OperationOkResponse)
+async def delete_task(
+    task_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> OperationOkResponse:
+    """删除已结束状态的任务及其事件；running/pending 返回 409。"""
+    return await task_service.delete_task(db, task_id)

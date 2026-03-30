@@ -1,7 +1,7 @@
 """任务相关请求/响应模型。"""
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -51,3 +51,9 @@ class TaskDetail(BaseModel):
     created_at: datetime
     updated_at: datetime
     error_message: str | None = None
+
+
+class TaskPatch(BaseModel):
+    """PATCH /tasks/{id}：当前仅支持取消未结束任务。"""
+
+    status: Literal["cancelled"]

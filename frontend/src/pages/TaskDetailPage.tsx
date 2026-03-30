@@ -3,36 +3,77 @@
  * 阶段7：REST 分页历史 + SSE 增量合并的时间线与详情轮询刷新。
  */
 
-import { Link, useParams } from 'react-router'
+import { useMemo, useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Header } from '@/components/layout/Header'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { ErrorAlert } from '@/components/common/ErrorAlert'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { useTaskDetail } from '@/hooks/useTaskDetail'
 import { useTaskTimeline } from '@/hooks/useTaskTimeline'
+import { TaskPlanSteps } from '@/components/task/TaskPlanSteps'
 import { TaskTimeline } from '@/components/task/TaskTimeline'
+import { deleteTask, patchTask } from '@/api/tasks'
 import { STATUS_COLOR_MAP, STATUS_LABEL_MAP } from '@/lib/constants'
 import { formatDateTime } from '@/lib/format'
+import {
+  latestPlanStepsFromEvents,
+  normalizePlanStepsFromUnknown,
+} from '@/lib/normalizeTaskPlan'
 import type { TaskStatus } from '@/types/task'
 
 export function TaskDetailPage() {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { taskId } = useParams<{ taskId: string }>()
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmCancel, setConfirmCancel] = useState(false)
   const { data: task, isLoading, error } = useTaskDetail(taskId)
   const { events, connectionState, loadError } = useTaskTimeline(taskId)
 
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteTask(taskId!),
+    onSuccess: () => {
+      setConfirmDelete(false)
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      void queryClient.removeQueries({ queryKey: ['task', taskId] })
+      void navigate('/tasks', { replace: true })
+    },
+  })
+
+  const cancelMutation = useMutation({
+    mutationFn: () => patchTask(taskId!, { status: 'cancelled' }),
+    onSuccess: () => {
+      setConfirmCancel(false)
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      void queryClient.invalidateQueries({ queryKey: ['task', taskId] })
+    },
+  })
+
+  const planSteps = useMemo(() => {
+    if (!task) return null
+    const fromApi = normalizePlanStepsFromUnknown(task.plan)
+    if (fromApi?.length) return fromApi
+    return latestPlanStepsFromEvents(events)
+  }, [task, events])
+
   if (isLoading) {
     return (
-      <div className="flex flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <Header title="任务详情" />
-        <LoadingSpinner />
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          <LoadingSpinner />
+        </div>
       </div>
     )
   }
 
   if (error || !task) {
     return (
-      <div className="flex flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <Header title="任务详情" />
-        <div className="px-6 py-6">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-6">
           <ErrorAlert
             message="加载任务失败"
             detail={error instanceof Error ? error.message : '任务不存在'}
@@ -48,22 +89,80 @@ export function TaskDetailPage() {
   const statusColors =
     STATUS_COLOR_MAP[task.status as TaskStatus] ?? STATUS_COLOR_MAP.pending
   const statusLabel = STATUS_LABEL_MAP[task.status as TaskStatus] ?? task.status
+  const blockDelete =
+    task.status === 'pending' || task.status === 'running'
+  const canCancel = blockDelete
 
   return (
-    <div className="flex flex-1 flex-col">
-      <Header
-        title="任务详情"
-        actions={
-          <Link
-            to="/tasks"
-            className="text-neutral-500 text-sm transition-colors hover:text-neutral-800"
-          >
-            ← 返回列表
-          </Link>
-        }
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <ConfirmDialog
+        open={confirmCancel}
+        title="取消任务"
+        description="取消后状态将变为「已取消」，后台执行将不再覆盖该状态。"
+        confirmLabel="取消任务"
+        pending={cancelMutation.isPending}
+        onCancel={() => !cancelMutation.isPending && setConfirmCancel(false)}
+        onConfirm={() => cancelMutation.mutate()}
       />
 
-      <div className="flex flex-1 flex-col gap-6 px-6 py-6">
+      <ConfirmDialog
+        open={confirmDelete}
+        title="删除任务"
+        description="确定删除此任务及全部事件记录？此操作不可恢复。"
+        confirmLabel="删除"
+        pending={deleteMutation.isPending}
+        onCancel={() => !deleteMutation.isPending && setConfirmDelete(false)}
+        onConfirm={() => deleteMutation.mutate()}
+      />
+
+      <div className="shrink-0">
+        <Header
+          title="任务详情"
+          actions={
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              {canCancel && (
+                <button
+                  type="button"
+                  className="fa-btn-secondary border-amber-200 text-amber-800 hover:bg-amber-50"
+                  disabled={cancelMutation.isPending}
+                  onClick={() => setConfirmCancel(true)}
+                >
+                  取消任务
+                </button>
+              )}
+              <button
+                type="button"
+                className="fa-btn-text-danger"
+                disabled={blockDelete}
+                title={blockDelete ? '进行中的任务无法删除' : undefined}
+                onClick={() => setConfirmDelete(true)}
+              >
+                删除任务
+              </button>
+              <Link
+                to="/tasks"
+                className="text-neutral-500 text-sm transition-colors hover:text-neutral-800"
+              >
+                ← 返回列表
+              </Link>
+            </div>
+          }
+        />
+      </div>
+
+      <div className="fa-reveal min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-6">
+        <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 pb-8">
+        {cancelMutation.error && (
+          <ErrorAlert
+            message="取消任务失败"
+            detail={
+              cancelMutation.error instanceof Error
+                ? cancelMutation.error.message
+                : '未知错误'
+            }
+          />
+        )}
+
         {/* 顶部概览 */}
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
           <span
@@ -98,6 +197,17 @@ export function TaskDetailPage() {
         {/* 摘要 */}
         {task.summary && <p className="text-neutral-700 text-sm leading-relaxed">{task.summary}</p>}
 
+        {deleteMutation.error && (
+          <ErrorAlert
+            message="删除失败"
+            detail={
+              deleteMutation.error instanceof Error
+                ? deleteMutation.error.message
+                : '未知错误'
+            }
+          />
+        )}
+
         {/* 错误信息 */}
         {task.error_message && (
           <ErrorAlert
@@ -107,11 +217,13 @@ export function TaskDetailPage() {
           />
         )}
 
-        {/* 计划区占位 */}
+        {/* LLM 规划步骤（API plan + 时间线 plan_created 合并，避免仅 JSON 占位） */}
         <section>
           <h2 className="fa-section-title">执行计划</h2>
-          {task.plan ? (
-            <pre className="fa-panel max-h-[min(24rem,50vh)]">{JSON.stringify(task.plan, null, 2)}</pre>
+          {planSteps?.length ? (
+            <TaskPlanSteps steps={planSteps} />
+          ) : task.status === 'running' || task.status === 'pending' ? (
+            <p className="text-neutral-400 text-sm">规划生成中…</p>
           ) : (
             <p className="text-neutral-400 text-sm">暂无计划数据</p>
           )}
@@ -126,6 +238,7 @@ export function TaskDetailPage() {
             loadError={loadError}
           />
         </section>
+        </div>
       </div>
     </div>
   )

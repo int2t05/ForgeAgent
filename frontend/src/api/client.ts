@@ -92,3 +92,13 @@ export function post<T>(path: string, body?: unknown): Promise<T> {
 export function put<T>(path: string, body?: unknown): Promise<T> {
   return request<T>('PUT', path, { body })
 }
+
+/** PATCH 请求。 */
+export function patch<T>(path: string, body?: unknown): Promise<T> {
+  return request<T>('PATCH', path, { body })
+}
+
+/** DELETE 请求。 */
+export function del<T>(path: string): Promise<T> {
+  return request<T>('DELETE', path)
+}

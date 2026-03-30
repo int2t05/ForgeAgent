@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import AsyncIterator
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -39,22 +40,42 @@ def _build_chat_model(settings: Settings) -> ChatOpenAI:
     return ChatOpenAI(**kwargs)
 
 
+def _strip_markdown_json_fence(text: str) -> str:
+    """去掉可选的 ``` / ```json 代码块包裹，降低模型违规包 fence 时的失败率。"""
+    t = text.strip()
+    if not t.startswith("```"):
+        return t
+    # 去掉起始 ``` 或 ```json
+    t = re.sub(r"^```(?:json)?\s*", "", t, count=1, flags=re.IGNORECASE)
+    t = re.sub(r"\s*```\s*$", "", t)
+    return t.strip()
+
+
 def _extract_json_object(text: str) -> dict[str, Any] | None:
-    """从模型输出中尽量解析出 JSON 对象。"""
-    raw = text.strip()
+    """从模型输出中尽量解析出 JSON 对象。
+
+    不用贪心正则 ``\\{[\\s\\S]*\\}``：模型在 JSON 后若附带含 ``}`` 的说明，
+    会截到过宽片段导致 ``json.loads`` 失败（表现为时好时坏）。
+    改为对每个 ``{`` 起调用 ``JSONDecoder.raw_decode``，取第一个成功解析的 dict。
+    """
+    raw = _strip_markdown_json_fence(text)
+    s = raw.strip()
+    dec = json.JSONDecoder()
     try:
-        data = json.loads(raw)
+        data = dec.raw_decode(s)[0]
         return data if isinstance(data, dict) else None
     except json.JSONDecodeError:
         pass
-    m = re.search(r"\{[\s\S]*\}", raw)
-    if not m:
-        return None
-    try:
-        data = json.loads(m.group())
-        return data if isinstance(data, dict) else None
-    except json.JSONDecodeError:
-        return None
+    for i, ch in enumerate(s):
+        if ch != "{":
+            continue
+        try:
+            obj, _end = dec.raw_decode(s, i)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            return obj
+    return None
 
 
 def _normalize_steps(data: dict[str, Any]) -> list[dict[str, str]] | None:
@@ -109,27 +130,58 @@ async def plan_steps_with_llm(
         return list(_DEFAULT_STEPS)
 
 
-async def assistant_reply_with_llm(
+def _chunk_text_content(chunk: Any) -> str:
+    """获取 chunk 的文本内容"""
+    content = getattr(chunk, "content", None)
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for part in content:
+            if isinstance(part, str):
+                parts.append(part)
+            elif isinstance(part, dict) and part.get("type") == "text":
+                parts.append(str(part.get("text") or ""))
+        return "".join(parts)
+    return str(content or "")
+
+
+async def assistant_reply_stream_with_llm(
     user_message: str,
     plan_steps: list[dict[str, str]],
     settings: Settings | None = None,
-) -> str | None:
-    """生成对用户的自然语言回复；失败返回 None（由调用方使用兜底文案）。"""
+) -> AsyncIterator[tuple[str, str]]:
+    """获取 LLM 的回复"""
+    from app.agent.llm_stream_split import ThinkAnswerStream
+
     s = settings or get_settings()
+    splitter = ThinkAnswerStream()
+    plan_text = json.dumps(plan_steps, ensure_ascii=False)
+    sys_stream = "你是 ForgeAgent 助手。结合用户问题与下列计划，用中文直接回答。"
+    human_stream = f"用户问题：{user_message}\n计划步骤：{plan_text}"
+
     if not is_llm_configured(s):
-        return None
+        ans = "任务已完成（LangGraph 最小闭环）。配置 API Key 后可使用完整模型。\n"
+        for i in range(0, len(ans), 4):
+            for phase, delta in splitter.feed(ans[i : i + 4]):
+                yield phase, delta
+        for phase, delta in splitter.finalize():
+            yield phase, delta
+        return
 
     chat = _build_chat_model(s)
-    plan_text = json.dumps(plan_steps, ensure_ascii=False)
-    sys = "你是 ForgeAgent 助手。根据用户问题与已执行计划，用简洁、友好的中文直接回答用户。"
-    human = f"用户问题：{user_message}\n计划步骤概要：{plan_text}\n请给出最终回复（纯文本）。"
     try:
-        msg = await chat.ainvoke(
-            [SystemMessage(content=sys), HumanMessage(content=human)]
-        )
-        content = getattr(msg, "content", None)
-        text = (content if isinstance(content, str) else str(content or "")).strip()
-        return text or None
+        async for chunk in chat.astream(
+            [SystemMessage(content=sys_stream), HumanMessage(content=human_stream)]
+        ):
+            text = _chunk_text_content(chunk)
+            if not text:
+                continue
+            for phase, delta in splitter.feed(text):
+                yield phase, delta
+        for phase, delta in splitter.finalize():
+            yield phase, delta
     except Exception:
-        logger.exception("assistant LLM call failed")
-        return None
+        logger.exception("assistant LLM stream failed")
+        for phase, delta in splitter.finalize():
+            yield phase, delta

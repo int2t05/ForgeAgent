@@ -26,3 +26,38 @@ export interface SessionCreateResponse {
 export interface MessagesListResponse {
   messages: Message[]
 }
+
+/** GET /sessions/{id} 与会话 PATCH 响应。 */
+export interface SessionDetail {
+  id: string
+  title: string | null
+  created_at: string
+}
+
+/** 会话列表项与分页（GET /sessions）。 */
+export interface SessionSummary {
+  id: string
+  title: string | null
+  created_at: string
+}
+
+export interface SessionListResponse {
+  items: SessionSummary[]
+  total: number
+}
+
+/** PATCH /sessions/{id}。 */
+export interface SessionPatchBody {
+  title?: string | null
+}
+
+/** POST /sessions/{id}/messages。 */
+export interface MessageCreateBody {
+  role: MessageRole
+  content: string
+}
+
+/** PATCH .../messages/{id}。 */
+export interface MessageUpdateBody {
+  content: string
+}

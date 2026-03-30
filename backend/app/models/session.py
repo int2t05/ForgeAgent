@@ -27,7 +27,9 @@ class Session(Base):
         back_populates="session",
         cascade="all, delete-orphan",
     )
-    tasks: Mapped[list["Task"]] = relationship( # type: ignore
+    # passive_deletes：删除会话时依赖 DB 的 ON DELETE CASCADE，避免 ORM 先把 task.session_id 置 NULL 触发 NOT NULL 错误
+    tasks: Mapped[list["Task"]] = relationship(  # type: ignore
         "Task",
         back_populates="session",
+        passive_deletes=True,
     )

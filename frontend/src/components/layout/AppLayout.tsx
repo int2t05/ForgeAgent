@@ -5,13 +5,21 @@
 
 import { Outlet } from 'react-router'
 import { Sidebar } from '@/components/layout/Sidebar'
+import {
+  GlobalPendingComposerBanner,
+  PendingComposerTaskSync,
+} from '@/components/layout/GlobalPendingComposerBanner'
 
 export function AppLayout() {
   return (
-    <div className="flex h-screen overflow-hidden bg-neutral-100/80">
+    <div className="fa-app-shell flex h-screen overflow-hidden">
       <Sidebar />
-      <main className="flex min-w-0 flex-1 flex-col overflow-auto">
-        <Outlet />
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <PendingComposerTaskSync />
+        <GlobalPendingComposerBanner />
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <Outlet />
+        </div>
       </main>
     </div>
   )

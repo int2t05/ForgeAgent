@@ -11,7 +11,9 @@ const queryClient = new QueryClient({
     queries: {
       retry: 1,
       refetchOnWindowFocus: false,
-      staleTime: 10_000,
+      /** 减少无意义重拉，列表页更跟手 */
+      staleTime: 60_000,
+      gcTime: 5 * 60_000,
     },
   },
 })

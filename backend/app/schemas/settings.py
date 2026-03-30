@@ -5,6 +5,13 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class SettingsPatch(BaseModel):
+    """PATCH /settings：仅覆盖提供的字段，与 GET 形状一致。"""
+
+    mcp: list[Any] | None = None
+    skills_paths: list[str] | None = None
+
+
 class SettingsPublic(BaseModel):
     """GET/PUT 对外字段：MCP 服务元数据列表与 Skills 搜索路径。"""
 

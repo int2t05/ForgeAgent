@@ -6,6 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.message import Message
 
 
+async def get_message_by_id(session: AsyncSession, message_id: int) -> Message | None:
+    """按主键取一条消息。"""
+    stmt = select(Message).where(Message.id == message_id)
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
 async def add_message(
     session: AsyncSession,
     *,
@@ -38,3 +45,20 @@ async def list_messages(
     )
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+async def update_message_content(
+    session: AsyncSession, row: Message, content: str
+) -> Message:
+    """更新消息正文并刷新。"""
+    row.content = content
+    session.add(row)
+    await session.flush()
+    await session.refresh(row)
+    return row
+
+
+async def delete_message_row(session: AsyncSession, row: Message) -> None:
+    """删除一条消息行。"""
+    await session.delete(row)
+    await session.flush()

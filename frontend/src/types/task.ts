@@ -13,6 +13,7 @@ export type EventKind =
   | 'tool_result'
   | 'error'
   | 'replan'
+  | 'llm_stream_delta'
   | (string & {})
 
 /** 任务列表摘要项。 */
@@ -69,4 +70,9 @@ export interface TaskListResponse {
 /** GET /tasks/{id}/events 响应。 */
 export interface TaskEventsResponse {
   events: TaskEvent[]
+}
+
+/** PATCH /tasks/{id}（MVP：取消）。 */
+export interface TaskPatchBody {
+  status: 'cancelled'
 }

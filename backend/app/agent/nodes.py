@@ -4,15 +4,60 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Literal
 
 from app.config import get_settings
 from app.database import AsyncSessionLocal
-from app.agent.llm_client import assistant_reply_with_llm, plan_steps_with_llm
+from app.agent.llm_client import assistant_reply_stream_with_llm, plan_steps_with_llm
 from app.repositories import event_repository, task_repository
 from app.agent.state import AgentState
 
 logger = logging.getLogger(__name__)
+
+_TK_O = "\u003cthink\u003e"
+_TK_C = "\u003c/think\u003e"
+
+
+class _StreamDeltaBatcher:
+    """llm_stream_delta 批量落库（减 SQLite 写入次数）。"""
+
+    def __init__(self, task_id: str) -> None:
+        self._task_id = task_id
+        self._pending: dict[str, list[str]] = {"thinking": [], "answer": []}
+        self._buf_chars = 0
+        self._last_flush = time.monotonic()
+
+    async def add(self, phase: str, delta: str) -> None:
+        """添加 delta"""
+        if not delta:
+            return
+        self._pending[phase].append(delta)
+        self._buf_chars += len(delta)
+        now = time.monotonic()  # 单调时间戳
+        if self._buf_chars >= 480 or (now - self._last_flush) >= 0.12:
+            await self.flush()
+
+    async def flush(self) -> None:
+        """将缓冲区中的 delta 刷新到数据库。"""
+        for ph in ("thinking", "answer"):
+            if not self._pending[ph]:
+                continue
+            merged = "".join(self._pending[ph])
+            self._pending[ph].clear()
+            payload = json.dumps({"phase": ph, "delta": merged}, ensure_ascii=False)
+            async with AsyncSessionLocal() as db:
+                async with db.begin():
+                    await event_repository.append_event(
+                        db,
+                        self._task_id,
+                        "execution",
+                        "llm_stream_delta",
+                        payload,
+                    )
+        self._buf_chars = 0
+        self._last_flush = time.monotonic()
+
 
 _FORCE_REPLAN_TOKEN = "__FORCE_REPLAN__"
 
@@ -94,11 +139,28 @@ async def executor_node(state: AgentState) -> dict:
             "summary": None,
             "replan_requested": False,
         }
-    # 4. 否则 outcome=success，并在配置了 LLM 时用模型生成对用户回复摘要
+    # 4. 成功路径：流式 think/正文 + llm_stream_delta
     user_message = state.get("user_message") or ""
     settings = get_settings()
-    reply = await assistant_reply_with_llm(user_message, plan_steps, settings)
-    summary = reply or "任务已完成（LangGraph 最小闭环）"
+    full_t = ""
+    full_a = ""
+    batcher = _StreamDeltaBatcher(task_id)
+    try:
+        async for phase, delta in assistant_reply_stream_with_llm(
+            user_message, plan_steps, settings
+        ):
+            if phase == "thinking":
+                full_t += delta
+            else:
+                full_a += delta
+            await batcher.add(phase, delta)
+    finally:
+        await batcher.flush()
+
+    if full_t.strip():
+        summary = f"{_TK_O}{full_t.strip()}{_TK_C}\n\n{full_a.strip()}"
+    else:
+        summary = full_a.strip() or "任务已完成（LangGraph 最小闭环）"
     return {
         "outcome": "success",
         "summary": summary,
