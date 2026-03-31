@@ -61,9 +61,17 @@ class TestNormalizeSteps:
         assert len(steps) == 2
         assert steps[0]["title"] == "分析需求"
 
-    def test_too_few_steps(self) -> None:
+    def test_single_step_ok(self) -> None:
         one = '{"steps":[{"id":"1","title":"一步"}]}'
         data = _extract_json_object(one)
+        assert data is not None
+        steps = _normalize_steps(data)
+        assert steps is not None
+        assert len(steps) == 1
+        assert steps[0]["title"] == "一步"
+
+    def test_empty_steps_rejected(self) -> None:
+        data = _extract_json_object('{"steps":[]}')
         assert data is not None
         assert _normalize_steps(data) is None
 

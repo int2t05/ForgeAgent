@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     #: Agent 单次任务内允许的重规划次数上限（与 DEVELOP_ORDER 阶段4 一致）
     max_replan_attempts: int = 3
 
+    #: 注入 LLM 时单会话最多携带的最近消息条数（含当前用户消息；环境变量 SESSION_MEMORY_MAX_MESSAGES）
+    session_memory_max_messages: int = 32
+
     #: 浏览器跨域来源，逗号分隔；需覆盖前端实际访问来源（localhost 与 127.0.0.1 视为不同源）
     cors_origins: str = (
         "http://localhost:5173,http://127.0.0.1:5173,"

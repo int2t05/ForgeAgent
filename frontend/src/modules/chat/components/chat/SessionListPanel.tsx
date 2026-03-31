@@ -188,7 +188,7 @@ export function SessionListPanel({
                         startRename(s)
                       }}
                       className={`min-w-0 flex-1 truncate text-left text-base leading-tight no-underline ${
-                        active ? 'font-bold text-neutral-900' : 'font-normal text-neutral-600'
+                        active ? 'font-medium text-neutral-900' : 'font-normal text-neutral-600'
                       }`}
                       title="单击切换 · 双击改标题"
                     >

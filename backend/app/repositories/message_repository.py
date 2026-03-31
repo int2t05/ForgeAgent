@@ -47,6 +47,25 @@ async def list_messages(
     return list(result.scalars().all())
 
 
+async def list_recent_messages(
+    session: AsyncSession,
+    session_id: str,
+    *,
+    limit: int,
+) -> list[Message]:
+    """返回会话内最近 ``limit`` 条消息，按 id 升序（对话时间序）。"""
+    stmt = (
+        select(Message)
+        .where(Message.session_id == session_id)
+        .order_by(Message.id.desc())
+        .limit(limit)
+    )
+    result = await session.execute(stmt)
+    rows = list(result.scalars().all())
+    rows.reverse()
+    return rows
+
+
 async def map_last_message_content_by_session_ids(
     session: AsyncSession,
     session_ids: list[str],

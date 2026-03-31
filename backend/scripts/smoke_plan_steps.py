@@ -26,6 +26,8 @@ async def _run() -> int:
 
     from app.core.config import get_settings
     from app.core.llm_openai import is_llm_configured
+    from langchain_core.messages import HumanMessage
+
     from app.modules.planning.llm import plan_steps_with_llm
 
     settings = get_settings()
@@ -41,7 +43,7 @@ async def _run() -> int:
     print("user_message:", user_message)
     print("---")
 
-    steps = await plan_steps_with_llm(user_message, settings)
+    steps = await plan_steps_with_llm([HumanMessage(content=user_message)], settings)
     print(json.dumps(steps, ensure_ascii=False, indent=2))
     print("---")
     print("ok, step count:", len(steps))

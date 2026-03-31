@@ -7,6 +7,7 @@ import logging
 
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
+from app.modules.memory.session_context import SessionLLMContextManager
 from app.modules.planning.llm import plan_steps_with_llm
 from app.modules.workflow.state import AgentState
 from app.repositories import event_repository, task_repository
@@ -25,9 +26,17 @@ async def planner_node(state: AgentState) -> dict:
     """生成计划步骤并持久化 plan_created 事件。"""
     task_id = state["task_id"]  # type: ignore
     user_message = state.get("user_message") or ""
+    session_id = state.get("session_id") or ""
     settings = get_settings()
-    # 1. 调用 LLM（或默认计划）得到步骤列表
-    steps = await plan_steps_with_llm(user_message, settings)
+    # 1. 将会话最近消息注入为 LangChain ChatMessages 后调用 LLM（或默认计划）
+    mgr = SessionLLMContextManager(settings.session_memory_max_messages)
+    async with AsyncSessionLocal() as db:
+        chat_messages = await mgr.load_chat_messages(
+            db,
+            session_id=session_id,
+            fallback_user_content=user_message,
+        )
+    steps = await plan_steps_with_llm(chat_messages, settings)
 
     payload = json.dumps({"steps": steps}, ensure_ascii=False)
     # 2. 写入 planning 模块的 plan_created 事件

@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Sequence
 from typing import Any, cast
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, SystemMessage
 
 from app.core.config import Settings, get_settings
 from app.core.llm_openai import build_chat_model, is_llm_configured
@@ -55,7 +56,7 @@ def _extract_json_object(text: str) -> dict[str, Any] | None:
 def _normalize_steps(data: dict[str, Any]) -> list[dict[str, Any]] | None:
     """校验步骤列表；可选 ``tool``、``args`` 供执行器调用（仅内置工具名有效）。"""
     steps = data.get("steps")
-    if not isinstance(steps, list) or len(steps) < 2:
+    if not isinstance(steps, list) or len(steps) < 1:
         return None
     out: list[dict[str, Any]] = []
     for i, item in enumerate(steps):
@@ -86,9 +87,14 @@ def _normalize_steps(data: dict[str, Any]) -> list[dict[str, Any]] | None:
 
 
 async def plan_steps_with_llm(
-    user_message: str, settings: Settings | None = None
+    chat_messages: Sequence[BaseMessage],
+    settings: Settings | None = None,
 ) -> list[dict[str, Any]]:
-    """根据用户输入产出计划步骤列表；未配置 LLM 或解析失败时使用默认两步。"""
+    """根据多轮会话消息产出计划步骤列表；未配置 LLM 或解析失败时使用默认两步。
+
+    ``chat_messages`` 须为 LangChain ``BaseMessage`` 序列（通常为 user/assistant 交替）；
+    本函数前置固定规划 ``SystemMessage``，与 LangChain Chat 模型调用约定一致。
+    """
     s = settings or get_settings()
     # 1. 无 API 配置时直接使用内置默认计划
     if not is_llm_configured(s):
@@ -96,19 +102,17 @@ async def plan_steps_with_llm(
 
     chat = build_chat_model(s)
     sys = (
-        "你是任务规划助手。根据用户输入，只输出一个 JSON 对象，不要 markdown 代码块。"
+        "你是任务规划助手。根据用户与助手的前文对话及当前诉求，只输出一个 JSON 对象，不要 markdown 代码块。"
         '格式：{"steps":[{"id":"1","title":"步骤简述",'
         '"tool":"echo|mock_search（可选）","args":{...}（可选）},...]}。'
-        "至少 2 个步骤，title 用简短中文。"
+        "至少 1 个步骤，简单任务可只输出一步；title 用简短中文。"
         '需要向用户复述或确认时用 tool echo，args 示例：{"text":"..."}。'
         '需要占位检索时用 mock_search，args 可选 {"query":"关键词"}。'
         "分析与纯推理步骤可省略 tool。"
     )
     # 2. 调用模型并解析 JSON；无效则回退默认步骤
     try:
-        msg = await chat.ainvoke(
-            [SystemMessage(content=sys), HumanMessage(content=user_message)]
-        )
+        msg = await chat.ainvoke([SystemMessage(content=sys), *list(chat_messages)])
         content = getattr(msg, "content", None)
         text = content if isinstance(content, str) else str(content or "")
         data = _extract_json_object(text)
