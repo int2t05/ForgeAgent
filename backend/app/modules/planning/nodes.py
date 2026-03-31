@@ -22,13 +22,15 @@ def initial_force_replan_budget(user_message: str) -> int:
 
 
 async def planner_node(state: AgentState) -> dict:
-    """规划节点：生成可展示步骤并写入 plan_created。"""
-    task_id = state["task_id"]
+    """生成计划步骤并持久化 plan_created 事件。"""
+    task_id = state["task_id"]  # type: ignore
     user_message = state.get("user_message") or ""
     settings = get_settings()
+    # 1. 调用 LLM（或默认计划）得到步骤列表
     steps = await plan_steps_with_llm(user_message, settings)
 
     payload = json.dumps({"steps": steps}, ensure_ascii=False)
+    # 2. 写入 planning 模块的 plan_created 事件
     async with AsyncSessionLocal() as db:
         async with db.begin():
             await event_repository.append_event(
@@ -42,9 +44,10 @@ async def planner_node(state: AgentState) -> dict:
 
 
 async def replan_record_node(state: AgentState) -> dict:
-    """重规划节点：plan_version 自增并写入 kind=replan。"""
-    task_id = state["task_id"]
+    """递增任务 plan_version 并写入 replan 事件，同时推进本地重规划计数。"""
+    task_id = state["task_id"]  # type: ignore
     new_version = 0
+    # 1. 同一事务内 bump 版本号并追加 planning/replan 事件
     async with AsyncSessionLocal() as db:
         async with db.begin():
             new_version = await task_repository.bump_plan_version(db, task_id)
@@ -55,6 +58,7 @@ async def replan_record_node(state: AgentState) -> dict:
                 "replan",
                 json.dumps({"plan_version": new_version}, ensure_ascii=False),
             )
+    # 2. 推进重规划计数并清除 replan 请求标志（供下一轮 planner 使用）
     next_count = int(state.get("replan_count") or 0) + 1
     logger.info(
         "task %s replan recorded: plan_version=%s replan_count=%s",

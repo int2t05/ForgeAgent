@@ -13,12 +13,25 @@ from sqlalchemy.types import TypeDecorator
 class UtcDateTime(TypeDecorator[datetime]):
     """等价于 DateTime(timezone=True)，但保证从 SQLite 读出时带 UTC tzinfo。
 
-    SQLite 的 CURRENT_TIMESTAMP 为 UTC，驱动多返回 naive datetime；序列化为无时区 ISO 时，
-    前端会按本地时区解析，在东八区会表现为「早 8 小时」。
+    SQLite 存盘为无时区字面值时按 UTC 理解；写入时将 aware 归一化到 UTC 再去 tz，列比较与
+    CURRENT_TIMESTAMP 一致。REST 层见 ``schemas.json_datetime`` 对外统一带 Z。
     """
 
     impl = DateTime(timezone=True)
     cache_ok = True
+
+    def process_bind_param(self, value: Any, dialect: Dialect) -> Any:
+        if value is None:
+            return None
+        if not isinstance(value, datetime):
+            return value
+        if dialect.name == "sqlite":
+            if value.tzinfo is not None:
+                return value.astimezone(timezone.utc).replace(tzinfo=None)
+            return value
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
 
     def process_result_value(self, value: Any, dialect: Dialect) -> datetime | None:
         if value is None:

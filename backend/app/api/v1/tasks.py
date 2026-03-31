@@ -1,4 +1,4 @@
-"""任务 REST（执行：列表/创建/详情/事件；SSE 流阶段5）。"""
+"""任务 REST：列表、创建、详情、可观测事件与 SSE 流。"""
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
@@ -41,7 +41,7 @@ async def get_tasks(
 
 @router.post("", response_model=TaskCreateResponse)
 async def post_task(body: TaskCreate) -> TaskCreateResponse:
-    """创建任务并异步执行；可选 ``reuse_user_message_id`` 时由 service 层截断记忆并取消活跃任务。"""
+    """受理创建任务请求并返回任务 id 与事件流路径。"""
     return await task_service.create_task_start_mock(
         body.session_id,
         body.user_message,
@@ -74,7 +74,9 @@ async def get_task_events_stream(
             status_code=404,
         )
 
-    # 续传优先级：after_seq > last_event_id > Last-Event-ID 头
+    # 1. SSE 续传游标：查询参数 after_seq 优先于 last_event_id
+    # 2. 二者皆无时尝试解析 Last-Event-ID 请求头
+    # 3. 仍无则自 seq=0 起推
     start_after = after_seq if after_seq is not None else last_event_id
     if start_after is None:
         raw_leid = request.headers.get("Last-Event-ID")

@@ -1,9 +1,10 @@
 """任务相关请求/响应模型。"""
 
-from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+from app.schemas.json_datetime import JsonUtcDatetime # type: ignore
 
 
 class TaskCreate(BaseModel):
@@ -15,7 +16,7 @@ class TaskCreate(BaseModel):
         default=None,
         description=(
             "复用已有用户消息并重新执行：更新该条正文、删除其后的消息、取消本会话未结束任务，"
-            "且不追加新的用户消息行"
+            "并删除该条消息对应时刻及之后产生的任务与事件（级联），且不追加新的用户消息行"
         ),
     )
 
@@ -35,8 +36,8 @@ class TaskSummary(BaseModel):
     status: str
     summary: str | None
     plan_version: int
-    created_at: datetime
-    updated_at: datetime
+    created_at: JsonUtcDatetime
+    updated_at: JsonUtcDatetime
 
 
 class TaskListResponse(BaseModel):
@@ -55,8 +56,8 @@ class TaskDetail(BaseModel):
     summary: str | None
     plan_version: int
     plan: dict[str, Any] | None = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: JsonUtcDatetime
+    updated_at: JsonUtcDatetime
     error_message: str | None = None
 
 

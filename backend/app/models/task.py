@@ -35,6 +35,13 @@ class Task(Base):
         default=1,
         server_default="1",
     )
+    #: 触发该任务的用户消息 id（用于编辑/重跑时按对话分支删除任务，不依赖时间比较）
+    source_user_message_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("messages.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime,
         server_default=func.now(),

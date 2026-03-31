@@ -1,8 +1,8 @@
 """会话与消息相关请求/响应模型（对齐 docs/api/API.md）。"""
 
-from datetime import datetime
-
 from pydantic import BaseModel, Field
+
+from app.schemas.json_datetime import JsonUtcDatetime
 
 
 class SessionCreate(BaseModel):
@@ -22,7 +22,7 @@ class SessionSummary(BaseModel):
 
     id: str
     title: str | None
-    created_at: datetime
+    created_at: JsonUtcDatetime
     last_message_preview: str | None = Field(
         default=None,
         description="最后一条消息正文摘要（列表接口填充；无消息时为 null）。",
@@ -41,7 +41,7 @@ class SessionDetail(BaseModel):
 
     id: str
     title: str | None
-    created_at: datetime
+    created_at: JsonUtcDatetime
 
 
 class SessionUpdate(BaseModel):
@@ -69,7 +69,7 @@ class MessageOut(BaseModel):
     id: int
     role: str
     content: str
-    created_at: datetime
+    created_at: JsonUtcDatetime
 
 
 class MessagesListResponse(BaseModel):

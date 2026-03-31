@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def _chunk_text_content(chunk: Any) -> str:
+    """从 Chat 模型流式 chunk 中提取可拼接的纯文本。"""
     content = getattr(chunk, "content", None)
     if isinstance(content, str):
         return content
@@ -33,15 +34,26 @@ def _chunk_text_content(chunk: Any) -> str:
 
 async def assistant_reply_stream_with_llm(
     user_message: str,
-    plan_steps: list[dict[str, str]],
+    plan_steps: list[dict[str, Any]],
     settings: Settings | None = None,
+    *,
+    tool_trace: list[dict[str, Any]] | None = None,
 ) -> AsyncIterator[tuple[str, str]]:
+    """结合用户问题、计划与工具轨迹产出 thinking/answer 相位的异步字符流。"""
+    # 1.获取上下文
     s = settings or get_settings()
     splitter = ThinkAnswerStream()
     plan_text = json.dumps(plan_steps, ensure_ascii=False)
-    sys_stream = "你是 ForgeAgent 助手。结合用户问题与下列计划，用中文直接回答。"
-    human_stream = f"用户问题：{user_message}\n计划步骤：{plan_text}"
-
+    trace_text = json.dumps(tool_trace, ensure_ascii=False) if tool_trace else "[]"
+    sys_stream = (
+        "你是 ForgeAgent 助手。结合用户问题、下列计划与已执行工具输出，用中文直接回答。"
+    )
+    human_stream = (
+        f"用户问题：{user_message}\n"
+        f"计划步骤：{plan_text}\n"
+        f"工具执行结果（JSON 数组，按步骤顺序）：{trace_text}"
+    )
+    # 2.校验模型配置
     if not is_llm_configured(s):
         ans = "任务已完成（LangGraph 最小闭环）。配置 API Key 后可使用完整模型。\n"
         for i in range(0, len(ans), 4):
@@ -51,6 +63,7 @@ async def assistant_reply_stream_with_llm(
             yield phase, delta
         return
 
+    # 3.流式生成
     chat = build_chat_model(s)
     try:
         async for chunk in chat.astream(

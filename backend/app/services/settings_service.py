@@ -29,6 +29,7 @@ _FORBIDDEN_KEY_FRAGMENTS = (
 
 
 def _json_list_from_row(value_json: str | None) -> list[Any]:
+    """将 settings_kv 中的 JSON 文本解析为列表，非法或空则返回 []。"""
     if not value_json:
         return []
     try:

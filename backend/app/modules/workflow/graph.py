@@ -1,4 +1,4 @@
-"""LangGraph：Planner → Executor →（条件）Replan → Planner。"""
+"""LangGraph Agent 状态图：规划、执行、条件重规划回环至再规划。"""
 
 from __future__ import annotations
 

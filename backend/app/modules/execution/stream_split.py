@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import Literal
 
+# 标签
 _OPEN_RE = re.compile(r"\u003cthink\u003e", re.IGNORECASE)
 _CLOSE_RE = re.compile(r"\u003c/think\u003e", re.IGNORECASE)
 _OPEN_MARK = "\u003cthink\u003e".lower()
@@ -14,6 +15,7 @@ Phase = Literal["thinking", "answer"]
 
 
 def _strip_partial_close_suffix(s: str) -> str:
+    """移除字符串末尾的半闭合标签。"""
     sl, cl = s.lower(), _CLOSE_PLAIN.lower()
     for k in range(1, len(cl)):
         if sl.endswith(cl[:k]):
@@ -22,6 +24,7 @@ def _strip_partial_close_suffix(s: str) -> str:
 
 
 def _answer_tail_cut(raw: str) -> str:
+    """末尾可能是未写完的开标签时，只释放 `<` 之前部分的为正文。"""
     i = raw.rfind("<")
     if i < 0:
         return raw
@@ -33,6 +36,7 @@ def _answer_tail_cut(raw: str) -> str:
 
 
 def _split_think_answer(raw: str) -> tuple[str, str]:
+    """尝试将 `raw` 分割成 `think` 和 `answer`"""
     m_o = _OPEN_RE.search(raw)
     if not m_o:
         return "", _answer_tail_cut(raw)
@@ -57,6 +61,7 @@ class ThinkAnswerStream:
         return self._full
 
     def feed(self, chunk: str) -> list[tuple[Phase, str]]:
+        """输入一个 chunk，返回 think 与 answer 的 delta"""
         if chunk:
             self._full += chunk
         think, ans = _split_think_answer(self._full)

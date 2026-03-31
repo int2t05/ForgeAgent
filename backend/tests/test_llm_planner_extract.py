@@ -67,6 +67,22 @@ class TestNormalizeSteps:
         assert data is not None
         assert _normalize_steps(data) is None
 
+    def test_optional_tool_and_args(self) -> None:
+        raw = (
+            '{"steps":['
+            '{"id":"1","title":"复述","tool":"echo","args":{"text":"你好"}},'
+            '{"id":"2","title":"检索","tool":"mock_search","args":{"query":"x"}}'
+            "]}"
+        )
+        data = _extract_json_object(raw)
+        assert data is not None
+        steps = _normalize_steps(data)
+        assert steps is not None
+        assert steps[0].get("tool") == "echo"
+        assert steps[0].get("args") == {"text": "你好"}
+        assert steps[1].get("tool") == "mock_search"
+        assert steps[1].get("args") == {"query": "x"}
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

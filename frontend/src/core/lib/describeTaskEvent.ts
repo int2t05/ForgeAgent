@@ -12,6 +12,10 @@ export function describeTaskEvent(ev: TaskEvent | undefined): string {
         ? `执行步骤：${title.trim()}`
         : '步骤开始'
     }
+    case 'step_end': {
+      const st = ev.payload?.status
+      return typeof st === 'string' && st ? `步骤结束：${st}` : '步骤结束'
+    }
     case 'tool_call':
       return '调用工具'
     case 'tool_result':

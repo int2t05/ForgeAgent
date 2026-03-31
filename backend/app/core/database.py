@@ -2,7 +2,7 @@
 
 from collections.abc import AsyncGenerator
 
-from sqlalchemy import event
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -33,6 +33,24 @@ def _register_sqlite_pragma(eng: AsyncEngine) -> None:
 
 
 _register_sqlite_pragma(engine)
+
+
+def _migrate_sqlite_schema_sync(connection) -> None:
+    """SQLite 轻量迁移（无 Alembic 时）：为已有库补齐 tasks.source_user_message_id。"""
+    if connection.dialect.name != "sqlite":
+        return
+    rows = connection.execute(text("PRAGMA table_info(tasks)")).fetchall()
+    col_names = {r[1] for r in rows}
+    if "source_user_message_id" in col_names:
+        return
+    connection.execute(
+        text(
+            "ALTER TABLE tasks ADD COLUMN source_user_message_id INTEGER "
+            "REFERENCES messages(id) ON DELETE SET NULL"
+        )
+    )
+
+
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,
     class_=AsyncSession,
@@ -49,6 +67,7 @@ async def init_db() -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_migrate_sqlite_schema_sync)
 
 
 async def close_db() -> None:

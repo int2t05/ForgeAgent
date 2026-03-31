@@ -1,4 +1,4 @@
-"""内置工具元数据（与 LangChain/LangGraph 绑定实现留在后续阶段）。"""
+"""内置工具元数据（执行逻辑见 ``builtin_executor.execute_builtin``）。"""
 
 from app.schemas.tools import ToolItem
 

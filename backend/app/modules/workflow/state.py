@@ -1,6 +1,6 @@
 """LangGraph 运行时状态（规划 / 执行 / 重规划 共享）。"""
 
-from typing import Literal, NotRequired, TypedDict
+from typing import Any, Literal, NotRequired, TypedDict
 
 
 class AgentState(TypedDict, total=False):
@@ -13,7 +13,7 @@ class AgentState(TypedDict, total=False):
     max_replan_attempts: int
     force_replan_budget: int
 
-    plan_steps: list[dict[str, str]]
+    plan_steps: list[dict[str, Any]]
     current_step_index: int
 
     replan_requested: bool

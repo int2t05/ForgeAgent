@@ -26,6 +26,7 @@ _MESSAGE_ROLES = frozenset({"user", "assistant", "system"})
 
 
 def _truncate_preview(text: str, max_chars: int = _PREVIEW_MAX_CHARS) -> str:
+    """将正文截断为会话列表预览长度，超出部分以省略号收尾。"""
     t = text.strip()
     if len(t) <= max_chars:
         return t
@@ -33,6 +34,7 @@ def _truncate_preview(text: str, max_chars: int = _PREVIEW_MAX_CHARS) -> str:
 
 
 async def _require_session(db: AsyncSession, session_id: str) -> ChatSession:
+    """若会话存在则返回 ORM 行，否则抛出业务 404。"""
     chat = await session_repository.get_session_by_id(db, session_id)
     if chat is None:
         raise AppHTTPException(
@@ -48,6 +50,7 @@ async def _require_message_in_session(
     session_id: str,
     message_id: int,
 ) -> Message:
+    """若消息存在且属于该会话则返回 ORM 行，否则抛出业务 404。"""
     row = await message_repository.get_message_by_id(db, message_id)
     if row is None or row.session_id != session_id:
         raise AppHTTPException(

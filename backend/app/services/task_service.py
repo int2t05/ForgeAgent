@@ -1,4 +1,4 @@
-"""任务用例服务（执行：创建、查询、事件；阶段4 LangGraph 最小闭环）。"""
+"""任务用例服务：任务的创建、查询、补丁、删除与事件访问，并编排后台 Agent 执行。"""
 
 import asyncio
 import json
@@ -44,7 +44,8 @@ async def _apply_reuse_user_message(
     reuse_user_message_id: int,
     content: str,
 ) -> None:
-    """在已有事务内：校验并更新指定用户消息，取消会话内活跃任务，删除该消息之后的记忆。"""
+    """在单事务内完成「从指定用户消息重新执行」所需的记忆截断与任务分支清理。"""
+    # 1. 校验消息归属与会话、且角色为用户
     row = await message_repository.get_message_by_id(db, reuse_user_message_id)
     if row is None or row.session_id != session_id:
         raise AppHTTPException(
@@ -58,8 +59,17 @@ async def _apply_reuse_user_message(
             code="VALIDATION_ERROR",
             status_code=400,
         )
+    # 2. 就地更新该用户消息正文
     await message_repository.update_message_content(db, row, content)
+    # 3. 取消会话内活动任务并删除锚点起的任务（事件随任务级联删除）
     await task_repository.cancel_active_tasks_for_session(db, session_id)
+    await task_repository.delete_tasks_for_branch_from_user_message(
+        db,
+        session_id=session_id,
+        anchor_message_id=row.id,
+        anchor_time=row.created_at,
+    )
+    # 4. 删除该消息之后的会话消息
     await message_repository.delete_messages_after(db, session_id, row.id)
 
 
@@ -69,10 +79,8 @@ async def create_task_start_mock(
     *,
     reuse_user_message_id: int | None = None,
 ) -> TaskCreateResponse:
-    """创建 running 任务并异步调度 LangGraph；独立会话提交后再 ``asyncio.create_task``，避免与请求级 DB 冲突。
-
-    ``reuse_user_message_id``：就地更新该用户消息、截断其后消息并取消会话内活跃任务。
-    """
+    """创建运行中任务并异步启动 Agent 图；可选指定用户消息 id 作为复用锚点。"""
+    # 1. 校验用户输入非空
     content = (user_message or "").strip()
     if not content:
         raise AppHTTPException(
@@ -80,10 +88,12 @@ async def create_task_start_mock(
             code="VALIDATION_ERROR",
             status_code=400,
         )
+    # 2. 生成任务 id 与 SSE 路径（响应体引用）
     task_id = str(uuid4())
     stream_path = f"/api/v1/tasks/{task_id}/events/stream"
     async with AsyncSessionLocal() as db:
         async with db.begin():
+            # 3. 校验会话存在；写入或复用用户消息以得到 source_user_message_id
             chat = await session_repository.get_session_by_id(db, session_id)
             if chat is None:
                 raise AppHTTPException(
@@ -92,12 +102,13 @@ async def create_task_start_mock(
                     status_code=404,
                 )
             if reuse_user_message_id is None:
-                await message_repository.add_message(
+                user_msg = await message_repository.add_message(
                     db,
                     session_id=session_id,
                     role="user",
                     content=content,
                 )
+                source_mid = user_msg.id
             else:
                 await _apply_reuse_user_message(
                     db,
@@ -105,13 +116,17 @@ async def create_task_start_mock(
                     reuse_user_message_id=reuse_user_message_id,
                     content=content,
                 )
+                source_mid = reuse_user_message_id
+            # 4. 持久化任务行（running）
             task_row = Task(
                 id=task_id,
                 session_id=session_id,
                 status="running",
                 plan_version=1,
+                source_user_message_id=source_mid,
             )
             await task_repository.add_task(db, task_row)
+    # 5. 与请求 DB 会话脱钩后调度后台图（避免会话冲突）
     asyncio.create_task(run_agent_task(task_id, session_id, content))
     return TaskCreateResponse(task_id=task_id, events_stream_path=stream_path)
 
@@ -121,9 +136,10 @@ async def run_agent_task(
     session_id: str,
     user_message: str,
 ) -> None:
-    """阶段4：LangGraph Planner→Executor→条件重规划，写事件并收敛任务终态。"""
+    """在独立协程中运行编译后的 Agent 图，并按终态回写任务与（成功时）助手消息。"""
     settings = get_settings()
     graph = get_compiled_agent_graph()
+    # 1. 构造初始状态（任务与会话 id、用户输入、重规划预算等）
     initial = {
         "task_id": task_id,
         "session_id": session_id,
@@ -134,8 +150,10 @@ async def run_agent_task(
         "force_replan_budget": initial_force_replan_budget(user_message),
     }
     try:
+        # 2. 执行图（规划/执行节点内落库事件）
         result = await graph.ainvoke(initial)
         outcome = result.get("outcome")
+        # 3. 若任务未被取消则按 outcome 收敛任务状态与摘要
         async with AsyncSessionLocal() as db:
             async with db.begin():
                 task = await task_repository.get_task_by_id(db, task_id)
@@ -160,6 +178,7 @@ async def run_agent_task(
                     task.status = "failed"
                     task.error_message = "Agent 未返回明确终态"
     except Exception as exc:  # noqa: BLE001
+        # 图执行未捕获异常：尽力将任务标为失败并追加 execution/error 事件
         logger.exception("agent graph failed for task %s", task_id)
         try:
             async with AsyncSessionLocal() as db:

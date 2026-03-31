@@ -9,6 +9,7 @@ export type EventModule = 'planning' | 'memory' | 'tool' | 'execution'
 export type EventKind =
   | 'plan_created'
   | 'step_start'
+  | 'step_end'
   | 'tool_call'
   | 'tool_result'
   | 'error'
@@ -53,7 +54,7 @@ export interface TaskEvent {
 export interface TaskCreateBody {
   session_id: string
   user_message: string
-  /** 复用该条用户消息并重新执行（后端会更新正文、截断后续消息、取消未结束任务）。 */
+  /** 复用该条用户消息并重新执行（更新正文、截断后续消息；取消并删除该条消息时刻起的任务与事件）。 */
   reuse_user_message_id?: number
 }
 
