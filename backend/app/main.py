@@ -11,7 +11,13 @@ from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal, close_db, init_db
 from app.core.exceptions import AppHTTPException
+from app.modules.memory.checkpointer import close_langgraph_checkpointer, open_langgraph_checkpointer
 from app.modules.tools.registry import tool_registry
+from app.modules.workflow.graph import (
+    get_checkpoint_guard_ref,
+    init_compiled_agent_graph,
+    shutdown_compiled_agent_graph,
+)
 
 
 @asynccontextmanager
@@ -23,8 +29,14 @@ async def lifespan(_app: FastAPI):
     async with AsyncSessionLocal() as session:
         await tool_registry.refresh(session)
         await session.commit()
+    # 3. LangGraph checkpointer + 编译状态图（线程 id = task_id 时可断点续跑）
+    settings = get_settings()
+    checkpointer = await open_langgraph_checkpointer(settings)
+    init_compiled_agent_graph(checkpointer)
     yield
-    # 3. 关闭时释放数据库连接池
+    # 4. 关闭 checkpoint 连接与图引用，再释放 ORM 池
+    await close_langgraph_checkpointer(get_checkpoint_guard_ref())
+    shutdown_compiled_agent_graph()
     await close_db()
 
 

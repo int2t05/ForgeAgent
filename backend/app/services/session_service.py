@@ -4,8 +4,10 @@ from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.exceptions import AppHTTPException
 from app.models.message import Message
+from app.modules.memory.checkpointer import delete_checkpoint_threads
 from app.models.session import Session as ChatSession
 from app.repositories import message_repository, session_repository, task_repository
 from app.schemas.common import OperationOkResponse
@@ -206,5 +208,8 @@ async def delete_session(db: AsyncSession, session_id: str) -> OperationOkRespon
             code="CONFLICT",
             status_code=409,
         )
+    # LangGraph thread_id == task_id：先清独立 checkpoint 库表行，再清业务库
+    task_ids = await task_repository.list_task_ids_for_session(db, session_id)
+    await delete_checkpoint_threads(get_settings(), task_ids)
     await session_repository.delete_session_by_id(db, session_id)
     return OperationOkResponse()

@@ -32,9 +32,7 @@ from app.schemas.task import (
 
 logger = logging.getLogger(__name__)
 
-_VALID_TASK_STATUS = frozenset(
-    {"pending", "running", "success", "failed", "cancelled"}
-)
+_VALID_TASK_STATUS = frozenset({"pending", "running", "success", "failed", "cancelled"})
 
 
 async def _apply_reuse_user_message(
@@ -124,11 +122,17 @@ async def create_task_start_mock(
                 status="running",
                 plan_version=1,
                 source_user_message_id=source_mid,
+                owns_source_user_message=reuse_user_message_id is None,
             )
             await task_repository.add_task(db, task_row)
     # 5. 与请求 DB 会话脱钩后调度后台图（避免会话冲突）
     asyncio.create_task(run_agent_task(task_id, session_id, content))
     return TaskCreateResponse(task_id=task_id, events_stream_path=stream_path)
+
+
+def _agent_graph_config(task_id: str) -> dict:
+    """LangGraph 持久化要求：``thread_id`` 与任务 id 对齐，便于崩溃后同一任务续跑。"""
+    return {"configurable": {"thread_id": task_id}}
 
 
 async def run_agent_task(
@@ -139,6 +143,7 @@ async def run_agent_task(
     """在独立协程中运行编译后的 Agent 图，并按终态回写任务与（成功时）助手消息。"""
     settings = get_settings()
     graph = get_compiled_agent_graph()
+    config = _agent_graph_config(task_id)
     # 1. 构造初始状态（任务与会话 id、用户输入、重规划预算等）
     initial = {
         "task_id": task_id,
@@ -150,8 +155,14 @@ async def run_agent_task(
         "force_replan_budget": initial_force_replan_budget(user_message),
     }
     try:
-        # 2. 执行图（规划/执行节点内落库事件）
-        result = await graph.ainvoke(initial)
+        # 2. 读取 checkpoint：无状态则冷启动；有下一 super-step 则断点续跑；已结束则直接采用快照
+        snap = await graph.aget_state(config)
+        if not snap.values:
+            result = await graph.ainvoke(initial, config)
+        elif snap.next:  # 从 snap.next 记录的断点位置恢复
+            result = await graph.ainvoke(None, config)
+        else:
+            result = dict(snap.values)
         outcome = result.get("outcome")
         # 3. 若任务未被取消则按 outcome 收敛任务状态与摘要
         async with AsyncSessionLocal() as db:
@@ -255,6 +266,7 @@ async def patch_task(
             code="NOT_FOUND",
             status_code=404,
         )
+    restored_prompt: str | None = None
     if body.status == "cancelled":
         if task.status not in ("pending", "running"):
             raise AppHTTPException(
@@ -262,11 +274,26 @@ async def patch_task(
                 code="CONFLICT",
                 status_code=409,
             )
+        mid = task.source_user_message_id
+        if task.owns_source_user_message and mid is not None:
+            msg = await message_repository.get_message_by_id(db, mid)
+            if (
+                msg is not None
+                and msg.session_id == task.session_id
+                and msg.role == "user"
+            ):
+                restored_prompt = msg.content
+                await message_repository.delete_messages_after(db, task.session_id, mid)
+                await message_repository.delete_message_row(db, msg)
+                task.source_user_message_id = None
         task.status = "cancelled"
         if not task.error_message:
             task.error_message = "用户已取消"
         await db.flush()
-    return await get_task_detail(db, task_id)
+    detail = await get_task_detail(db, task_id)
+    if restored_prompt is not None:
+        return detail.model_copy(update={"restored_user_message": restored_prompt})
+    return detail
 
 
 async def get_task_detail(db: AsyncSession, task_id: str) -> TaskDetail:

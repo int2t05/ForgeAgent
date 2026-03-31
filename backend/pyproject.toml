@@ -10,6 +10,7 @@ dependencies = [
   "aiosqlite>=0.20.0",
   "pydantic-settings>=2.6.0",
   "langgraph>=1.1.0,<2",
+  "langgraph-checkpoint-sqlite>=3.0.0,<4",
   "langchain-core>=1.2.0,<2",
   "langchain-openai>=0.3.0,<1",
 ]
@@ -23,6 +24,11 @@ packages = ["app"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.3"]
+checkpoint-postgres = [
+  "langgraph-checkpoint-postgres>=3.0.0,<4",
+  "psycopg[binary]>=3.2.0,<4",
+  "psycopg-pool>=3.2.0,<4",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

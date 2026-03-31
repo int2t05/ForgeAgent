@@ -36,17 +36,25 @@ _register_sqlite_pragma(engine)
 
 
 def _migrate_sqlite_schema_sync(connection) -> None:
-    """SQLite 轻量迁移（无 Alembic 时）：为已有库补齐 tasks.source_user_message_id。"""
+    """SQLite 轻量迁移：补齐 tasks 缺失列（source_user_message_id、owns_source_user_message）。"""
     if connection.dialect.name != "sqlite":
         return
     rows = connection.execute(text("PRAGMA table_info(tasks)")).fetchall()
     col_names = {r[1] for r in rows}
-    if "source_user_message_id" in col_names:
+    if "source_user_message_id" not in col_names:
+        connection.execute(
+            text(
+                "ALTER TABLE tasks ADD COLUMN source_user_message_id INTEGER "
+                "REFERENCES messages(id) ON DELETE SET NULL"
+            )
+        )
+    rows2 = connection.execute(text("PRAGMA table_info(tasks)")).fetchall()
+    col_names2 = {r[1] for r in rows2}
+    if "owns_source_user_message" in col_names2:
         return
     connection.execute(
         text(
-            "ALTER TABLE tasks ADD COLUMN source_user_message_id INTEGER "
-            "REFERENCES messages(id) ON DELETE SET NULL"
+            "ALTER TABLE tasks ADD COLUMN owns_source_user_message INTEGER NOT NULL DEFAULT 0"
         )
     )
 

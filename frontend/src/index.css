@@ -215,6 +215,24 @@
     padding-block: 0.375rem;
   }
 
+  /* 生成中：悬停用户气泡右上角浮现停止钮（与底栏停止图标同风格） */
+  .fa-chat-user-bubble-stop {
+    @apply absolute right-2 top-2 z-[1] inline-flex size-8 items-center justify-center rounded-full border-0 bg-[#e5e5e5] text-neutral-700 shadow-sm transition-opacity duration-150 hover:bg-neutral-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500/35 disabled:cursor-not-allowed disabled:opacity-50;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .fa-chat-block-user.fa-chat-block-user--stop-target:hover .fa-chat-user-bubble-stop,
+  .fa-chat-block-user.fa-chat-block-user--stop-target:focus-within .fa-chat-user-bubble-stop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .fa-chat-user-bubble-stop.fa-chat-user-bubble-stop--pending {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
   .fa-chat-user-edit-input {
     max-height: 4.5rem;
     overflow-y: auto;

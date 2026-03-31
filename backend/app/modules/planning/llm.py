@@ -113,6 +113,7 @@ async def plan_steps_with_llm(
     # 2. 调用模型并解析 JSON；无效则回退默认步骤
     try:
         msg = await chat.ainvoke([SystemMessage(content=sys), *list(chat_messages)])
+        # logger.warning(msg)
         content = getattr(msg, "content", None)
         text = content if isinstance(content, str) else str(content or "")
         data = _extract_json_object(text)

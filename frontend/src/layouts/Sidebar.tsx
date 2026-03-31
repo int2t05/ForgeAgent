@@ -1,0 +1,118 @@
+/**
+ * 侧边导航：对话、概览、任务、设置。
+ */
+
+import type { ReactNode } from 'react'
+import { NavLink } from 'react-router'
+import { SidebarChatHistory } from '@/components/chat/SidebarChatHistory'
+
+interface NavItem {
+  to: string
+  label: string
+  icon: ReactNode
+}
+
+function IconHome({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M4 11.5L12 4l8 7.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-8.5Z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function IconChat({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M8 10h8M8 14h5M5 19l-2 2v-4a3 3 0 0 1-1-2V7a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H8l-3 2Z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function IconTasks({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+function IconSettings({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 15a3 3 0 100-6 3 3 0 000 6z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+      />
+      <path
+        d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V12a1.65 1.65 0 001.51 1z"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+const NAV_ITEMS: NavItem[] = [
+  { to: '/', label: '对话', icon: <IconChat className="shrink-0 opacity-80" /> },
+  { to: '/overview', label: '概览', icon: <IconHome className="shrink-0 opacity-80" /> },
+  { to: '/tasks', label: '任务', icon: <IconTasks className="shrink-0 opacity-80" /> },
+  { to: '/settings', label: '设置', icon: <IconSettings className="shrink-0 opacity-80" /> },
+]
+
+export function Sidebar() {
+  return (
+    <aside className="flex h-screen w-56 shrink-0 flex-col overflow-hidden border-neutral-200/80 border-r bg-[#f7f7f7] shadow-[var(--fa-shadow-card)]">
+      <div className="flex h-14 shrink-0 items-center gap-1.5 border-neutral-200/70 border-b px-5">
+        <span className="font-display font-bold text-lg text-primary-600 tracking-tight">
+          Forge
+        </span>
+        <span className="font-display font-bold text-lg text-neutral-800 tracking-tight">
+          Agent
+        </span>
+      </div>
+
+      <nav className="shrink-0 space-y-1 px-3 py-3">
+        {NAV_ITEMS.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.to === '/'}
+            className={({ isActive }) =>
+              `flex items-center gap-3 rounded-xl px-3 py-2.5 text-base transition-colors ${
+                isActive
+                  ? 'bg-primary-100 font-medium text-primary-800 ring-1 ring-primary-200/80'
+                  : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900'
+              }`
+            }
+          >
+            {item.icon}
+            <span>{item.label}</span>
+          </NavLink>
+        ))}
+      </nav>
+
+      <SidebarChatHistory />
+
+      <div className="shrink-0 border-neutral-200/70 border-t px-5 py-3">
+        <p className="fa-text-caption text-neutral-500 uppercase tracking-wider">ForgeAgent</p>
+      </div>
+    </aside>
+  )
+}

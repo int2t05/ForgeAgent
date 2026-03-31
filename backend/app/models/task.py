@@ -4,7 +4,7 @@ from datetime import datetime
 
 from app.models.session import Session
 from app.models.task_event import TaskEvent
-from sqlalchemy import ForeignKey, Integer, Text, func
+from sqlalchemy import Boolean, ForeignKey, Integer, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -41,6 +41,13 @@ class Task(Base):
         ForeignKey("messages.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
+    )
+    #: 本轮用户消息是否为随任务新插入（``False`` 表示复用锚点消息，停止时不删气泡）
+    owns_source_user_message: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="1",
     )
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime,

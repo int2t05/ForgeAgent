@@ -341,7 +341,7 @@ const streamed = useMemo(
 | GET | `/api/v1/tasks` | 分页列出任务 |
 | POST | `/api/v1/tasks` | **创建任务并异步执行 Agent** |
 | GET | `/api/v1/tasks/{id}` | 获取任务详情（含 plan）|
-| PATCH | `/api/v1/tasks/{id}` | 取消任务 |
+| PATCH | `/api/v1/tasks/{id}` | 取消任务；若该任务对应「本轮新建」用户消息，删除该条及之后消息并在响应体 `restored_user_message` 中带回正文供前端恢复输入框 |
 | DELETE | `/api/v1/tasks/{id}` | 删除已结束任务 |
 
 ### 任务事件（SSE）
@@ -383,6 +383,8 @@ tasks
 ├── id           主键
 ├── session_id   外键 → sessions.id
 ├── status       状态 (pending/running/success/failed/cancelled)
+├── source_user_message_id  触发任务的用户消息（可空）
+├── owns_source_user_message  是否为本轮新建用户消息（取消时可回滚删除）
 ├── plan         执行计划 (JSON)
 ├── summary      最终摘要
 └── created_at   创建时间

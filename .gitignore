@@ -45,7 +45,7 @@ coverage/
 # SQLite (MVP)
 *.db
 *.sqlite
-
+*.db*
 # Logs
 logs
 *.log

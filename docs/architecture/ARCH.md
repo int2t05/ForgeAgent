@@ -234,7 +234,7 @@ Pages（页面容器）→ Components（可复用 UI）
 
 ### 2. 前端文件结构
 
-前端按 **横切内核 `core/`** 与 **功能域 `modules/<domain>/`** 拆分：API、类型与纯函数尽量落在 `core/`；页面、特性组件、按域划分的 `api` / `hooks` / `stores` / `types` 落在对应 `modules/` 下。路径别名 **`@/`** 指向 `src/`（见 `frontend/vite.config.ts` / `tsconfig`）。
+前端按 **分层目录** 组织：**页面**（`views/`）、**布局**（`layouts/`）、**可复用组件**（`components/<域|ui>/`）、**数据层**（`api/`、`hooks/`、`store/`）、**类型与工具**（`types/`、`utils/`）、**配置与常量**（`config/`、`constants/`），以及 **`plugins/`**（第三方库装配）。路径别名 **`@/`** 指向 `src/`（见 `frontend/vite.config.ts` / `tsconfig`）。路由级页面在 `router/index.tsx` 中使用 `React.lazy` 做代码分割；`App.tsx` 以 `Suspense` 包裹 `RouterProvider` 作为懒加载兜底。
 
 ```
 frontend/
@@ -249,95 +249,83 @@ frontend/
     ├── main.tsx
     ├── App.tsx
     ├── index.css
-    ├── router.tsx
     │
-    ├── core/                               # 横切：与具体页面解耦
-    │   ├── api/
-    │   │   └── client.ts                   # HTTP 基址、统一错误解析（VITE_API_BASE_URL）
-    │   ├── types/
-    │   │   └── api.ts                      # 与后端公共响应形状对齐
-    │   └── lib/
-    │       ├── constants.ts、format.ts
-    │       ├── sseParse.ts、foldLlmStreamDeltas.ts、parseMessageThinking.ts
-    │       ├── normalizeTaskPlan.ts、describeTaskEvent.ts
-    │       └── …
+    ├── assets/                            # 静态资源（图片、字体等）
+    ├── config/
+    │   └── env.ts                          # 与构建/运行时相关的配置（如 VITE_API_BASE_URL）
+    ├── constants/
+    │   ├── index.ts                        # 聚合导出
+    │   └── task.ts                        # 分页默认值、任务状态 UI 映射等
     │
-    └── modules/
-        ├── shell/                          # 应用壳：布局、全局页
-        │   ├── pages/
-        │   │   ├── HomePage.tsx            # 路由 /overview
-        │   │   └── NotFoundPage.tsx
-        │   └── components/
-        │       ├── layout/                 # AppLayout、Sidebar、Header、GlobalPendingComposerBanner
-        │       └── common/                 # LoadingSpinner、ErrorAlert、EmptyState、ConfirmDialog
-        │
-        ├── chat/                           # 对话首页
-        │   ├── pages/ChatPage.tsx          # 路由 /（index）
-        │   └── components/chat/            # ChatMarkdown、SessionListPanel
-        │
-        ├── tasks/                          # 任务列表与详情、SSE 时间线
-        │   ├── pages/TaskListPage.tsx、TaskDetailPage.tsx
-        │   ├── api/tasks.ts、sse.ts
-        │   ├── hooks/useTasks.ts、useTaskDetail.ts、useTaskTimeline.ts、usePendingComposerTask.ts
-        │   ├── components/task/            # TaskTimeline、TaskPlanSteps、TaskEventRow
-        │   ├── stores/composerTaskStore.ts
-        │   └── types/task.ts
-        │
-        ├── sessions/
-        │   ├── api/sessions.ts
-        │   ├── hooks/useSession.ts
-        │   ├── stores/sessionStore.ts
-        │   └── types/session.ts
-        │
-        ├── settings/
-        │   ├── pages/SettingsPage.tsx      # 路由 /settings
-        │   ├── api/settings.ts
-        │   ├── hooks/useSettings.ts
-        │   ├── components/settings/        # 如 McpServersEditor
-        │   └── types/settings.ts、mcp.ts
-        │
-        └── tools/
-            ├── api/tools.ts
-            ├── hooks/useTools.ts
-            └── types/tool.ts
+    ├── types/                              # 与 OpenAPI / TECH_DESIGN 对齐的 TS 类型
+    │   ├── api.ts
+    │   ├── task.ts、session.ts、settings.ts、mcp.ts、tool.ts
+    │   └── …
+    │
+    ├── api/                                # HTTP 请求函数（按资源拆分文件）
+    │   ├── client.ts                       # baseURL、统一错误解析
+    │   ├── sessions.ts、settings.ts、tasks.ts、sse.ts、tools.ts
+    │   └── …
+    │
+    ├── utils/                              # 纯函数、流式/事件解析、日期与文案工具（原 core/lib）
+    │
+    ├── hooks/                              # TanStack Query、SSE 等数据 Hooks（全仓平铺，按文件名区分域）
+    ├── store/                              # Zustand：sessionStore、composerTaskStore、导航侧栏等
+    │
+    ├── layouts/                            # AppLayout、Sidebar、Header、PendingComposerTaskSync
+    │
+    ├── components/
+    │   ├── ui/                             # LoadingSpinner、ErrorAlert、EmptyState、ConfirmDialog
+    │   ├── chat/                           # ChatMarkdown、SessionListPanel、SidebarChatHistory
+    │   ├── task/                           # TaskTimeline、TaskPlanSteps、TaskEventRow
+    │   └── settings/                       # 如 McpServersEditor
+    │
+    ├── views/                              # 路由页面：ChatPage、HomePage、TaskListPage、…
+    ├── router/
+    │   └── index.tsx                       # createBrowserRouter + 页面 lazy
+    │
+    ├── plugins/                            # 第三方注册/工厂（如 TanStack Query 默认 Client）
+    └── directives/                         # 预留（React 无模板指令；可放横切 HOC/包装器）
 ```
 
 ### 3. 前端各模块详细说明
 
 #### 3.1 `src/App.tsx` — 根组件
 
-- 包裹 `QueryClientProvider`（TanStack Query）
+- 包裹 `QueryClientProvider`（TanStack Query，客户端工厂见 `plugins/react-query.ts`）
+- 以 `Suspense` 包裹 `RouterProvider`，承接路由级 `lazy` 页面
 - 包裹 `RouterProvider`（React Router）
 - 全局错误边界
 
-#### 3.2 `src/router.tsx` — 路由配置
+#### 3.2 `src/router/index.tsx` — 路由配置
 
 | 路由 | 页面组件 | 说明 |
 |------|----------|------|
-| `/` | `ChatPage`（`modules/chat`） | 对话首页（`index`） |
-| `/overview` | `HomePage`（`modules/shell`） | 概览 / 仪表盘 |
+| `/` | `views/ChatPage`（`lazy`） | 对话首页（`index`） |
+| `/overview` | `views/HomePage`（`lazy`） | 概览 / 仪表盘 |
 | `/chat` | — | 重定向到 `/` |
-| `/tasks` | `TaskListPage` | 任务列表 |
-| `/tasks/:taskId` | `TaskDetailPage` | 任务详情（计划 + 时间线） |
-| `/settings` | `SettingsPage` | 设置 |
-| `*` | `NotFoundPage` | 404 |
+| `/chat/history` | `views/SessionHistoryPage`（`lazy`） | 会话历史 |
+| `/tasks` | `views/TaskListPage`（`lazy`） | 任务列表 |
+| `/tasks/:taskId` | `views/TaskDetailPage`（`lazy`） | 任务详情（计划 + 时间线） |
+| `/settings` | `views/SettingsPage`（`lazy`） | 设置 |
+| `*` | `views/NotFoundPage`（`lazy`） | 404 |
 
-以上均包裹在 `AppLayout`（`modules/shell`）下。
+以上均包裹在 `AppLayout`（`layouts/AppLayout.tsx`）下。
 
-#### 3.3 `core/api/` 与各模块 `api/` — 请求层
+#### 3.3 `src/api/` — 请求层
 
 | 位置 | 职责 |
 |------|------|
-| `core/api/client.ts` | `baseURL`、统一错误解析（`ErrorResponse`）；各模块 API 函数共用 |
-| `modules/tasks/api/tasks.ts` | 任务 CRUD、事件列表 REST |
-| `modules/tasks/api/sse.ts` | 任务事件 SSE 订阅与重连 |
-| `modules/sessions/api/sessions.ts` | 会话与消息 |
-| `modules/settings/api/settings.ts` | 设置读写 |
-| `modules/tools/api/tools.ts` | 工具注册表列表 |
+| `api/client.ts` | `baseURL`（来自 `config/env.ts`）、统一错误解析（`ErrorResponse`）；各 API 模块共用 |
+| `api/tasks.ts` | 任务 CRUD、事件列表 REST |
+| `api/sse.ts` | 任务事件 SSE 订阅与重连 |
+| `api/sessions.ts` | 会话与消息 |
+| `api/settings.ts` | 设置读写 |
+| `api/tools.ts` | 工具注册表列表 |
 
-#### 3.4 各模块 `hooks/` — 数据 Hooks
+#### 3.4 `src/hooks/` — 数据 Hooks
 
-| 模块 | 文件 | 核心逻辑 |
+| 域（约定） | 文件 | 核心逻辑 |
 |------|------|----------|
 | tasks | `useTasks.ts` | 任务列表 Query（分页、筛选） |
 | tasks | `useTaskDetail.ts` | 单任务详情 |
@@ -347,31 +335,31 @@ frontend/
 | settings | `useSettings.ts` | 设置 Query + Mutation |
 | tools | `useTools.ts` | 工具列表 Query |
 
-#### 3.5 `modules/*/pages/` — 页面组件
+#### 3.5 `src/views/` — 页面组件
 
 | 页面 | 核心区块 | 数据依赖 |
 |------|----------|----------|
-| `ChatPage` | 会话侧栏 + 对话与流式展示 | `useSession`、会话消息与 SSE/流式相关 Hooks（见 `modules/chat`） |
+| `ChatPage` | 会话侧栏 + 对话与流式展示 | `useSession`、`api/sessions`、任务编排相关 Hooks |
 | `HomePage` | 最近任务 + 快捷发起任务 | `useTasks(limit=5)`、`useSession`、`createTask` |
 | `TaskListPage` | 列表与筛选 | `useTasks` |
 | `TaskDetailPage` | 状态、计划、时间线 | `useTaskDetail`、`useTaskTimeline` |
 | `SettingsPage` | MCP / Skills 等 | `useSettings` |
 | `NotFoundPage` | 404 | 无 |
 
-#### 3.6 `modules/*/components/` — 组件分组
+#### 3.6 `src/components/` — 组件分组
 
-组件按 **功能域** 放在对应 `modules/<domain>/components/` 下（如 `shell/layout`、`task`、`settings`、`chat`），避免跨域巨目录；全站通用块放在 `shell/components/common/`。
+按 **功能域** 分子目录（`chat/`、`task/`、`settings/`）；与页面解耦的通用 UI 放在 **`components/ui/`**。
 
 #### 3.7 Zustand：`sessionStore` 与 `composerTaskStore`
 
-- **`modules/sessions/stores/sessionStore.ts`**：当前 `session_id`（可与 `sessionStorage` 同步）。
-- **`modules/tasks/stores/composerTaskStore.ts`**：跨页展示「进行中编排/任务」等客户端状态（与 `GlobalPendingComposerBanner` 等配合）。
+- **`store/sessionStore.ts`**：当前 `session_id`（可与 `sessionStorage` 同步）。
+- **`store/composerTaskStore.ts`**：跨页展示「进行中编排/任务」等客户端状态（与全局横幅等配合）。
 
 服务端状态以 TanStack Query 为主；全局 Store 保持精简。
 
 #### 3.8 类型定义
 
-各域类型放在 **`modules/<domain>/types/`**（如 `task.ts`、`session.ts`）；与 OpenAPI / `TECH_DESIGN.md` 可追溯枚举对齐，例如：
+各域类型集中在 **`types/`**（如 `task.ts`、`session.ts`）；与 OpenAPI / `TECH_DESIGN.md` 可追溯枚举对齐，例如：
 
 ```
 TaskStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled'
@@ -385,15 +373,15 @@ ToolSource  = 'builtin' | 'mcp' | 'skill'
 
 ```
 用户在 ChatPage（或含表单的页面）提交任务
-  → modules/sessions/useSession 获取 session_id
-  → modules/tasks/api/tasks.ts createTask（body 以 OpenAPI 为准）
+  → hooks/useSession 获取 session_id
+  → api/tasks.ts createTask（body 以 OpenAPI 为准）
   → 后端返回 task_id 与事件流路径
   → 可导航到 /tasks/:taskId 或通过时间线 Hook 订阅
 
 TaskDetailPage 挂载
   → useTaskDetail(taskId) → 渲染计划（如 TaskPlanSteps）
-  → useTaskTimeline(taskId) → REST 已有事件 + modules/tasks/api/sse 打开 SSE
-      → core/lib 中流式/事件解析工具折叠增量、思考/作答拆分
+  → useTaskTimeline(taskId) → REST 已有事件 + api/sse.ts 打开 SSE
+      → utils/ 中流式/事件解析工具折叠增量、思考/作答拆分
       → TaskTimeline / TaskEventRow 按 seq 更新
   → 任务终态后 SSE 结束 → useTaskDetail refetch 最终状态
 ```
@@ -406,9 +394,9 @@ TaskDetailPage 挂载
 
 | 要点 | 做法 |
 |------|------|
-| 类型一致性 | 以后端 Pydantic + **`/openapi.json`** 为契约来源；前端 `core/types` 与各模块 `types` 与之对齐（可选用代码生成） |
+| 类型一致性 | 以后端 Pydantic + **`/openapi.json`** 为契约来源；前端 `src/types` 与之对齐（可选用代码生成） |
 | 枚举同步 | `TaskStatus`、`EventModule`、`EventKind` 等在 OpenAPI Schema 与 `TECH_DESIGN.md` 中可追溯；前端用字面量联合类型对齐 |
-| 错误格式 | 统一 `{ detail, code? }`；`core/api/client.ts` 统一解析 |
+| 错误格式 | 统一 `{ detail, code? }`；`api/client.ts` 统一解析 |
 
 ### 2. SSE 可靠性
 
@@ -458,8 +446,8 @@ SSE:  GET /events/stream (实时增量)
 | **3** 工具注册表 + MCP | `app/modules/tools/*` |
 | **4** Agent 运行时 | `app/modules/workflow/*`、`app/modules/planning/*`、`app/modules/execution/*` |
 | **5** SSE | `app/api/v1/tasks.py`（流式端点）、`app/services/event_stream_service.py`、`app/repositories/event_repository.py` |
-| **6** 前端壳 | `src/router.tsx`、`src/App.tsx`、`src/modules/shell/*`、`src/core/api/client.ts` |
-| **7** 前端业务闭环 | `src/modules/chat`、`src/modules/tasks`（含 `api/sse.ts`、`hooks`、`components`）、`src/modules/sessions`、`src/modules/settings` |
+| **6** 前端壳 | `src/router/index.tsx`、`src/App.tsx`、`src/layouts/*`、`src/api/client.ts`、`src/plugins/*` |
+| **7** 前端业务闭环 | `src/views`、`src/api`（含 `sse.ts`）、`src/hooks`、`src/components`、`src/store`、`src/types` |
 | **8** 质量与验收 | 手工回归清单 + **`/openapi.json`** 与前端类型联调；详见 [`docs/README.md`](../README.md) 索引 |
 
 ---

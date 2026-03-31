@@ -59,6 +59,8 @@ class TaskDetail(BaseModel):
     created_at: JsonUtcDatetime
     updated_at: JsonUtcDatetime
     error_message: str | None = None
+    #: 仅 PATCH 取消且回滚了「本轮新建」用户消息时返回，供前端恢复输入框
+    restored_user_message: str | None = None
 
 
 class TaskPatch(BaseModel):

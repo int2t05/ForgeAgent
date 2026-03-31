@@ -122,3 +122,10 @@ async def session_has_active_tasks(session: AsyncSession, session_id: str) -> bo
     return result.scalar_one_or_none() is not None
 
 
+async def list_task_ids_for_session(session: AsyncSession, session_id: str) -> list[str]:
+    """返回某会话下全部任务主键（与 LangGraph ``thread_id`` 对齐），用于清理 checkpoint。"""
+    stmt = select(Task.id).where(Task.session_id == session_id)
+    result = await session.execute(stmt)
+    return [str(x) for x in result.scalars().all()]
+
+

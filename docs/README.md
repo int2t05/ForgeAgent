@@ -5,7 +5,7 @@
 | 文档 | 说明 |
 |------|------|
 | [`architecture/TECH_DESIGN.md`](architecture/TECH_DESIGN.md) | 技术栈、数据模型、API 方向、环境与部署要点 |
-| [`architecture/ARCH.md`](architecture/ARCH.md) | 前后端目录与模块职责（与当前 `app/core`、`app/shared`、`app/modules`、`frontend/src/core`、`frontend/src/modules` 对齐） |
+| [`architecture/ARCH.md`](architecture/ARCH.md) | 前后端目录与模块职责（与当前 `app/core`、`app/shared`、`app/modules`、`frontend/src` 分层结构对齐） |
 | [`conversation-flow.md`](conversation-flow.md) | 对话、SSE、流式与业务流程说明 |
 | [`backend/业务流程文档.md`](backend/业务流程文档.md) | 后端业务流程与伪代码 |
 | [`backend/TODO.md`](backend/TODO.md) | 后端与 Agent 迭代 TODO |

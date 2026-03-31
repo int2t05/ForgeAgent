@@ -1,9 +1,12 @@
 """会话表 sessions 数据访问。"""
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.message import Message
 from app.models.session import Session as ChatSession
+from app.models.task import Task
+from app.models.task_event import TaskEvent
 
 
 async def get_session_by_id(
@@ -24,10 +27,16 @@ async def create_session_row(session: AsyncSession, row: ChatSession) -> ChatSes
 
 
 async def delete_session_by_id(session: AsyncSession, session_id: str) -> bool:
-    """按 id 删除会话；依赖外键级联清理消息与子任务及其事件。不存在返回 False。"""
+    """按 id 删除会话：显式删除事件、任务、消息再删会话行，保证业务库无残留。"""
     row = await get_session_by_id(session, session_id)
     if row is None:
         return False
+    tasks_in_session = select(Task.id).where(Task.session_id == session_id)
+    await session.execute(
+        delete(TaskEvent).where(TaskEvent.task_id.in_(tasks_in_session))
+    )
+    await session.execute(delete(Task).where(Task.session_id == session_id))
+    await session.execute(delete(Message).where(Message.session_id == session_id))
     await session.delete(row)
     await session.flush()
     return True
