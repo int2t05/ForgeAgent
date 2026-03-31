@@ -58,6 +58,16 @@ export function TaskDetailPage() {
     return latestPlanStepsFromEvents(events)
   }, [task, events])
 
+  const isReactPath = useMemo(
+    () =>
+      events.some(
+        (e) =>
+          e.kind === 'framework_selected' &&
+          (e.payload as { framework?: string } | null)?.framework === 'react',
+      ),
+    [events],
+  )
+
   if (isLoading) {
     return (
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -224,6 +234,11 @@ export function TaskDetailPage() {
             <TaskPlanSteps steps={planSteps} />
           ) : task.status === 'running' || task.status === 'pending' ? (
             <p className="fa-text-caption text-neutral-500">规划生成中…</p>
+          ) : isReactPath ? (
+            <p className="fa-text-caption text-neutral-600 leading-relaxed">
+              本任务为 <span className="font-medium text-neutral-800">ReAct</span>{' '}
+              模式：无预先拆解的静态计划，执行过程见下方时间线中的「工具与步骤」卡片。
+            </p>
           ) : (
             <p className="fa-text-caption text-neutral-500">暂无计划数据</p>
           )}

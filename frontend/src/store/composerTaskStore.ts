@@ -5,6 +5,18 @@ import { create } from 'zustand'
 import { latestPlanStepsFromEvents } from '@/utils/normalizeTaskPlan'
 import type { PlanStep } from '@/utils/normalizeTaskPlan'
 import type { TaskEvent } from '@/types/task'
+import {
+  composerRoundsHaveContent,
+  foldComposerLlmStreamForFreeze,
+  type ComposerRoundSegment,
+} from '@/utils/foldComposerLlmStream'
+
+/** 任务结束后保留在对话区的思考/行动快照（避免被清空后再也看不到） */
+export interface ComposerStreamFreeze {
+  taskId: string
+  sessionId: string
+  rounds: ComposerRoundSegment[]
+}
 
 export type ComposerSsePhase = 'idle' | 'loading' | 'streaming' | 'error'
 
@@ -37,6 +49,8 @@ interface ComposerTaskState {
   ssePhase: ComposerSsePhase
   sseError: string | null
   lastComposerHadLlmStream: boolean
+  /** 上一轮流式思考/行动归档；新任务 setPending 时清空 */
+  composerStreamFreeze: ComposerStreamFreeze | null
   setPending: (taskId: string, sessionId: string) => void
   clearPending: () => void
   setLiveEvents: (events: TaskEvent[]) => void
@@ -59,9 +73,11 @@ export const useComposerTaskStore = create<ComposerTaskState>()((set) => ({
   ssePhase: 'idle',
   sseError: null,
   lastComposerHadLlmStream: false,
+  composerStreamFreeze: null,
   setPending: (taskId, sessionId) =>
     set((state) => {
-      const { [sessionId]: _, ...restSticky } = state.stickyPlansBySession
+      const restSticky = { ...state.stickyPlansBySession }
+      delete restSticky[sessionId]
       return {
         pendingTaskId: taskId,
         pendingSessionId: sessionId,
@@ -71,12 +87,25 @@ export const useComposerTaskStore = create<ComposerTaskState>()((set) => ({
         sseError: null,
         lastComposerHadLlmStream: false,
         detachedComposerPlan: null,
+        composerStreamFreeze: null,
       }
     }),
   clearPending: () =>
     set((state) => {
       const tid = state.pendingTaskId
       const sid = state.pendingSessionId
+      const events = state.liveTaskEvents
+      let composerStreamFreeze: ComposerStreamFreeze | null = null
+      if (tid && sid && events.length > 0) {
+        const frozen = foldComposerLlmStreamForFreeze(events)
+        if (composerRoundsHaveContent(frozen.rounds)) {
+          composerStreamFreeze = {
+            taskId: tid,
+            sessionId: sid,
+            rounds: frozen.rounds,
+          }
+        }
+      }
       let nextPlans = state.plansByTaskId
       if (tid && sid) {
         const fromLive = latestPlanStepsFromEvents(state.liveTaskEvents)
@@ -97,6 +126,7 @@ export const useComposerTaskStore = create<ComposerTaskState>()((set) => ({
         ssePhase: 'idle',
         sseError: null,
         plansByTaskId: nextPlans,
+        composerStreamFreeze,
       }
     }),
   setLiveEvents: (events) =>
@@ -118,7 +148,8 @@ export const useComposerTaskStore = create<ComposerTaskState>()((set) => ({
   ackComposerStreamFlag: () => set({ lastComposerHadLlmStream: false }),
   clearStickyPlanForSession: (sessionId) =>
     set((state) => {
-      const { [sessionId]: _, ...restSticky } = state.stickyPlansBySession
+      const restSticky = { ...state.stickyPlansBySession }
+      delete restSticky[sessionId]
       const nextPlans: Record<string, ArchivedPlanEntry> = {
         ...state.plansByTaskId,
       }

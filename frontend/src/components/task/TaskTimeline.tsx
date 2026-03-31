@@ -4,7 +4,9 @@
 
 import { ErrorAlert } from '@/components/ui/ErrorAlert'
 import { TaskEventRow } from '@/components/task/TaskEventRow'
+import { TaskToolRoundBlock } from '@/components/task/TaskToolRoundBlock'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { buildTimelineRenderables } from '@/utils/groupTaskEvents'
 import type { TimelineConnectionState } from '@/hooks/useTaskTimeline'
 import type { TaskEvent } from '@/types/task'
 
@@ -33,6 +35,7 @@ function connectionHint(state: TimelineConnectionState): string {
 
 export function TaskTimeline({ events, connectionState, loadError }: TaskTimelineProps) {
   const hint = connectionHint(connectionState)
+  const items = buildTimelineRenderables(events)
 
   return (
     <div className="flex flex-col gap-4">
@@ -67,11 +70,17 @@ export function TaskTimeline({ events, connectionState, loadError }: TaskTimelin
 
       {events.length > 0 && (
         <ol className="flex flex-col gap-3">
-          {events.map((ev) => (
-            <li key={ev.seq}>
-              <TaskEventRow event={ev} />
-            </li>
-          ))}
+          {items.map((item) =>
+            item.type === 'step_group' ? (
+              <li key={`g-${item.stepId}-${item.events[0]?.seq ?? 0}`}>
+                <TaskToolRoundBlock events={item.events} />
+              </li>
+            ) : (
+              <li key={item.event.seq}>
+                <TaskEventRow event={item.event} />
+              </li>
+            ),
+          )}
         </ol>
       )}
     </div>

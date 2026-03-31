@@ -7,6 +7,7 @@ export type TaskStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancell
 export type EventModule = 'planning' | 'memory' | 'tool' | 'execution'
 
 export type EventKind =
+  | 'framework_selected'
   | 'plan_created'
   | 'step_start'
   | 'step_end'

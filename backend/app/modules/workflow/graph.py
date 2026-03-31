@@ -1,4 +1,8 @@
-"""LangGraph Agent 状态图：规划、执行、条件重规划回环至再规划。"""
+"""工作流编排：LangGraph Agent 状态图编译前定义。
+
+入口经 framework_router 分流为 plan_execute（planner→executor→可选重规划）
+或 react（react_executor 直达结束）；executor 与 replan_record 构成重规划回环。
+"""
 
 from __future__ import annotations
 
@@ -8,18 +12,28 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 
 from app.modules.execution.nodes import executor_node, route_after_executor
+from app.modules.execution.react_agent import react_executor_node
+from app.modules.planning.framework_router import framework_router_node, route_after_framework
 from app.modules.planning.nodes import planner_node, replan_record_node
 from app.modules.workflow.state import AgentState
 
 
 def build_agent_graph() -> StateGraph:
-    """构建未 compile 的 StateGraph（便于单测注入 mock）。"""
+    """返回已挂接全部节点与边、尚未 compile 的 StateGraph。"""
     builder = StateGraph(AgentState)
+    builder.add_node("framework_router", framework_router_node)
     builder.add_node("planner", planner_node)
     builder.add_node("executor", executor_node)
+    builder.add_node("react_executor", react_executor_node)
     builder.add_node("replan_record", replan_record_node)
-    builder.add_edge(START, "planner")
+    builder.add_edge(START, "framework_router")
+    builder.add_conditional_edges(
+        "framework_router",
+        route_after_framework,
+        {"planner": "planner", "react": "react_executor"},
+    )
     builder.add_edge("planner", "executor")
+    builder.add_edge("react_executor", END)
     builder.add_conditional_edges(
         "executor",
         route_after_executor,

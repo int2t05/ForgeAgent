@@ -8,6 +8,7 @@ import type {
   TaskCreateBody,
   TaskCreateResponse,
   TaskDetail,
+  TaskEvent,
   TaskEventsResponse,
   TaskListResponse,
   TaskPatchBody,
@@ -62,6 +63,27 @@ export function getTaskEvents(
   const params: Record<string, string> = { limit: String(limit) }
   if (afterSeq != null) params.after_seq = String(afterSeq)
   return get<TaskEventsResponse>(`/api/v1/tasks/${taskId}/events`, params)
+}
+
+/**
+ * 分页拉取任务内事件；`afterSeq` 有值时仅拉取其后的行（与 GET /events 一致）。
+ * ReAct 等场景下单次 limit 易截断在 stream delta 中，需分页拉全量。
+ */
+export async function getAllTaskEvents(
+  taskId: string,
+  afterSeq?: number,
+): Promise<TaskEvent[]> {
+  const bySeq = new Map<number, TaskEvent>()
+  let cursor: number | undefined = afterSeq
+  for (;;) {
+    const res = await getTaskEvents(taskId, cursor, 200)
+    for (const e of res.events) {
+      bySeq.set(e.seq, e)
+    }
+    if (res.events.length < 200) break
+    cursor = res.events[res.events.length - 1]!.seq
+  }
+  return [...bySeq.values()].sort((a, b) => a.seq - b.seq)
 }
 
 /** 删除已结束任务（running/pending 时后端返回 409）。 */

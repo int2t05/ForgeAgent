@@ -17,12 +17,16 @@ def is_llm_configured(settings: Settings | None = None) -> bool:
 
 
 def build_chat_model(settings: Settings) -> ChatOpenAI:
-    """根据 Settings 构造 ChatOpenAI（base_url 可选）。"""
+    """根据 Settings 构造 ChatOpenAI（base_url、超时与重试可选）。"""
     kwargs: dict[str, Any] = {
         "model": settings.openai_model,
         "api_key": settings.openai_api_key,
+        "max_retries": max(0, int(settings.openai_max_retries)),
     }
     base = (settings.openai_api_base or "").strip()
     if base:
         kwargs["base_url"] = base
+    # 显式 request_timeout：避免上游永久 pending 表现为「后端卡死」
+    if float(settings.openai_request_timeout) > 0:
+        kwargs["request_timeout"] = float(settings.openai_request_timeout)
     return ChatOpenAI(**kwargs)

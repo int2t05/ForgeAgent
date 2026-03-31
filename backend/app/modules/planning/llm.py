@@ -40,9 +40,7 @@ def _tools_catalog_for_prompt(tools: Sequence[ToolItem]) -> str:
 
 
 def build_planner_system_prompt(tools: Sequence[ToolItem]) -> str:
-    """
-    构造规划用 System 提示：固定输出契约 + 动态工具目录（LangChain/工具绑定常见做法：模型所见与注册表同步）。
-    """
+    """生成规划阶段使用的 System 提示串（JSON 步骤契约与动态工具目录）。"""
     catalog_block = _tools_catalog_for_prompt(tools)
     if tools:
         names_line = "、".join(t.name for t in tools)
@@ -78,6 +76,11 @@ def _strip_markdown_json_fence(text: str) -> str:
     t = re.sub(r"^```(?:json)?\s*", "", t, count=1, flags=re.IGNORECASE)
     t = re.sub(r"\s*```\s*$", "", t)
     return t.strip()
+
+
+def parse_llm_json_object(text: str) -> dict[str, Any] | None:
+    """从模型输出文本中解析单个 JSON 对象，失败时返回 None。"""
+    return _extract_json_object(text)
 
 
 def _extract_json_object(text: str) -> dict[str, Any] | None:
@@ -147,13 +150,8 @@ async def plan_steps_with_llm(
     chat_messages: Sequence[BaseMessage],
     settings: Settings | None = None,
 ) -> list[dict[str, Any]]:
-    """根据多轮会话消息产出计划步骤列表；未配置 LLM 或解析失败时使用默认两步。
-
-    ``chat_messages`` 须为 LangChain ``BaseMessage`` 序列（通常为 user/assistant 交替）；
-    规划 System 提示中的工具目录来自进程内 ``ToolRegistry`` 快照，与 GET /tools 一致，
-    新增内置或 MCP/Skill 工具后无需再改此处硬编码列表。
-    """
-    # 延迟导入，避免在仅加载配置或未拉起注册表时形成不必要依赖
+    """根据会话消息生成计划步骤；无可用 LLM 或解析失败时回退内置默认步骤。"""
+    # 延迟导入，避免仅加载配置时依赖工具注册表
     from app.modules.tools.registry import tool_registry
 
     s = settings or get_settings()
@@ -168,9 +166,6 @@ async def plan_steps_with_llm(
     # 2. 调用模型并解析 JSON；无效则回退默认步骤
     try:
         msg = await chat.ainvoke([SystemMessage(content=sys), *list(chat_messages)])
-
-        logger.warning(msg)
-        
         content = getattr(msg, "content", None)
         text = content if isinstance(content, str) else str(content or "")
         data = _extract_json_object(text)

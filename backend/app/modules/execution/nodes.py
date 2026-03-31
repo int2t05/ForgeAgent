@@ -23,15 +23,20 @@ _TK_C = "\u003c/think\u003e"
 class _StreamDeltaBatcher:
     """llm_stream_delta 批量落库（减 SQLite 写入次数）。"""
 
-    def __init__(self, task_id: str) -> None:
+    def __init__(self, task_id: str, step_id: str | None = None) -> None:
         self._task_id = task_id
-        self._pending: dict[str, list[str]] = {"thinking": [], "answer": []}
+        self._step_id = step_id
+        self._pending: dict[str, list[str]] = {
+            "thinking": [],
+            "action": [],
+            "answer": [],
+        }
         self._buf_chars = 0
         self._last_flush = time.monotonic()
 
     async def add(self, phase: str, delta: str) -> None:
         """将流式片段暂存，并在达到字符或时间阈值时触发刷盘。"""
-        if not delta:
+        if not delta or phase not in self._pending:
             return
         self._pending[phase].append(delta)
         self._buf_chars += len(delta)
@@ -40,13 +45,16 @@ class _StreamDeltaBatcher:
             await self.flush()
 
     async def flush(self) -> None:
-        """将 thinking/answer 缓冲合并为 llm_stream_delta 事件写入库。"""
-        for ph in ("thinking", "answer"):
+        """将 thinking / action / answer 缓冲合并为 llm_stream_delta 事件写入库。"""
+        for ph in ("thinking", "action", "answer"):
             if not self._pending[ph]:
                 continue
             merged = "".join(self._pending[ph])
             self._pending[ph].clear()
-            payload = json.dumps({"phase": ph, "delta": merged}, ensure_ascii=False)
+            obj: dict[str, object] = {"phase": ph, "delta": merged}
+            if self._step_id:
+                obj["step_id"] = self._step_id
+            payload = json.dumps(obj, ensure_ascii=False)
             async with AsyncSessionLocal() as db:
                 async with db.begin():
                     await event_repository.append_event(
@@ -226,7 +234,7 @@ async def executor_node(state: AgentState) -> dict:
                     "replan_requested": False,
                 }
 
-    # 若仅做 step_start 预演：由此返回重规划请求或超次失败，不进入总结 LLM
+    # 4. 仅预演 step_start：返回重规划请求或超次失败，不进入总结 LLM
     if budget > 0:
         if replan_count < max_r:
             return {
@@ -250,7 +258,7 @@ async def executor_node(state: AgentState) -> dict:
             "replan_requested": False,
         }
 
-    # 4. 流式调用 LLM 生成最终 thinking/answer 并批量写入流式增量事件
+    # 5. 流式调用 LLM 生成最终 thinking/answer 并批量写入流式增量事件
     user_message = state.get("user_message") or ""
     settings = get_settings()
     full_t = ""

@@ -5,7 +5,7 @@
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { buildTaskEventsStreamUrl, consumeTaskEventStream } from '@/api/sse'
-import { getTaskEvents } from '@/api/tasks'
+import { getAllTaskEvents, getTaskEvents } from '@/api/tasks'
 import { useComposerTaskStore } from '@/store/composerTaskStore'
 import type { TaskEvent } from '@/types/task'
 
@@ -51,18 +51,13 @@ export function usePendingComposerTaskSync() {
       const bySeq = new Map<number, TaskEvent>()
 
       try {
-        let cursor: number | undefined = undefined
-        while (!cancelled) {
-          const res = await getTaskEvents(taskId, cursor, EVENT_PAGE_LIMIT)
-          if (cancelled) return
-          for (const e of res.events) {
-            bySeq.set(e.seq, e)
-            if (e.kind === 'llm_stream_delta') {
-              useComposerTaskStore.setState({ lastComposerHadLlmStream: true })
-            }
-          }
-          if (res.events.length < EVENT_PAGE_LIMIT) break
-          cursor = res.events[res.events.length - 1]!.seq
+        const initial = await getAllTaskEvents(taskId)
+        if (cancelled) return
+        for (const e of initial) {
+          bySeq.set(e.seq, e)
+        }
+        if (initial.some((e) => e.kind === 'llm_stream_delta')) {
+          useComposerTaskStore.setState({ lastComposerHadLlmStream: true })
         }
 
         useComposerTaskStore.getState().setLiveEvents(sortEventsFromMap(bySeq))
@@ -90,13 +85,13 @@ export function usePendingComposerTaskSync() {
         if (cancelled) return
 
         const lastSeq = maxSeqInMap(bySeq)
-        const gap = await getTaskEvents(taskId, lastSeq, EVENT_PAGE_LIMIT)
-        if (!cancelled && gap.events.length > 0) {
-          for (const e of gap.events) {
+        const gap = await getAllTaskEvents(taskId, lastSeq)
+        if (!cancelled && gap.length > 0) {
+          for (const e of gap) {
             bySeq.set(e.seq, e)
-            if (e.kind === 'llm_stream_delta') {
-              useComposerTaskStore.setState({ lastComposerHadLlmStream: true })
-            }
+          }
+          if (gap.some((e) => e.kind === 'llm_stream_delta')) {
+            useComposerTaskStore.setState({ lastComposerHadLlmStream: true })
           }
           useComposerTaskStore.getState().setLiveEvents(sortEventsFromMap(bySeq))
         }

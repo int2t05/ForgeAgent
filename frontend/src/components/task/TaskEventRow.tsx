@@ -14,6 +14,7 @@ const MODULE_LABEL: Record<string, string> = {
 }
 
 const KIND_LABEL: Record<string, string> = {
+  framework_selected: '认知框架已选定',
   plan_created: '计划已生成',
   step_start: '步骤开始',
   step_end: '步骤结束',

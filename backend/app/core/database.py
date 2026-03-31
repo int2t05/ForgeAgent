@@ -26,9 +26,11 @@ def _register_sqlite_pragma(eng: AsyncEngine) -> None:
 
     @event.listens_for(eng.sync_engine, "connect")
     def _set_sqlite_pragma(dbapi_conn, connection_record):  # noqa: ARG001
-        """connect 钩子：执行 PRAGMA foreign_keys=ON。"""
+        # 1. 每个新连接启用外键
+        # 2. WAL 减轻多连接并发写时的锁等待
         cursor = dbapi_conn.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA journal_mode=WAL")
         cursor.close()
 
 

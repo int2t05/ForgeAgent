@@ -27,9 +27,13 @@ import {
 import { Link } from 'react-router'
 import { ApiRequestError } from '@/api/client'
 import { errDetail } from '@/utils/errDetail'
-import { foldLlmStreamDeltas } from '@/utils/foldLlmStreamDeltas'
+import {
+  foldComposerLlmStreamForBusy,
+  foldComposerLlmStreamForFreeze,
+} from '@/utils/foldComposerLlmStream'
 import { latestPlanStepsFromEvents, normalizePlanStepsFromUnknown } from '@/utils/normalizeTaskPlan'
 import { splitThinkingFromMessage } from '@/utils/parseMessageThinking'
+import { ComposerLlmStreamPanel } from '@/components/chat/ComposerLlmStreamPanel'
 import { TaskPlanSteps } from '@/components/task/TaskPlanSteps'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ErrorAlert } from '@/components/ui/ErrorAlert'
@@ -47,6 +51,7 @@ import {
 } from '@/api/sessions'
 import {
   createTask,
+  getAllTaskEvents,
   getTask,
   getTaskEvents,
   getTasks,
@@ -216,91 +221,6 @@ function isNearScrollBottom(el: HTMLElement, thresholdPx = 96): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight <= thresholdPx
 }
 
-/**
- * 流式阶段：thinking 独立块且默认折叠（仍持续写入 DOM，展开可看）；
- * 正文在 `.fa-chat-stream-nested` 内单独滚动。
- */
-const LlmStreamingPanel = memo(function LlmStreamingPanel({
-  thinking,
-  answer,
-  sseError,
-}: {
-  thinking: string
-  answer: string
-  sseError: string | null
-}) {
-  const [thinkingOpen, setThinkingOpen] = useState(false)
-  const thinkingPreRef = useRef<HTMLPreElement>(null)
-
-  /** 展开时跟随流式追加，滚到底部便于阅读最新片段 */
-  useEffect(() => {
-    if (!thinkingOpen || !thinking) return
-    const el = thinkingPreRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [thinking, thinkingOpen])
-
-  return (
-    <>
-      {thinking ? (
-        <div className="fa-chat-thread">
-          <div className="fa-chat-block-thinking">
-            <details
-              className="fa-thinking-fold"
-              open={thinkingOpen}
-              onToggle={(e) => setThinkingOpen(e.currentTarget.open)}
-            >
-              <summary className="fa-thinking-summary">
-                <span className="fa-chat-fold-link">思考过程</span>
-                <span className="fa-chat-fold-chevron" aria-hidden>
-                  ›
-                </span>
-              </summary>
-              <pre ref={thinkingPreRef} className="fa-chat-thinking-pre">
-                {thinking}
-              </pre>
-            </details>
-          </div>
-        </div>
-      ) : null}
-      <div className="fa-chat-thread">
-        <div className="fa-chat-block-stream">
-          <span className="fa-chat-stream-status">
-            <span className="relative flex h-1.5 w-1.5 shrink-0">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-400 opacity-40" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary-500" />
-            </span>
-            生成中
-          </span>
-          {answer.trim() ? (
-            <div className="fa-chat-stream-nested">
-              <Suspense
-            fallback={
-              <p
-                className="whitespace-pre-wrap text-neutral-500"
-                style={{ fontSize: 'var(--fa-chat-fs)' }}
-              >
-                {answer}
-              </p>
-            }
-              >
-                <ChatMarkdown content={answer} variant="assistant" />
-              </Suspense>
-            </div>
-          ) : null}
-          {sseError ? (
-            <p
-              className="mt-1.5 text-red-600"
-              style={{ fontSize: 'calc(var(--fa-chat-fs) * 0.88)' }}
-            >
-              {sseError}
-            </p>
-          ) : null}
-        </div>
-      </div>
-    </>
-  )
-})
-
 /** 已落库助手消息的思考段：小号辅文 + 链接式折叠 */
 const AssistantThinkingPanel = memo(function AssistantThinkingPanel({
   thinking,
@@ -317,7 +237,7 @@ const AssistantThinkingPanel = memo(function AssistantThinkingPanel({
         onToggle={(e) => setOpen(e.currentTarget.open)}
       >
         <summary className="fa-thinking-summary">
-          <span className="fa-chat-fold-link">思考过程</span>
+          <span className="fa-chat-fold-link">Thought</span>
           <span className="fa-chat-fold-chevron" aria-hidden>
             ›
           </span>
@@ -344,7 +264,7 @@ const PlanStepsDialogBubble = memo(function PlanStepsDialogBubble({
           onToggle={(e) => setOpen(e.currentTarget.open)}
         >
           <summary className="fa-plan-summary">
-            <span className="fa-chat-fold-link">执行计划</span>
+            <span className="fa-chat-fold-link">Planning</span>
             <span className="fa-chat-fold-chevron" aria-hidden>
               ›
             </span>
@@ -371,6 +291,9 @@ export function ChatPage() {
   const [editDraft, setEditDraft] = useState('')
   const messagesScrollRef = useRef<HTMLDivElement>(null)
   const listEndRef = useRef<HTMLDivElement>(null)
+  const prevBusyRef = useRef(false)
+  /** 发送或从服务端恢复进行中任务时记下会话：clearPending 后仅靠 store 无法判断是否本轮对话。 */
+  const composerTargetSessionRef = useRef<string | null>(null)
 
   const sessionDetailQuery = useQuery({
     queryKey: ['session', sessionId, 'detail'],
@@ -399,6 +322,45 @@ export function ChatPage() {
     queryFn: () => getTasks({ session_id: sessionId!, limit: 100, offset: 0 }),
     enabled: Boolean(sessionId),
   })
+
+  /**
+   * 全页刷新或新开标签后 Zustand 无 pendingTaskId，SSE 不会挂载，界面既无「生成中」也无法补拉流式片段。
+   * 若本会话最新任务仍在 running/pending，则以任务详情为准恢复 setPending（避免列表缓存滞后误重连）。
+   */
+  useEffect(() => {
+    let cancelled = false
+    async function hydratePendingFromActiveTask() {
+      if (!sessionId || !sessionTasksQuery.isSuccess) return
+      const items = sessionTasksQuery.data?.items ?? []
+      const head = items[0]
+      if (!head || (head.status !== 'running' && head.status !== 'pending')) return
+      if (useComposerTaskStore.getState().pendingTaskId === head.id) return
+      try {
+        const detail = await queryClient.fetchQuery({
+          queryKey: ['task', head.id],
+          queryFn: () => getTask(head.id),
+        })
+        if (cancelled) return
+        if (detail.status !== 'running' && detail.status !== 'pending') return
+        if (useComposerTaskStore.getState().pendingTaskId === head.id) return
+        composerTargetSessionRef.current = sessionId
+        useComposerTaskStore.getState().setPending(head.id, sessionId)
+      } catch {
+        /* 忽略校验失败，不阻塞对话 */
+      }
+    }
+    void hydratePendingFromActiveTask()
+    return () => {
+      cancelled = true
+    }
+  }, [
+    sessionId,
+    sessionTasksQuery.isSuccess,
+    sessionTasksQuery.data?.items?.[0]?.id,
+    sessionTasksQuery.data?.items?.[0]?.status,
+    queryClient,
+  ])
+
   const latestSessionTaskId = sessionTasksQuery.data?.items[0]?.id
   const tasksChrono = useMemo(() => {
     const items = sessionTasksQuery.data?.items ?? []
@@ -466,10 +428,6 @@ export function ChatPage() {
 
   const busy = usePendingComposerTaskBusy()
   const { pendingTaskId } = usePendingComposerTaskMeta()
-
-  const prevBusyRef = useRef(false)
-  /** 发送时记下会话：clearPending 后 pendingSessionId 已空，不能靠 store 判断是否本轮对话任务。 */
-  const composerTargetSessionRef = useRef<string | null>(null)
 
   useEffect(() => {
     const wasBusy = prevBusyRef.current
@@ -588,7 +546,64 @@ export function ChatPage() {
   const plansByTaskId = useComposerTaskStore((s) => s.plansByTaskId)
   const detachedComposerPlan = useComposerTaskStore((s) => s.detachedComposerPlan)
   const sseError = useComposerTaskStore((s) => s.sseError)
-  const streamedLlm = useMemo(() => foldLlmStreamDeltas(liveTaskEvents), [liveTaskEvents])
+  const composerStreamFreeze = useComposerTaskStore((s) => s.composerStreamFreeze)
+  const streamedLlm = useMemo(
+    () => foldComposerLlmStreamForBusy(liveTaskEvents, busy),
+    [liveTaskEvents, busy],
+  )
+
+  const tailTask = tasksChrono.length ? tasksChrono[tasksChrono.length - 1]! : undefined
+  const tailTaskId = tailTask?.id
+
+  /** 刷新后内存无 freeze 时，分页拉全量事件重建 Thought/Action（单次 limit 会截断在 delta 里导致缺 tool_call）。 */
+  const taskEventsComposerArchiveQuery = useQuery({
+    queryKey: ['task', tailTaskId, 'events', 'composer-archive-full'] as const,
+    queryFn: () => getAllTaskEvents(tailTaskId!),
+    enabled:
+      Boolean(sessionId) &&
+      Boolean(tailTaskId) &&
+      !busy &&
+      tailTask != null &&
+      tailTask.status !== 'running' &&
+      tailTask.status !== 'pending',
+    staleTime: 60_000,
+  })
+
+  const serverComposerRounds = useMemo(() => {
+    const ev = taskEventsComposerArchiveQuery.data
+    if (!ev?.length) return null
+    const { rounds } = foldComposerLlmStreamForFreeze(ev)
+    if (!rounds.some((r) => r.thought.trim() || r.action != null)) return null
+    return rounds
+  }, [taskEventsComposerArchiveQuery.data])
+
+  const composerArchiveRounds = useMemo(() => {
+    if (
+      composerStreamFreeze != null &&
+      sessionId != null &&
+      tailTaskId != null &&
+      composerStreamFreeze.sessionId === sessionId &&
+      composerStreamFreeze.taskId === tailTaskId
+    ) {
+      return composerStreamFreeze.rounds
+    }
+    return serverComposerRounds
+  }, [composerStreamFreeze, sessionId, tailTaskId, serverComposerRounds])
+
+  const archiveMatchesSessionTask =
+    !busy &&
+    sessionId != null &&
+    composerArchiveRounds != null &&
+    composerArchiveRounds.some((r) => r.thought.trim() || r.action != null) &&
+    tailTaskId != null
+
+  const insertArchiveBeforeLastAssistant =
+    archiveMatchesSessionTask &&
+    messages.length > 0 &&
+    messages[messages.length - 1]?.role === 'assistant'
+
+  const showArchiveAfterMessages =
+    archiveMatchesSessionTask && !insertArchiveBeforeLastAssistant
 
   const isStreamingTask = Boolean(busy && pendingTaskId)
   const composerActionDisabled =
@@ -679,8 +694,15 @@ export function ChatPage() {
   }, [
     messagesQuery.data?.messages.length,
     busy,
-    streamedLlm.thinking.length,
+    streamedLlm.rounds.reduce(
+      (n, r) => n + r.thought.length + (r.action?.body.length ?? 0),
+      0,
+    ),
     streamedLlm.answer.length,
+    composerArchiveRounds?.reduce(
+      (n, r) => n + r.thought.length + (r.action?.body.length ?? 0),
+      0,
+    ) ?? 0,
   ])
 
   const sessionLoadError =
@@ -813,8 +835,20 @@ export function ChatPage() {
                   )}
                   {messages.map((m, i) => {
                     const planAfter = planStepsAfterUserMessageAt(i)
+                    const archiveBeforeThisAssistant =
+                      insertArchiveBeforeLastAssistant &&
+                      i === messages.length - 1 &&
+                      m.role === 'assistant'
                     return (
                       <Fragment key={m.id}>
+                        {archiveBeforeThisAssistant && composerArchiveRounds ? (
+                          <ComposerLlmStreamPanel
+                            variant="archived"
+                            rounds={composerArchiveRounds}
+                            answer=""
+                            sseError={null}
+                          />
+                        ) : null}
                         <MessageBubble
                           message={m}
                           editing={editingMessageId === m.id}
@@ -855,10 +889,19 @@ export function ChatPage() {
                     </div>
                   ) : null}
                   {busy ? (
-                    <LlmStreamingPanel
-                      thinking={streamedLlm.thinking}
+                    <ComposerLlmStreamPanel
+                      variant="streaming"
+                      rounds={streamedLlm.rounds}
                       answer={streamedLlm.answer}
                       sseError={sseError}
+                    />
+                  ) : null}
+                  {showArchiveAfterMessages && composerArchiveRounds ? (
+                    <ComposerLlmStreamPanel
+                      variant="archived"
+                      rounds={composerArchiveRounds}
+                      answer=""
+                      sseError={null}
                     />
                   ) : null}
                   <div ref={listEndRef} />
