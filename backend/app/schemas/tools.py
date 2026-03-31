@@ -1,17 +1,21 @@
 """工具注册表只读 REST 模型。"""
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 
 class ToolItem(BaseModel):
-    """统一工具描述：名称、说明、来源、可选只读标记。"""
+    """统一工具描述：名称、说明、来源、可选只读标记与可选 JSON Schema 参数。"""
 
     name: str
     description: str
     source: Literal["builtin", "mcp", "skill"]
     read_only: bool | None = None
+    parameters: dict[str, Any] | None = Field(
+        default=None,
+        description="OpenAPI/JSON Schema 风格的入参定义（与 LangChain args_schema 对齐时可提供）。",
+    )
 
 
 class ToolsListResponse(BaseModel):

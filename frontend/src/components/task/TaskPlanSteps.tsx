@@ -13,14 +13,14 @@ export function TaskPlanSteps({ steps, className = '' }: TaskPlanStepsProps) {
       {steps.map((s, index) => (
         <li
           key={`${s.id}-${index}`}
-          className="flex items-start gap-2 text-neutral-800"
+          className="flex items-start gap-1.5 text-neutral-800"
         >
           <span
-            className="mt-[0.15em] inline-flex h-[1.15em] min-w-[1.15em] shrink-0 items-center justify-center rounded-full border border-primary-200/70 bg-primary-50/90 px-0.5 font-mono font-semibold text-primary-700 tabular-nums leading-none"
-            style={{ fontSize: 'calc(var(--fa-chat-fs) * 0.72)' }}
+            className="mt-[0.08em] w-5 shrink-0 tabular-nums text-neutral-400"
+            style={{ fontSize: 'calc(var(--fa-chat-fs) * 0.88)' }}
             aria-hidden
           >
-            {s.id}
+            {index + 1}.
           </span>
           <span className="min-w-0 flex-1" style={{ fontSize: 'var(--fa-chat-fs)', lineHeight: 'var(--fa-chat-lh)' }}>
             {s.title}

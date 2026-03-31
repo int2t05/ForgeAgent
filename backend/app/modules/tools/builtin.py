@@ -1,21 +1,9 @@
-"""内置工具元数据（执行逻辑见 ``builtin_executor.execute_builtin``）。"""
+"""内置工具元数据（与 ``builtin_lc`` 中 LangChain 定义对齐）。"""
 
+from app.modules.tools.builtin_lc import list_builtin_tools_from_lc
 from app.schemas.tools import ToolItem
 
 
 def list_builtin_tools() -> list[ToolItem]:
-    """返回进程内始终可用的内置工具清单。"""
-    return [
-        ToolItem(
-            name="echo",
-            description="回显输入文本（开发调试用内置工具）",
-            source="builtin",
-            read_only=True,
-        ),
-        ToolItem(
-            name="mock_search",
-            description="占位：返回固定检索结果，供列表与执行链路联调",
-            source="builtin",
-            read_only=True,
-        ),
-    ]
+    """返回进程内始终可用的内置工具清单（含 JSON Schema 参数）。"""
+    return list_builtin_tools_from_lc()
