@@ -4,13 +4,14 @@
  */
 
 import { createBrowserRouter, Navigate } from 'react-router'
-import { AppLayout } from '@/components/layout/AppLayout'
-import { HomePage } from '@/pages/HomePage'
-import { ChatPage } from '@/pages/ChatPage'
-import { TaskListPage } from '@/pages/TaskListPage'
-import { TaskDetailPage } from '@/pages/TaskDetailPage'
-import { SettingsPage } from '@/pages/SettingsPage'
-import { NotFoundPage } from '@/pages/NotFoundPage'
+import { AppLayout } from '@/modules/shell/components/layout/AppLayout'
+import { HomePage } from '@/modules/shell/pages/HomePage'
+import { ChatPage } from '@/modules/chat/pages/ChatPage'
+import { SessionHistoryPage } from '@/modules/chat/pages/SessionHistoryPage'
+import { TaskListPage } from '@/modules/tasks/pages/TaskListPage'
+import { TaskDetailPage } from '@/modules/tasks/pages/TaskDetailPage'
+import { SettingsPage } from '@/modules/settings/pages/SettingsPage'
+import { NotFoundPage } from '@/modules/shell/pages/NotFoundPage'
 
 export const router = createBrowserRouter([
   {
@@ -19,6 +20,7 @@ export const router = createBrowserRouter([
       { index: true, element: <ChatPage /> },
       { path: 'overview', element: <HomePage /> },
       { path: 'chat', element: <Navigate to="/" replace /> },
+      { path: 'chat/history', element: <SessionHistoryPage /> },
       { path: 'tasks', element: <TaskListPage /> },
       { path: 'tasks/:taskId', element: <TaskDetailPage /> },
       { path: 'settings', element: <SettingsPage /> },

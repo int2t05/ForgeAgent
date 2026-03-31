@@ -1,6 +1,6 @@
 """会话消息表 messages 数据访问。"""
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.message import Message
@@ -45,6 +45,27 @@ async def list_messages(
     )
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+async def map_last_message_content_by_session_ids(
+    session: AsyncSession,
+    session_ids: list[str],
+) -> dict[str, str]:
+    """批量查询每个会话 id 对应「最后一条消息」的正文（按 message.id 最大）。"""
+    if not session_ids:
+        return {}
+    subq = (
+        select(Message.session_id, func.max(Message.id).label("max_id"))
+        .where(Message.session_id.in_(session_ids))
+        .group_by(Message.session_id)
+        .subquery()
+    )
+    stmt = select(Message.session_id, Message.content).join(
+        subq,
+        (Message.session_id == subq.c.session_id) & (Message.id == subq.c.max_id),
+    )
+    result = await session.execute(stmt)
+    return {str(sid): content for sid, content in result.all()}
 
 
 async def update_message_content(

@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.deps import get_db
+from app.core.deps import get_db
 from app.schemas.common import OperationOkResponse
 from app.schemas.session import (
     MessageCreate,

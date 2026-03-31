@@ -1,82 +1,90 @@
 @import 'tailwindcss';
 
-/* 全局：冷灰界面 + 天青强调。字号：--fa-text-base/sm/xs 与 body 对齐；对话 --fa-chat-fs 通常同 base */
+/* 全局：豆包式浅色界面 — 中文优先系统黑体 + Inter；正文约 #333、行距宽松；柔和亮蓝强调 */
 @theme {
   --font-sans:
-    'DM Sans', 'Noto Sans SC', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+    'Inter', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei',
+    'Noto Sans SC', ui-sans-serif, system-ui, sans-serif, 'Segoe UI', 'Apple Color Emoji',
     'Segoe UI Emoji';
   --font-display:
-    'Outfit', 'DM Sans', 'Noto Sans SC', ui-sans-serif, system-ui, sans-serif;
+    'Inter', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', ui-sans-serif, system-ui,
+    sans-serif;
   --font-mono:
     'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, SFMono-Regular, Menlo,
     Consolas, monospace;
 
-  /* 相对默认刻度整体小一号（与 :root --fa-text-* 一致） */
   --text-xs: 0.6875rem;
   --text-sm: 0.8125rem;
-  --text-base: 0.875rem;
-  --text-lg: 1rem;
-  --text-xl: 1.125rem;
-  --text-2xl: 1.25rem;
-  --text-3xl: 1.5rem;
-  --text-4xl: 1.875rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1.0625rem;
+  --text-xl: 1.1875rem;
+  --text-2xl: 1.3125rem;
+  --text-3xl: 1.5625rem;
+  --text-4xl: 1.9375rem;
 
-  --color-primary-50: #f0f9ff;
-  --color-primary-100: #e0f2fe;
-  --color-primary-200: #bae6fd;
-  --color-primary-300: #7dd3fc;
-  --color-primary-400: #38bdf8;
-  --color-primary-500: #0ea5e9;
-  --color-primary-600: #0284c7;
-  --color-primary-700: #0369a1;
-  --color-primary-800: #075985;
-  --color-primary-900: #0c4a6e;
+  /* 接近豆包/常见国内产品的亮蓝强调 */
+  --color-primary-50: #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-200: #bfdbfe;
+  --color-primary-300: #93c5fd;
+  --color-primary-400: #60a5fa;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+  --color-primary-800: #1e40af;
+  --color-primary-900: #1e3a8a;
 }
 
 :root {
-  --color-primary: #0284c7;
-  --color-primary-hover: #0369a1;
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
   --color-success: #059669;
   --color-danger: #dc2626;
   --color-warning: #d97706;
   --fa-shadow-card: 0 1px 3px rgb(15 23 42 / 0.05);
-  --fa-shadow-btn: 0 1px 2px rgb(3 105 161 / 0.14);
+  --fa-shadow-btn: 0 1px 2px rgb(37 99 235 / 0.2);
 
-  /* 全站字号（在默认基础上小一档） */
-  --fa-text-base: 0.875rem;
+  --fa-text-base: 0.9375rem;
   --fa-text-sm: 0.8125rem;
   --fa-text-xs: 0.6875rem;
 
-  /* 对话区：与正文同基准字阶 */
+  /* 对话区：豆包式偏大字号 + 约 1.6 行高 */
   --fa-chat-fs: var(--fa-text-base);
-  --fa-chat-lh: 1.5;
-  --fa-chat-py: 0.5rem;
-  --fa-chat-px: 0.75rem;
-  --fa-chat-thread-gap: 0.5rem;
-  --fa-chat-composer-min-h: 2.875rem;
-  --fa-md-p-my: 0.5rem;
-  --fa-md-li-my: 0.1875rem;
-  --fa-md-h1-mult: 1.2;
-  --fa-md-h2-mult: 1.12;
-  --fa-md-h3-mult: 1.06;
-  --fa-radius-chat: 0.75rem;
+  --fa-chat-lh: 1.625;
+  --fa-chat-py: 0.625rem;
+  --fa-chat-px: 0.875rem;
+  --fa-chat-thread-gap: 1rem;
+  --fa-chat-composer-min-h: 2rem;
+  --fa-md-p-my: 0.625rem;
+  --fa-md-li-my: 0.25rem;
+  --fa-md-h1-mult: 1.35;
+  --fa-md-h2-mult: 1.22;
+  --fa-md-h3-mult: 1.1;
+  --fa-radius-chat: 1rem;
   --fa-meta-fs: calc(var(--fa-chat-fs) * 0.85);
 }
 
 @layer base {
+  html {
+    color-scheme: light;
+  }
+
   body {
     margin: 0;
     font-family: var(--font-sans);
     font-size: var(--fa-text-base);
-    line-height: 1.5;
-    color: rgb(23 23 23);
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    line-height: 1.6;
+    letter-spacing: 0.01em;
+    color: #333333;
+    background-color: #ffffff;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
   ::selection {
-    background-color: rgb(224 242 254 / 0.85);
-    color: rgb(12 74 110);
+    background-color: rgb(191 219 254 / 0.85);
+    color: rgb(30 58 138);
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -92,12 +100,8 @@
 
 @layer components {
   .fa-app-shell {
-    background-color: #f4f6f8;
-    background-image: radial-gradient(
-      100% 60% at 50% -10%,
-      rgb(224 242 254 / 0.5),
-      transparent 52%
-    );
+    background-color: #fafafa;
+    background-image: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
   }
 
   .fa-section-title {
@@ -157,7 +161,7 @@
   }
 
   .fa-chat-canvas {
-    @apply flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-neutral-200/90 bg-white shadow-[var(--fa-shadow-card)];
+    @apply flex min-h-0 flex-1 flex-col gap-4 overflow-hidden rounded-2xl border border-neutral-200/90 bg-white shadow-[var(--fa-shadow-card)];
   }
 
   .fa-chat-messages {
@@ -169,16 +173,12 @@
   }
 
   .fa-chat-composer {
-    @apply border-neutral-200/90 border-t bg-neutral-50/80 px-3 py-2 sm:px-5 sm:py-2.5;
+    @apply border-neutral-200/90 border-t bg-white px-3 py-2 sm:px-4 sm:py-2.5;
   }
 
+  /* 与参考样式一致：整段浅灰圆角条，输入与发送同属一条，无单独白底气泡框 */
   .fa-chat-composer-inner {
-    @apply flex w-full max-w-none flex-col gap-2 sm:flex-row sm:items-stretch;
-  }
-
-  .fa-chat-composer-hint {
-    @apply mt-1.5 w-full max-w-none text-left text-neutral-400 leading-snug;
-    font-size: var(--fa-meta-fs);
+    @apply flex w-full max-w-none flex-row items-center gap-1.5 rounded-xl bg-[#f4f4f5] px-2.5 py-1.5 sm:gap-2 sm:px-3 sm:py-2;
   }
 
   .fa-chat-thread {
@@ -192,41 +192,72 @@
   .fa-chat-block-thinking {
     width: 100%;
     max-width: none;
-    border-radius: var(--fa-radius-chat);
     font-size: var(--fa-chat-fs);
     line-height: var(--fa-chat-lh);
   }
 
-  .fa-chat-block-user,
-  .fa-chat-block-assistant,
-  .fa-chat-block-plan,
-  .fa-chat-block-stream {
-    padding: var(--fa-chat-py) var(--fa-chat-px);
-  }
-
-  .fa-chat-block-thinking {
-    padding-block: calc(var(--fa-chat-py) * 0.85);
-    padding-inline: var(--fa-chat-px);
-  }
-
+  /* 用户：浅灰块（可点击编辑）；计划 / 思考：小号辅文 + 链接式折叠，无对话框 */
   .fa-chat-block-user {
-    @apply relative border border-neutral-200/80 border-l-2 border-l-primary-500/90 bg-neutral-50 text-neutral-900;
+    border-radius: 0.625rem;
+    padding: var(--fa-chat-py) var(--fa-chat-px);
+    @apply relative border border-neutral-200/50 bg-[#f4f4f4] text-neutral-900;
+  }
+
+  .fa-chat-block-user.fa-chat-block-user--editable {
+    @apply cursor-pointer transition-colors hover:bg-[#ececec];
+  }
+
+  .fa-chat-block-user.fa-chat-block-user--editable:focus-visible {
+    @apply outline-2 outline-offset-2 outline-primary-500/40;
+  }
+
+  .fa-chat-block-user.fa-chat-block-user--editing {
+    padding-block: 0.375rem;
+  }
+
+  .fa-chat-user-edit-input {
+    max-height: 4.5rem;
+    overflow-y: auto;
+    field-sizing: content;
+  }
+
+  @supports not (field-sizing: content) {
+    .fa-chat-user-edit-input {
+      max-height: 2.75rem;
+    }
   }
 
   .fa-chat-block-assistant {
-    @apply border border-neutral-200/80 border-l-2 border-l-slate-400/70 bg-white text-neutral-800;
+    border-radius: 0;
+    padding: 0.125rem 0;
+    margin: 0;
+    @apply border-0 bg-transparent text-[#333333];
   }
 
   .fa-chat-block-plan {
-    @apply border border-amber-200/55 border-l-2 border-l-amber-400/75 bg-amber-50/20 text-neutral-800;
+    padding: 0.125rem 0;
+    margin: 0;
+    border-radius: 0;
+    @apply border-0 bg-transparent text-neutral-600;
+    font-size: var(--fa-meta-fs);
+    line-height: 1.45;
   }
 
+  /* 流式：整段无气泡；仅「生成中」一行提示，正文与落库助手一致铺在白底上 */
   .fa-chat-block-stream {
-    @apply border border-primary-100/90 border-l-2 border-l-primary-500/75 bg-primary-50/40 text-primary-900;
+    border-radius: 0;
+    padding: 0.125rem 0;
+    margin: 0;
+    @apply border-0 bg-transparent text-[#333333];
   }
 
   .fa-chat-block-thinking {
-    @apply border border-slate-200/80 border-l-2 border-l-slate-400/70 bg-slate-50/40 text-neutral-800;
+    padding: 0.125rem 0;
+    margin: 0;
+    border-radius: 0;
+    @apply border-0 bg-transparent text-neutral-600;
+    font-size: var(--fa-meta-fs);
+    line-height: 1.45;
   }
 
   .fa-chat-block-thinking .fa-thinking-fold {
@@ -234,8 +265,15 @@
   }
 
   .fa-chat-thinking-pre {
-    @apply max-h-[min(20rem,45vh)] overflow-y-auto font-mono text-slate-800 leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere];
-    font-size: calc(var(--fa-chat-fs) * 0.88);
+    @apply mt-2 max-h-[min(20rem,45vh)] overflow-y-auto border-0 bg-transparent pt-0 font-mono text-neutral-700 leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere];
+    font-size: var(--fa-meta-fs);
+  }
+
+  .fa-plan-body {
+    margin-top: 0.375rem;
+    @apply border-0 pt-0;
+    font-size: var(--fa-chat-fs);
+    line-height: var(--fa-chat-lh);
   }
 
   .fa-task-plan-steps {
@@ -245,53 +283,53 @@
   }
 
   .fa-chat-stream-status {
-    @apply inline-flex items-center gap-1.5 font-medium text-neutral-800;
-    font-size: calc(var(--fa-chat-fs) * 0.97);
-  }
-
-  .fa-chat-edit-corner {
-    @apply absolute top-1.5 right-1.5 rounded-md px-1.5 py-0.5 font-medium text-neutral-400 hover:bg-neutral-200/50 hover:text-primary-800;
-    font-size: var(--fa-meta-fs);
+    @apply inline-flex items-center gap-1.5 font-medium text-neutral-500;
+    font-size: calc(var(--fa-chat-fs) * 0.92);
   }
 
   .fa-chat-stream-nested {
-    @apply max-h-[min(50vh,28rem)] overflow-y-auto overscroll-contain border border-neutral-200/65 bg-neutral-50/50 text-neutral-800;
-    margin-top: calc(var(--fa-chat-thread-gap) * 0.5);
-    border-radius: calc(var(--fa-radius-chat) - 2px);
-    padding: calc(var(--fa-chat-py) * 0.65) calc(var(--fa-chat-px) * 0.65);
+    @apply max-h-[min(50vh,28rem)] overflow-y-auto overscroll-contain border-0 bg-transparent text-[#333333];
+    margin-top: 0.375rem;
+    border-radius: 0;
+    padding: 0;
     font-size: var(--fa-chat-fs);
     line-height: var(--fa-chat-lh);
   }
 
   .fa-chat-composer-input {
-    @apply flex-1 resize-y rounded-xl border border-neutral-200/95 bg-white text-neutral-900 placeholder:text-neutral-400 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/15;
+    @apply min-h-0 flex-1 resize-none rounded-none border-0 bg-transparent text-neutral-900 shadow-none placeholder:text-neutral-400 focus:border-0 focus:outline-none focus:ring-0;
     min-height: var(--fa-chat-composer-min-h);
-    max-height: min(36vh, 11rem);
-    padding: 0.5rem 0.875rem;
+    max-height: min(36vh, 9rem);
+    padding: 0.125rem 0.0625rem;
     font-size: var(--fa-chat-fs);
-    line-height: var(--fa-chat-lh);
+    line-height: 1.45;
   }
 
   .fa-chat-composer-submit {
-    @apply shrink-0 rounded-xl bg-primary-600 font-semibold text-white shadow-[var(--fa-shadow-btn)] transition-colors hover:bg-primary-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 disabled:cursor-not-allowed disabled:opacity-50;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    align-self: stretch;
-    min-height: var(--fa-chat-composer-min-h);
-    padding-inline: 1.25rem;
-    font-size: var(--fa-chat-fs);
-    min-width: 5.25rem;
+    @apply inline-flex size-8 shrink-0 items-center justify-center rounded-full border-0 bg-[#e5e5e5] text-neutral-600 transition-colors hover:bg-neutral-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 disabled:cursor-not-allowed disabled:opacity-45;
+  }
+
+  .fa-chat-user-send-btn {
+    @apply inline-flex size-10 shrink-0 items-center justify-center rounded-full border-0 bg-[#e5e5e5] text-neutral-600 transition-colors hover:bg-neutral-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 disabled:cursor-not-allowed disabled:opacity-45;
+  }
+
+  .fa-chat-send-spinner {
+    @apply inline-block size-[1.15rem] rounded-full border-2 border-current border-t-transparent motion-safe:animate-spin;
+    opacity: 0.85;
+  }
+
+  .fa-chat-send-spinner--sm {
+    @apply size-4 border-[1.5px];
   }
 
   .fa-md-chat {
     font-size: var(--fa-chat-fs);
     line-height: var(--fa-chat-lh);
-    @apply text-neutral-900/92 [word-break:break-word];
+    @apply text-[#333333] [word-break:break-word];
   }
 
   .fa-md-chat :where(h1, h2, h3, h4) {
-    @apply font-display font-semibold text-neutral-950 tracking-tight first:mt-0;
+    @apply font-display font-semibold text-neutral-900 tracking-tight first:mt-0;
   }
 
   .fa-md-chat h1 {
@@ -335,13 +373,17 @@
   }
 
   .fa-md-chat :where(strong) {
-    @apply font-semibold text-neutral-950;
+    @apply font-semibold text-neutral-900;
   }
 
   .fa-md-chat :where(ul, ol) {
     margin-top: var(--fa-md-p-my);
     margin-bottom: var(--fa-md-p-my);
-    @apply pl-5 marker:text-primary-600;
+    @apply pl-5 marker:text-neutral-800;
+  }
+
+  .fa-md-chat :where(ul ul) {
+    list-style-type: circle;
   }
 
   .fa-md-chat :where(li) {
@@ -366,7 +408,8 @@
     font-size: 0.9em;
   }
 
-  .fa-md-chat :where(pre) {
+  /* 非豆包式围栏时才用旧款 pre（围栏由 .fa-code-block 承担） */
+  .fa-md-chat :where(pre:not(.fa-code-block-pre)) {
     @apply max-h-[min(24rem,50vh)] overflow-auto border border-neutral-200 bg-slate-950;
     border-radius: var(--fa-radius-chat);
     margin-top: var(--fa-md-p-my);
@@ -374,11 +417,177 @@
     padding: calc(var(--fa-chat-py) + 0.25rem) calc(var(--fa-chat-px) + 0.15rem);
   }
 
-  .fa-md-chat :where(pre code) {
+  .fa-md-chat :where(pre:not(.fa-code-block-pre) code) {
     @apply bg-transparent text-slate-100/95;
     font-size: 0.92em;
     line-height: var(--fa-chat-lh);
     padding: 0;
+  }
+
+  /* 豆包式代码块：顶栏 #1e1e20、正文 #121214，与 ChatMarkdown CodeFence 一致 */
+  .fa-code-block {
+    margin-top: var(--fa-md-p-my);
+    margin-bottom: var(--fa-md-p-my);
+    border-radius: 0.75rem;
+    overflow: hidden;
+    border: 1px solid rgb(63 63 70 / 0.45);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.1);
+  }
+
+  .fa-code-block-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: #1e1e20;
+    border-bottom: 1px solid rgb(39 39 42 / 0.95);
+  }
+
+  .fa-code-block-lang {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    color: #fafafa;
+  }
+
+  .fa-code-block-toolbar-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.125rem;
+  }
+
+  .fa-code-block-toolbtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28rem;
+    padding: 0.28rem 0.5rem;
+    margin: -0.2rem 0;
+    border: none;
+    border-radius: 0.375rem;
+    background: transparent;
+    color: #a1a1aa;
+    font-size: 0.75rem;
+    line-height: 1;
+    cursor: pointer;
+    transition:
+      color 0.15s ease,
+      background 0.15s ease;
+  }
+
+  .fa-code-block-toolbtn:hover {
+    color: #fafafa;
+    background: rgb(255 255 255 / 0.07);
+  }
+
+  .fa-code-block-toolbtn-icon {
+    flex-shrink: 0;
+    opacity: 0.95;
+  }
+
+  .fa-code-block-toolbtn-label {
+    flex-shrink: 0;
+  }
+
+  .fa-code-block-body {
+    background: #121214;
+  }
+
+  .fa-code-block-pre {
+    margin: 0;
+    max-height: min(24rem, 50vh);
+    overflow: auto;
+    padding: 0.875rem 1rem;
+    border-radius: 0;
+    border: none;
+    background: transparent;
+    scrollbar-width: thin;
+    scrollbar-color: #52525b #27272a;
+  }
+
+  .fa-code-block-pre::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .fa-code-block-pre::-webkit-scrollbar-track {
+    background: #27272a;
+    border-radius: 4px;
+  }
+
+  .fa-code-block-pre::-webkit-scrollbar-thumb {
+    background: #52525b;
+    border-radius: 4px;
+  }
+
+  .fa-code-block-pre::-webkit-scrollbar-thumb:hover {
+    background: #71717a;
+  }
+
+  .fa-code-block-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgb(0 0 0 / 0.55);
+  }
+
+  .fa-code-block-expand-panel {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: min(56rem, 100vw - 2rem);
+    max-height: min(90dvh, 100%);
+    border-radius: 0.75rem;
+    overflow: hidden;
+    border: 1px solid rgb(63 63 70 / 0.6);
+    box-shadow: 0 25px 50px rgb(0 0 0 / 0.35);
+  }
+
+  .fa-code-block-expand-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: #121214;
+  }
+
+  .fa-code-block-pre--expanded {
+    flex: 1;
+    min-height: 0;
+    max-height: min(80dvh, 70rem);
+  }
+
+  .fa-md-chat .fa-code-block-pre--expanded code.hljs,
+  .fa-md-chat-user .fa-code-block-pre--expanded code.hljs {
+    font-size: 0.9375rem;
+    line-height: 1.72;
+  }
+
+  .fa-md-chat .fa-code-block-pre--expanded :where(code:not(.hljs)),
+  .fa-md-chat-user .fa-code-block-pre--expanded :where(code:not(.hljs)) {
+    font-size: 0.9375rem;
+    line-height: 1.72;
+  }
+
+  .fa-md-chat .fa-code-block-pre code.hljs {
+    display: block;
+    padding: 0 !important;
+    background: transparent !important;
+    font-size: 0.8125rem;
+    line-height: 1.65;
+  }
+
+  .fa-md-chat .fa-code-block-pre :where(code:not(.hljs)) {
+    display: block;
+    padding: 0;
+    font-size: 0.8125rem;
+    line-height: 1.65;
+    color: #e4e4e7;
   }
 
   .fa-md-chat :where(table) {
@@ -410,7 +619,7 @@
     font-size: 0.9em;
   }
 
-  .fa-md-chat-user :where(pre) {
+  .fa-md-chat-user :where(pre:not(.fa-code-block-pre)) {
     @apply max-h-[min(24rem,50vh)] overflow-auto border border-neutral-200 bg-neutral-900;
     margin-top: var(--fa-md-p-my);
     margin-bottom: var(--fa-md-p-my);
@@ -418,11 +627,27 @@
     padding: calc(var(--fa-chat-py) + 0.25rem) calc(var(--fa-chat-px) + 0.15rem);
   }
 
-  .fa-md-chat-user :where(pre code) {
+  .fa-md-chat-user :where(pre:not(.fa-code-block-pre) code) {
     @apply bg-transparent text-neutral-50/95;
     font-size: 0.92em;
     line-height: var(--fa-chat-lh);
     padding: 0;
+  }
+
+  .fa-md-chat-user .fa-code-block-pre code.hljs {
+    display: block;
+    padding: 0 !important;
+    background: transparent !important;
+    font-size: 0.8125rem;
+    line-height: 1.65;
+  }
+
+  .fa-md-chat-user .fa-code-block-pre :where(code:not(.hljs)) {
+    display: block;
+    padding: 0;
+    font-size: 0.8125rem;
+    line-height: 1.65;
+    color: #e4e4e7;
   }
 
   .fa-md-chat-user :where(blockquote) {
@@ -436,32 +661,53 @@
   }
 
   .fa-thinking-fold {
-    @apply border border-neutral-200 bg-white text-neutral-900/92;
-    border-radius: var(--fa-radius-chat);
+    @apply border-0 bg-transparent text-inherit;
+    border-radius: 0;
   }
 
-  .fa-thinking-summary {
-    @apply flex cursor-pointer list-none items-center gap-1.5 px-2.5 font-semibold tracking-wide select-none;
-    padding-block: calc(var(--fa-chat-py) * 0.65);
-    font-size: calc(var(--fa-chat-fs) * 0.88);
+  .fa-thinking-summary,
+  .fa-plan-summary {
+    @apply inline-flex cursor-pointer list-none items-center gap-x-1.5 py-0 font-normal select-none;
+    font-size: var(--fa-meta-fs);
+    line-height: 1.35;
+    color: inherit;
   }
 
-  .fa-thinking-summary::-webkit-details-marker {
+  .fa-thinking-summary::-webkit-details-marker,
+  .fa-plan-summary::-webkit-details-marker {
     display: none;
   }
 
-  .fa-thinking-summary::before {
-    content: '';
-    @apply inline-block h-0 w-0 shrink-0 border-x-[5px] border-t-[6px] border-x-transparent border-t-primary-500;
+  .fa-thinking-summary::before,
+  .fa-plan-summary::before {
+    display: none;
   }
 
-  .fa-thinking-fold[open] .fa-thinking-summary::before {
-    @apply rotate-180;
+  /* 折叠标题：普通辅文色，不可见为链接；箭头仅在悬停 / 键盘聚焦时显示 */
+  .fa-chat-fold-link {
+    @apply font-normal text-neutral-500;
+    font-size: inherit;
+    text-decoration: none;
   }
 
-  .fa-thinking-hint {
-    @apply ml-auto font-normal text-primary-600/90 tracking-normal;
-    font-size: calc(var(--fa-chat-fs) * 0.82);
+  .fa-chat-fold-chevron {
+    @apply inline-block shrink-0 text-neutral-400 opacity-0;
+    font-size: 0.92em;
+    line-height: 1;
+    transition:
+      opacity 0.15s ease,
+      transform 0.15s ease;
+  }
+
+  .fa-thinking-summary:hover .fa-chat-fold-chevron,
+  .fa-plan-summary:hover .fa-chat-fold-chevron,
+  .fa-thinking-summary:focus-visible .fa-chat-fold-chevron,
+  .fa-plan-summary:focus-visible .fa-chat-fold-chevron {
+    opacity: 1;
+  }
+
+  .fa-thinking-fold[open] > summary .fa-chat-fold-chevron {
+    transform: rotate(90deg);
   }
 
   .fa-thinking-body {
@@ -511,8 +757,8 @@
       -12deg,
       transparent,
       transparent 40px,
-      rgb(2 132 199) 40px,
-      rgb(2 132 199) 41px
+      rgb(37 99 235) 40px,
+      rgb(37 99 235) 41px
     );
   }
 }

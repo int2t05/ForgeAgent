@@ -4,8 +4,8 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.deps import get_db
-from app.exceptions import AppHTTPException
+from app.core.deps import get_db
+from app.core.exceptions import AppHTTPException
 from app.repositories import task_repository
 from app.schemas.event import TaskEventsResponse
 from app.schemas.common import OperationOkResponse
@@ -66,7 +66,6 @@ async def get_task_events_stream(
     ),
 ) -> StreamingResponse:
     """订阅任务事件：text/event-stream，data 与 GET /events 单条结构一致。"""
-    # 1. 校验任务存在（否则 404）。
     task = await task_repository.get_task_by_id(db, task_id)
     if task is None:
         raise AppHTTPException(
@@ -77,9 +76,7 @@ async def get_task_events_stream(
 
     # 续传优先级：after_seq > last_event_id > Last-Event-ID 头
     start_after = after_seq if after_seq is not None else last_event_id
-    # 2. 解析 Last-Event-ID（若 query 未传 after_seq）以支持 EventSource 重连。
     if start_after is None:
-        # Last-Event-ID 是 SSE 规范定义的标准请求头，浏览器在断线重连时会自动带上此头
         raw_leid = request.headers.get("Last-Event-ID")
         if raw_leid is not None:
             try:
@@ -93,10 +90,9 @@ async def get_task_events_stream(
         task_id,
         after_seq=start_after,
     )
-    # 3. 返回流式响应（轮询已提交行 + 终态后短时结束）。
     return StreamingResponse(
         generator,
-        media_type="text/event-stream",  # SSE 标准 Content-Type
+        media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
@@ -113,8 +109,6 @@ async def get_task_events(
     limit: int = Query(50, ge=1, le=200),
 ) -> TaskEventsResponse:
     """可观测事件历史，支持 after_seq 增量拉取。"""
-    # 1. 校验任务存在
-    # 2. 按 seq 升序返回至多 limit 条
     return await task_service.list_task_events(
         db, task_id, after_seq=after_seq, limit=limit
     )
@@ -126,8 +120,6 @@ async def get_task(
     db: AsyncSession = Depends(get_db),
 ) -> TaskDetail:
     """详情页：任务元数据 + 自事件推导的 plan（若有）。"""
-    # 1. 加载 tasks 行
-    # 2. 取最近一次 plan_created 事件的 payload 作为 plan
     return await task_service.get_task_detail(db, task_id)
 
 

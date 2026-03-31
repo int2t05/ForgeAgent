@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.agent.llm_client import _extract_json_object, _normalize_steps
+from app.modules.planning.llm import _extract_json_object, _normalize_steps
 
 _VALID_STEPS = (
     '{"steps":[{"id":"1","title":"分析需求"},{"id":"2","title":"实现与验证"}]}'

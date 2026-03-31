@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.deps import get_db
+from app.core.deps import get_db
 from app.schemas.settings import (
     SettingsPatch,
     SettingsPublic,
@@ -11,7 +11,7 @@ from app.schemas.settings import (
     SettingsUpdateResponse,
 )
 from app.services import settings_service
-from app.tools.registry import tool_registry
+from app.modules.tools.registry import tool_registry
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 

@@ -2,10 +2,11 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Text, func
+from sqlalchemy import Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
+from app.shared.utc_datetime import UtcDateTime
 
 
 class SettingsKV(Base):
@@ -16,7 +17,7 @@ class SettingsKV(Base):
     key: Mapped[str] = mapped_column(Text, primary_key=True)
     value_json: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime,
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,

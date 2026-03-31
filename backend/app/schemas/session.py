@@ -23,6 +23,10 @@ class SessionSummary(BaseModel):
     id: str
     title: str | None
     created_at: datetime
+    last_message_preview: str | None = Field(
+        default=None,
+        description="最后一条消息正文摘要（列表接口填充；无消息时为 null）。",
+    )
 
 
 class SessionListResponse(BaseModel):

@@ -8,10 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.v1.router import api_router
-from app.config import get_settings
-from app.database import AsyncSessionLocal, close_db, init_db
-from app.exceptions import AppHTTPException
-from app.tools.registry import tool_registry
+from app.core.config import get_settings
+from app.core.database import AsyncSessionLocal, close_db, init_db
+from app.core.exceptions import AppHTTPException
+from app.modules.tools.registry import tool_registry
 
 
 @asynccontextmanager
@@ -30,7 +30,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="ForgeAgent API",
-    description="MVP REST + 可观测任务 + 任务事件 SSE",
+    description="REST API：任务与会话、可观测执行、任务事件 SSE",
     lifespan=lifespan,
 )
 

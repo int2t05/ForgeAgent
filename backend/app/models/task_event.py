@@ -2,17 +2,11 @@
 
 from datetime import datetime
 
-from sqlalchemy import (
-    DateTime,
-    ForeignKey,
-    Integer,
-    Text,
-    UniqueConstraint,
-    func,
-)
+from sqlalchemy import ForeignKey, Integer, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+from app.shared.utc_datetime import UtcDateTime
 
 
 class TaskEvent(Base):
@@ -33,7 +27,7 @@ class TaskEvent(Base):
     )
     seq: Mapped[int] = mapped_column(Integer, nullable=False)
     ts: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime,
         server_default=func.now(),
         nullable=False,
     )  # timestamp

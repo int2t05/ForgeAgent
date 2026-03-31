@@ -4,10 +4,11 @@ from datetime import datetime
 
 from app.models.session import Session
 from app.models.task_event import TaskEvent
-from sqlalchemy import DateTime, ForeignKey, Integer, Text, func
+from sqlalchemy import ForeignKey, Integer, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+from app.shared.utc_datetime import UtcDateTime
 
 
 class Task(Base):
@@ -35,12 +36,12 @@ class Task(Base):
         server_default="1",
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime,
         server_default=func.now(),
         nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime,
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,

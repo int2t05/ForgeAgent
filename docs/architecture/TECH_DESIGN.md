@@ -1,6 +1,6 @@
 # ForgeAgent 技术设计文档
 
-本文档依据 `docs/product/PRD.md` 的 MVP 边界与 `docs/guides/RESEARCH.md` 的架构建议编写，与「单 Agent + Plan-and-Execute + 会话记忆 + 工具/MCP 注册表 + 可观测执行」一致。
+本文档描述 ForgeAgent **MVP 技术边界与数据模型**，与「单 Agent + Plan-and-Execute + 会话记忆 + 工具/MCP 注册表 + 可观测执行」一致。若仓库中另行维护 PRD / 调研笔记，可与之对照；**接口字段与路径以运行后端 `GET /openapi.json` 为准**，目录级说明见 [`ARCH.md`](./ARCH.md)。
 
 ---
 
@@ -40,14 +40,15 @@ ForgeAgent/
 ├── frontend/                 # React + Vite + TypeScript + Tailwind；依赖见 frontend/package.json
 ├── backend/                  # FastAPI；依赖见 backend/pyproject.toml，应用包名 app
 ├── docs/
-│   ├── product/              # PRD
+│   ├── README.md             # 文档索引
 │   ├── architecture/         # TECH_DESIGN、ARCH
-│   ├── api/                  # API 契约
-│   ├── guides/               # DEVELOP_ORDER、PAGES、RESEARCH
+│   ├── conversation-flow.md
 │   └── backend/              # TODO、业务流程说明
 ├── M-prompts/                # 可选：生成各文档的提示词模板
 └── LICENSE
 ```
+
+当前仓库 **`docs/` 实际文件**以 [`docs/README.md`](../README.md) 为准；若另行增加 `product/`、`api/`、`guides/` 等目录，在索引中补充即可。
 
 ---
 

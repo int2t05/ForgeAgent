@@ -1,6 +1,6 @@
 {
   "name": "example_skill",
-  "description": "MVP 示例 Skill：声明工具元数据并进入统一注册表（source=skill）。",
+  "description": "示例 Skill：声明工具元数据并进入统一注册表（source=skill）。",
   "tools": [
     {
       "name": "example_skill_greet",

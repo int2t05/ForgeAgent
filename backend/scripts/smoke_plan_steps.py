@@ -24,8 +24,9 @@ def _bootstrap() -> None:
 async def _run() -> int:
     _bootstrap()
 
-    from app.agent.llm_client import is_llm_configured, plan_steps_with_llm
-    from app.config import get_settings
+    from app.core.config import get_settings
+    from app.core.llm_openai import is_llm_configured
+    from app.modules.planning.llm import plan_steps_with_llm
 
     settings = get_settings()
     if not is_llm_configured(settings):

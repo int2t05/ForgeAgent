@@ -242,7 +242,7 @@ async def planner_node(state: AgentState):
 ### 11. [TODO] REST API 自动化测试（可选）
 
 **现状**: 仓库当前以手工验收与联调为主；无 `backend/tests/` 套件。
-**目标**: 若恢复 pytest，覆盖会话创建/消息/任务 CRUD 等与 `docs/api/API.md` 一致的契约。
+**目标**: 若恢复 pytest，覆盖会话创建/消息/任务 CRUD 等与 **`GET /openapi.json`**（及 `TECH_DESIGN.md` 数据模型）一致的契约。
 
 ---
 

@@ -1,6 +1,6 @@
 # ForgeAgent AI 开发指令
 
-本文档供 Cursor 等 AI 编程工具在 **ForgeAgent** 仓库内协作时使用。规范分 **必须** 与 **建议**；冲突时以 `docs/product/PRD.md`、`docs/architecture/TECH_DESIGN.md` 为准。
+本文档供 Cursor 等 AI 编程工具在 **ForgeAgent** 仓库内协作时使用。规范分 **必须** 与 **建议**；冲突时以 `docs/architecture/TECH_DESIGN.md` 为准；若仓库中存在 `docs/product/PRD.md`，产品边界以其为补充依据。
 
 ---
 
@@ -21,7 +21,7 @@
 
 ## 开发规范
 
-工程约定融入业务流程：以 `docs/guides/DEVELOP_ORDER.md` 的阶段与伪代码、`docs/backend/业务流程文档.md` 与实现对齐；技术细则仍以 PRD、TECH_DESIGN 为准。
+工程约定融入业务流程：以 `docs/backend/业务流程文档.md`、`docs/conversation-flow.md` 与实现对齐；技术细则以 `TECH_DESIGN.md`、`ARCH.md` 及 OpenAPI 为准。
 
 依赖包版本要确定好(尽量最新且不冲突)
 
@@ -66,10 +66,9 @@ ForgeAgent/
 ├── frontend/                 # React + Vite + TS + Tailwind；npm 仅在此目录执行
 ├── backend/                  # FastAPI；Python 依赖见 pyproject.toml；Agent/SQLite 等随实现补充
 ├── docs/
-│   ├── product/              # PRD
+│   ├── README.md             # 文档索引
 │   ├── architecture/         # TECH_DESIGN、ARCH
-│   ├── api/                  # API 契约
-│   ├── guides/               # DEVELOP_ORDER、PAGES、RESEARCH
+│   ├── conversation-flow.md
 │   └── backend/              # TODO、业务流程说明
 ├── M-prompts/                # 文档/提示词模板（若保留）
 └── LICENSE
@@ -110,9 +109,9 @@ ForgeAgent/
 ### 红线（必须）
 
 - **不得** 将 API Key、LLM 密钥、MCP 密钥写入前端代码、`.env` 示例以外的公开模板或提交记录中的明文。
-- **不得** 在无用户明确要求时 **删除或弱化** `docs/product/PRD.md`、`docs/architecture/TECH_DESIGN.md` 中与 MVP 边界相关的约束表述。
-- **不得** 为「省事」实现与 PRD 冲突的能力（例如 MVP 内做多 Agent 编排、通用多租户计费）并标为默认路径。
-- **不得** 在未说明的情况下改写 `**AGENTS.md` 的核心约束\*\*；若需调整规范，应显式说明变更原因并保持与 PRD 一致。
+- **不得** 在无用户明确要求时 **删除或弱化** `docs/architecture/TECH_DESIGN.md` 中与 MVP 边界相关的约束表述；若仓库中存在 `docs/product/PRD.md`，同上。
+- **不得** 为「省事」实现与 **产品 MVP 边界**（见 TECH_DESIGN / PRD）冲突的能力（例如 MVP 内做多 Agent 编排、通用多租户计费）并标为默认路径。
+- **不得** 在未说明的情况下改写 `**AGENTS.md` 的核心约束\*\*；若需调整规范，应显式说明变更原因并与 TECH_DESIGN 一致。
 
 ### 优先实现（建议顺序）
 
@@ -123,7 +122,7 @@ ForgeAgent/
 
 ### 复杂功能处理
 
-- **必须** 先对照 PRD 验收标准；超出 MVP 的放在 feature flag、`/docs` 后续章节或单独 ADR，而非默认主路径。
+- **必须** 先对照 TECH_DESIGN 与（若存在）PRD 的验收标准；超出 MVP 的放在 feature flag、`docs/` 后续章节或单独 ADR，而非默认主路径。
 - **建议** 对 LangGraph：从最小节点图开始，避免一上来全量多分支；重规划次数可配置上限。
 - **建议** 长日志、大 payload 采用分页、摘要默认、展开全文，避免一次渲染拖垮页面。
 
@@ -133,14 +132,14 @@ ForgeAgent/
 
 ### 如何验证（必须）
 
-- **后端**：任务状态迁移、事件顺序、`task_id + seq` 语义须在联调或代码审阅中与 `docs/api/API.md`、`docs/architecture/TECH_DESIGN.md` 一致；迭代中可按需恢复 pytest 等自动化覆盖。
-- **契约**：前后端以 OpenAPI 或固定 fixture 对齐；变更 API 时同步 `docs/api/API.md`、示例与类型。
+- **后端**：任务状态迁移、事件顺序、`task_id + seq` 语义须在联调或代码审阅中与 **`GET /openapi.json`**、`docs/architecture/TECH_DESIGN.md` 一致；迭代中可按需恢复 pytest 等自动化覆盖。
+- **契约**：前后端以 OpenAPI 或固定 fixture 对齐；变更 API 时同步示例、类型及 [`docs/README.md`](docs/README.md) 索引所指的契约文档（若有）。
 
-### 手动测试（建议必测；与 `docs/guides/DEVELOP_ORDER.md` §6 清单一致）
+### 手动测试（建议必测）
 
 - 端到端：单次任务从创建 → 计划可见 → 执行步骤 → 成功或失败状态与错误信息可见。
 - 安全：确认构建产物与仓库中无密钥；浏览器网络面板无敏感头泄露。
-- UI：PRD 所述路径「进入任务 → 看步骤 → 看结果」≤3 次主要点击；1920×1080 与常见笔记本宽度布局无严重错位。
+- UI：「进入任务 → 看步骤 → 看结果」≤3 次主要点击；1920×1080 与常见笔记本宽度布局无严重错位。
 
 ---
 
@@ -154,4 +153,4 @@ ForgeAgent/
 
 ---
 
-_若本文件与 `docs/product/PRD.md` / `docs/architecture/TECH_DESIGN.md` 不一致，以两份文档为准并应更新本文件。_
+_若本文件与 `docs/architecture/TECH_DESIGN.md` 不一致，以 TECH_DESIGN 为准并应更新本文件；若存在 `docs/product/PRD.md`，产品表述以 PRD 为补充。_
