@@ -28,6 +28,8 @@ import { Link } from 'react-router'
 import { ApiRequestError } from '@/api/client'
 import { errDetail } from '@/utils/errDetail'
 import {
+  composerRoundsHaveContent,
+  composerRoundsPayloadLength,
   foldComposerLlmStreamForBusy,
   foldComposerLlmStreamForFreeze,
 } from '@/utils/foldComposerLlmStream'
@@ -554,6 +556,16 @@ export function ChatPage() {
 
   const tailTask = tasksChrono.length ? tasksChrono[tasksChrono.length - 1]! : undefined
   const tailTaskId = tailTask?.id
+  const lastTaskExecutionFailed =
+    Boolean(sessionId) &&
+    !busy &&
+    tailTask != null &&
+    tailTask.status === 'failed' &&
+    tailTaskId === latestSessionTaskId
+  const lastTaskFailureMessage =
+    lastTaskExecutionFailed && latestSessionTaskDetailQuery.isSuccess
+      ? latestSessionTaskDetailQuery.data?.error_message?.trim() || null
+      : null
 
   /** 刷新后内存无 freeze 时，分页拉全量事件重建 Thought/Action（单次 limit 会截断在 delta 里导致缺 tool_call）。 */
   const taskEventsComposerArchiveQuery = useQuery({
@@ -569,33 +581,26 @@ export function ChatPage() {
     staleTime: 60_000,
   })
 
-  const serverComposerRounds = useMemo(() => {
-    const ev = taskEventsComposerArchiveQuery.data
-    if (!ev?.length) return null
-    const { rounds } = foldComposerLlmStreamForFreeze(ev)
-    if (!rounds.some((r) => r.thought.trim() || r.action != null)) return null
-    return rounds
-  }, [taskEventsComposerArchiveQuery.data])
-
   const composerArchiveRounds = useMemo(() => {
-    if (
+    const frozenOk =
       composerStreamFreeze != null &&
       sessionId != null &&
       tailTaskId != null &&
       composerStreamFreeze.sessionId === sessionId &&
       composerStreamFreeze.taskId === tailTaskId
-    ) {
-      return composerStreamFreeze.rounds
-    }
-    return serverComposerRounds
-  }, [composerStreamFreeze, sessionId, tailTaskId, serverComposerRounds])
+    if (frozenOk) return composerStreamFreeze.rounds
+    const ev = taskEventsComposerArchiveQuery.data
+    if (!ev?.length) return null
+    const { rounds } = foldComposerLlmStreamForFreeze(ev)
+    return composerRoundsHaveContent(rounds) ? rounds : null
+  }, [composerStreamFreeze, sessionId, tailTaskId, taskEventsComposerArchiveQuery.data])
 
   const archiveMatchesSessionTask =
     !busy &&
     sessionId != null &&
+    tailTaskId != null &&
     composerArchiveRounds != null &&
-    composerArchiveRounds.some((r) => r.thought.trim() || r.action != null) &&
-    tailTaskId != null
+    composerRoundsHaveContent(composerArchiveRounds)
 
   const insertArchiveBeforeLastAssistant =
     archiveMatchesSessionTask &&
@@ -694,15 +699,9 @@ export function ChatPage() {
   }, [
     messagesQuery.data?.messages.length,
     busy,
-    streamedLlm.rounds.reduce(
-      (n, r) => n + r.thought.length + (r.action?.body.length ?? 0),
-      0,
-    ),
+    composerRoundsPayloadLength(streamedLlm.rounds),
     streamedLlm.answer.length,
-    composerArchiveRounds?.reduce(
-      (n, r) => n + r.thought.length + (r.action?.body.length ?? 0),
-      0,
-    ) ?? 0,
+    composerArchiveRounds ? composerRoundsPayloadLength(composerArchiveRounds) : 0,
   ])
 
   const sessionLoadError =
@@ -783,10 +782,34 @@ export function ChatPage() {
               {(startTaskMutation.error ||
                 stopTaskMutation.error ||
                 sessionLoadError ||
-                messagesQuery.error) && (
-                <div className="max-h-40 shrink-0 space-y-2 overflow-y-auto">
+                messagesQuery.error ||
+                (sseError && !busy) ||
+                lastTaskExecutionFailed) && (
+                <div className="max-h-[min(40vh,20rem)] shrink-0 space-y-2 overflow-y-auto">
                   {startTaskMutation.error ? (
-                    <ErrorAlert message="启动任务失败" detail={errDetail(startTaskMutation.error)} />
+                    <ErrorAlert
+                      message="任务创建失败"
+                      detail={errDetail(startTaskMutation.error)}
+                    />
+                  ) : null}
+                  {sseError && !busy ? (
+                    <ErrorAlert
+                      message="任务进度同步失败"
+                      detail={sseError}
+                      onDismiss={() => useComposerTaskStore.getState().ackSseError()}
+                    />
+                  ) : null}
+                  {lastTaskExecutionFailed ? (
+                    <ErrorAlert
+                      key={tailTaskId}
+                      message="本轮任务执行失败"
+                      detail={
+                        lastTaskFailureMessage ??
+                        (latestSessionTaskDetailQuery.isFetching
+                          ? '正在加载失败原因…'
+                          : '任务未正常结束，请稍后重试或查看任务详情中的事件记录。')
+                      }
+                    />
                   ) : null}
                   {stopTaskMutation.error ? (
                     <ErrorAlert

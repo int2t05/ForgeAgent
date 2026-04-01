@@ -52,10 +52,15 @@ interface ComposerTaskState {
   /** 上一轮流式思考/行动归档；新任务 setPending 时清空 */
   composerStreamFreeze: ComposerStreamFreeze | null
   setPending: (taskId: string, sessionId: string) => void
-  clearPending: () => void
+  /**
+   * @param opts.keepSseError 为 true 时保留 {@link sseError}（用于拉事件/SSE 失败时仍能提示用户）。
+   */
+  clearPending: (opts?: { keepSseError?: boolean }) => void
   setLiveEvents: (events: TaskEvent[]) => void
   setSsePhase: (phase: ComposerSsePhase) => void
   setSseError: (msg: string | null) => void
+  /** 关闭对话区顶栏中与事件流相关的错误提示 */
+  ackSseError: () => void
   resetLiveOnly: () => void
   ackComposerStreamFlag: () => void
   clearStickyPlanForSession: (sessionId: string) => void
@@ -90,8 +95,9 @@ export const useComposerTaskStore = create<ComposerTaskState>()((set) => ({
         composerStreamFreeze: null,
       }
     }),
-  clearPending: () =>
+  clearPending: (opts) =>
     set((state) => {
+      const keepErr = Boolean(opts?.keepSseError)
       const tid = state.pendingTaskId
       const sid = state.pendingSessionId
       const events = state.liveTaskEvents
@@ -123,8 +129,8 @@ export const useComposerTaskStore = create<ComposerTaskState>()((set) => ({
         pendingTaskId: null,
         pendingSessionId: null,
         liveTaskEvents: [],
-        ssePhase: 'idle',
-        sseError: null,
+        ssePhase: keepErr ? 'error' : 'idle',
+        sseError: keepErr ? state.sseError : null,
         plansByTaskId: nextPlans,
         composerStreamFreeze,
       }
@@ -143,6 +149,7 @@ export const useComposerTaskStore = create<ComposerTaskState>()((set) => ({
     }),
   setSsePhase: (phase) => set({ ssePhase: phase }),
   setSseError: (msg) => set({ sseError: msg }),
+  ackSseError: () => set({ sseError: null, ssePhase: 'idle' }),
   resetLiveOnly: () =>
     set({ liveTaskEvents: [], ssePhase: 'idle', sseError: null }),
   ackComposerStreamFlag: () => set({ lastComposerHadLlmStream: false }),

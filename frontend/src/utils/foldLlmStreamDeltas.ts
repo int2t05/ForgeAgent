@@ -1,18 +1,17 @@
 import type { TaskEvent } from '@/types/task'
 
 /**
- * 聚合 llm_stream_delta。
+ * 聚合 llm_stream_delta（入参需已按 seq 升序，避免重复排序）。
  * 默认只统计「最后一次 step_start」之后的事件，便于 ReAct 多轮时对话区只展示当前回合的流式思考/行动/答复。
  */
-export function foldLlmStreamDeltas(
-  events: TaskEvent[],
+export function foldLlmStreamDeltasSorted(
+  sorted: TaskEvent[],
   options?: { onlySinceLastStepStart?: boolean },
 ): {
   thinking: string
   action: string
   answer: string
 } {
-  const sorted = [...events].sort((a, b) => a.seq - b.seq)
   const sinceLast = options?.onlySinceLastStepStart !== false
   let slice = sorted
   if (sinceLast) {
@@ -38,4 +37,16 @@ export function foldLlmStreamDeltas(
     if (phase === 'answer' && typeof delta === 'string') answer += delta
   }
   return { thinking, action, answer }
+}
+
+export function foldLlmStreamDeltas(
+  events: TaskEvent[],
+  options?: { onlySinceLastStepStart?: boolean },
+): {
+  thinking: string
+  action: string
+  answer: string
+} {
+  const sorted = [...events].sort((a, b) => a.seq - b.seq)
+  return foldLlmStreamDeltasSorted(sorted, options)
 }

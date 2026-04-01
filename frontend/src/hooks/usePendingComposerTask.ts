@@ -5,11 +5,9 @@
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { buildTaskEventsStreamUrl, consumeTaskEventStream } from '@/api/sse'
-import { getAllTaskEvents, getTaskEvents } from '@/api/tasks'
+import { getAllTaskEvents } from '@/api/tasks'
 import { useComposerTaskStore } from '@/store/composerTaskStore'
 import type { TaskEvent } from '@/types/task'
-
-const EVENT_PAGE_LIMIT = 200
 
 function isAbortError(e: unknown): boolean {
   if (e instanceof DOMException && e.name === 'AbortError') return true
@@ -18,6 +16,27 @@ function isAbortError(e: unknown): boolean {
 
 function sortEventsFromMap(bySeq: Map<number, TaskEvent>): TaskEvent[] {
   return [...bySeq.values()].sort((a, b) => a.seq - b.seq)
+}
+
+/** 在 seq 大体单调递增的 SSE 场景下避免每条事件都全量排序 */
+function appendOrResortEvents(
+  bySeq: Map<number, TaskEvent>,
+  sortedLive: TaskEvent[],
+  e: TaskEvent,
+): TaskEvent[] {
+  const had = bySeq.has(e.seq)
+  bySeq.set(e.seq, e)
+  if (had) return sortEventsFromMap(bySeq)
+  const tail = sortedLive[sortedLive.length - 1]
+  if (sortedLive.length === 0 || e.seq > tail!.seq) {
+    return [...sortedLive, e]
+  }
+  return sortEventsFromMap(bySeq)
+}
+
+function markLlmStreamIfDelta(e: TaskEvent): void {
+  if (e.kind !== 'llm_stream_delta') return
+  useComposerTaskStore.setState({ lastComposerHadLlmStream: true })
 }
 
 function maxSeqInMap(bySeq: Map<number, TaskEvent>): number {
@@ -60,7 +79,8 @@ export function usePendingComposerTaskSync() {
           useComposerTaskStore.setState({ lastComposerHadLlmStream: true })
         }
 
-        useComposerTaskStore.getState().setLiveEvents(sortEventsFromMap(bySeq))
+        let sortedLive = sortEventsFromMap(bySeq)
+        useComposerTaskStore.getState().setLiveEvents(sortedLive)
         if (cancelled) return
 
         useComposerTaskStore.getState().setSsePhase('streaming')
@@ -68,11 +88,9 @@ export function usePendingComposerTaskSync() {
         const streamUrl = buildTaskEventsStreamUrl(taskId, startAfter)
         await consumeTaskEventStream(streamUrl, ac.signal, (e) => {
           if (cancelled) return
-          if (e.kind === 'llm_stream_delta') {
-            useComposerTaskStore.setState({ lastComposerHadLlmStream: true })
-          }
-          bySeq.set(e.seq, e)
-          useComposerTaskStore.getState().setLiveEvents(sortEventsFromMap(bySeq))
+          markLlmStreamIfDelta(e)
+          sortedLive = appendOrResortEvents(bySeq, sortedLive, e)
+          useComposerTaskStore.getState().setLiveEvents(sortedLive)
           if (
             e.kind === 'plan_created' ||
             e.kind === 'replan' ||
@@ -93,7 +111,8 @@ export function usePendingComposerTaskSync() {
           if (gap.some((e) => e.kind === 'llm_stream_delta')) {
             useComposerTaskStore.setState({ lastComposerHadLlmStream: true })
           }
-          useComposerTaskStore.getState().setLiveEvents(sortEventsFromMap(bySeq))
+          sortedLive = sortEventsFromMap(bySeq)
+          useComposerTaskStore.getState().setLiveEvents(sortedLive)
         }
 
         await queryClient.invalidateQueries({ queryKey: ['task', taskId] })
@@ -111,7 +130,7 @@ export function usePendingComposerTaskSync() {
         if (cancelled || isAbortError(e)) return
         useComposerTaskStore.getState().setSsePhase('error')
         useComposerTaskStore.getState().setSseError(
-          e instanceof Error ? e.message : 'SSE 异常',
+          e instanceof Error ? e.message : '接收任务事件失败',
         )
         if (sessionId) {
           void queryClient.invalidateQueries({
@@ -119,7 +138,7 @@ export function usePendingComposerTaskSync() {
           })
         }
         void queryClient.invalidateQueries({ queryKey: ['tasks'] })
-        useComposerTaskStore.getState().clearPending()
+        useComposerTaskStore.getState().clearPending({ keepSseError: true })
       }
     }
 

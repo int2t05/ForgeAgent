@@ -11,9 +11,16 @@ interface ErrorAlertProps {
   detail?: string
   /** 是否允许关闭（默认 true）。 */
   dismissible?: boolean
+  /** 关闭按钮被点击后回调（用于同步清空外部状态，如全局 store）。 */
+  onDismiss?: () => void
 }
 
-export function ErrorAlert({ message, detail, dismissible = true }: ErrorAlertProps) {
+export function ErrorAlert({
+  message,
+  detail,
+  dismissible = true,
+  onDismiss,
+}: ErrorAlertProps) {
   const [visible, setVisible] = useState(true)
 
   if (!visible) return null
@@ -27,7 +34,11 @@ export function ErrorAlert({ message, detail, dismissible = true }: ErrorAlertPr
         </div>
         {dismissible && (
           <button
-            onClick={() => setVisible(false)}
+            type="button"
+            onClick={() => {
+              setVisible(false)
+              onDismiss?.()
+            }}
             className="shrink-0 text-red-400 transition-colors hover:text-red-600"
             aria-label="关闭"
           >

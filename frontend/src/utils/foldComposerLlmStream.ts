@@ -1,5 +1,5 @@
 import type { TaskEvent } from '@/types/task'
-import { foldLlmStreamDeltas } from '@/utils/foldLlmStreamDeltas'
+import { foldLlmStreamDeltasSorted } from '@/utils/foldLlmStreamDeltas'
 import { splitThinkingFromMessage } from '@/utils/parseMessageThinking'
 import { peelLeadingThinkBlockFromBuffer } from '@/utils/streamThinkAnswer'
 
@@ -73,9 +73,8 @@ function foldLlmStreamDeltasInSeqRange(
   return { thinking, action, answer }
 }
 
-/** 最后一次 step_start 之后最近的 tool_call */
-function lastToolCallActionSinceLastStep(events: TaskEvent[]): string {
-  const sorted = [...events].sort((a, b) => a.seq - b.seq)
+/** 最后一次 step_start 之后最近的 tool_call（events 需已按 seq 升序） */
+function lastToolCallActionSinceLastStepSorted(sorted: TaskEvent[]): string {
   let cut = 0
   for (let i = sorted.length - 1; i >= 0; i--) {
     if (sorted[i]!.kind === 'step_start') {
@@ -84,7 +83,8 @@ function lastToolCallActionSinceLastStep(events: TaskEvent[]): string {
     }
   }
   let last = ''
-  for (const e of sorted.slice(cut)) {
+  for (let i = cut; i < sorted.length; i++) {
+    const e = sorted[i]!
     if (e.kind !== 'tool_call' || !e.payload || typeof e.payload !== 'object') continue
     const f = formatToolCallPayload(e.payload as Record<string, unknown>)
     if (f) last = f
@@ -121,8 +121,7 @@ function mergeThoughtDisplayParts(...parts: string[]): string {
   return acc
 }
 
-function lastCommittedThoughtFromStepStarts(events: TaskEvent[]): string {
-  const sorted = [...events].sort((a, b) => a.seq - b.seq)
+function lastCommittedThoughtFromStepStartsSorted(sorted: TaskEvent[]): string {
   let last = ''
   for (const e of sorted) {
     if (e.kind !== 'step_start' || !e.payload) continue
@@ -145,18 +144,19 @@ function mergeAnswerThinkIntoDisplayThinking(
 
 /**
  * 对话 Composer：当前窗口内的流式折叠（仍用「最后一轮」切片，供底部 answer 等使用）。
+ * @param sorted 已按 seq 升序排列的事件
  */
-export function foldComposerLlmStream(events: TaskEvent[]): {
+function foldComposerLlmStreamSorted(sorted: TaskEvent[]): {
   thinking: string
   action: string
   answer: string
 } {
-  const folded = foldLlmStreamDeltas(events, { onlySinceLastStepStart: true })
+  const folded = foldLlmStreamDeltasSorted(sorted, { onlySinceLastStepStart: true })
   const merged = mergeAnswerThinkIntoDisplayThinking(folded.thinking, folded.answer)
-  const stepFall = lastCommittedThoughtFromStepStarts(events)
+  const stepFall = lastCommittedThoughtFromStepStartsSorted(sorted)
   const thinking = merged.thinking || stepFall
   const streamAction = folded.action
-  const fromTool = lastToolCallActionSinceLastStep(events)
+  const fromTool = lastToolCallActionSinceLastStepSorted(sorted)
   const action = streamAction || fromTool
   return {
     thinking,
@@ -165,14 +165,22 @@ export function foldComposerLlmStream(events: TaskEvent[]): {
   }
 }
 
+export function foldComposerLlmStream(events: TaskEvent[]): {
+  thinking: string
+  action: string
+  answer: string
+} {
+  const sorted = [...events].sort((a, b) => a.seq - b.seq)
+  return foldComposerLlmStreamSorted(sorted)
+}
+
 /**
  * 按 step_start 分段：每段 Thought → Action 交替；有几段思考就展示几个 Thought，其后跟该轮 Action。
  */
-export function buildComposerRoundSegments(
-  events: TaskEvent[],
+function buildComposerRoundSegmentsSorted(
+  sorted: TaskEvent[],
   busy: boolean,
 ): ComposerRoundSegment[] {
-  const sorted = [...events].sort((a, b) => a.seq - b.seq)
   const stepStarts = sorted.filter((e) => e.kind === 'step_start')
   const maxSeq = Number.MAX_SAFE_INTEGER
 
@@ -234,21 +242,31 @@ export function buildComposerRoundSegments(
   return out
 }
 
+export function buildComposerRoundSegments(
+  events: TaskEvent[],
+  busy: boolean,
+): ComposerRoundSegment[] {
+  const sorted = [...events].sort((a, b) => a.seq - b.seq)
+  return buildComposerRoundSegmentsSorted(sorted, busy)
+}
+
 export function foldComposerLlmStreamForBusy(events: TaskEvent[], busy: boolean): {
   thinking: string
   action: string
   answer: string
   rounds: ComposerRoundSegment[]
 } {
-  const folded = foldComposerLlmStream(events)
+  const sorted = [...events].sort((a, b) => a.seq - b.seq)
+  const folded = foldComposerLlmStreamSorted(sorted)
   return {
     ...folded,
-    rounds: buildComposerRoundSegments(events, busy),
+    rounds: buildComposerRoundSegmentsSorted(sorted, busy),
   }
 }
 
 export function foldComposerLlmStreamForFreeze(events: TaskEvent[]): {
   rounds: ComposerRoundSegment[]
 } {
-  return { rounds: buildComposerRoundSegments(events, false) }
+  const sorted = [...events].sort((a, b) => a.seq - b.seq)
+  return { rounds: buildComposerRoundSegmentsSorted(sorted, false) }
 }

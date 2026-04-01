@@ -3,13 +3,19 @@
  */
 
 import { Fragment, lazy, memo, Suspense, useEffect, useRef, useState } from 'react'
-import type { ComposerActionBlock, ComposerRoundSegment } from '@/utils/foldComposerLlmStream'
+import type { ComposerRoundSegment } from '@/utils/foldComposerLlmStream'
 
 const ChatMarkdown = lazy(() =>
   import('@/components/chat/ChatMarkdown').then((m) => ({ default: m.ChatMarkdown })),
 )
 
-const ThoughtRoundFold = memo(function ThoughtRoundFold({ body }: { body: string }) {
+const LlmStreamFold = memo(function LlmStreamFold({
+  title,
+  body,
+}: {
+  title: string
+  body: string
+}) {
   const [open, setOpen] = useState(false)
   const preRef = useRef<HTMLPreElement>(null)
 
@@ -28,50 +34,13 @@ const ThoughtRoundFold = memo(function ThoughtRoundFold({ body }: { body: string
           onToggle={(e) => setOpen(e.currentTarget.open)}
         >
           <summary className="fa-thinking-summary">
-            <span className="fa-chat-fold-link">Thought</span>
-            <span className="fa-chat-fold-chevron" aria-hidden>
-              ›
-            </span>
-          </summary>
-          <pre ref={preRef} className="fa-chat-thinking-pre">
-            {body}
-          </pre>
-        </details>
-      </div>
-    </div>
-  )
-})
-
-const ActionFoldBlock = memo(function ActionFoldBlock({ block }: { block: ComposerActionBlock }) {
-  const [open, setOpen] = useState(false)
-  const preRef = useRef<HTMLPreElement>(null)
-
-  useEffect(() => {
-    if (!open || !block.body) return
-    const el = preRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [block.body, open])
-
-  const tool =
-    block.subtitle != null && block.subtitle !== '' ? block.subtitle : '…'
-  const title = `Action · ${tool}`
-
-  return (
-    <div className="fa-chat-thread">
-      <div className="fa-chat-block-thinking">
-        <details
-          className="fa-thinking-fold"
-          open={open}
-          onToggle={(e) => setOpen(e.currentTarget.open)}
-        >
-          <summary className="fa-thinking-summary">
             <span className="fa-chat-fold-link">{title}</span>
             <span className="fa-chat-fold-chevron" aria-hidden>
               ›
             </span>
           </summary>
           <pre ref={preRef} className="fa-chat-thinking-pre">
-            {block.body}
+            {body}
           </pre>
         </details>
       </div>
@@ -96,10 +65,13 @@ export const ComposerLlmStreamPanel = memo(function ComposerLlmStreamPanel({
     <>
       {rounds.map((r) => (
         <Fragment key={r.id}>
-          {r.thought.trim() ? (
-            <ThoughtRoundFold body={r.thought} />
+          {r.thought.trim() ? <LlmStreamFold title="Thought" body={r.thought} /> : null}
+          {r.action ? (
+            <LlmStreamFold
+              title={`Action · ${r.action.subtitle?.trim() ? r.action.subtitle : '…'}`}
+              body={r.action.body}
+            />
           ) : null}
-          {r.action ? <ActionFoldBlock block={r.action} /> : null}
         </Fragment>
       ))}
       {variant === 'streaming' ? (
