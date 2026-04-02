@@ -15,7 +15,6 @@ class AgentState(TypedDict, total=False):
 
     replan_count: int
     max_replan_attempts: int
-    force_replan_budget: int
 
     plan_steps: list[dict[str, Any]]
     current_step_index: int

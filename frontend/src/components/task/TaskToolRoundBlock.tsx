@@ -1,20 +1,26 @@
 /**
- * 单步 / 单轮工具执行块：思考过程、执行计划（工具入参）、可折叠的工具输出。
+ * 执行模块（前端可观测）：单计划步时间线，按 seq 展示多轮 ReAct 与终答。
  */
 
+import type { ReactNode } from 'react'
+import { useState } from 'react'
 import { formatDateTime } from '@/utils/format'
 import type { TaskEvent } from '@/types/task'
+import { COMPOSER_WRITE_PREVIEW_LINES } from '@/utils/foldComposerLlmStream'
 
+/** 单步子时间线所需事件列表。 */
 export interface TaskToolRoundBlockProps {
   events: TaskEvent[]
 }
 
+/** 读取 payload 中的字符串字段，缺省或非字符串时返回空串。 */
 function pickPayloadString(p: Record<string, unknown> | null, key: string): string {
   if (!p) return ''
   const v = p[key]
   return typeof v === 'string' ? v : ''
 }
 
+/** 将值格式化为缩进 JSON 文本；不可序列化时退回 String。 */
 function formatJson(obj: unknown): string {
   try {
     return JSON.stringify(obj, null, 2)
@@ -23,16 +29,47 @@ function formatJson(obj: unknown): string {
   }
 }
 
-/** 工具 result 字段：字符串且含真实换行或字面量 \\n 时用等宽块展示为多行。 */
+/** 将未知值安全视为对象字典。 */
+function asRecord(v: unknown): Record<string, unknown> | null {
+  if (v && typeof v === 'object' && !Array.isArray(v)) {
+    return v as Record<string, unknown>
+  }
+  return null
+}
+
+/** 读取对象上的字符串字段。 */
+function pickStr(r: Record<string, unknown> | null, key: string): string {
+  if (!r) return ''
+  const v = r[key]
+  return typeof v === 'string' ? v : ''
+}
+
+/** shell 工具的 commands 参数格式化为可展示的多行文本。 */
+function formatShellCommands(args: unknown): string {
+  const r = asRecord(args)
+  if (!r) return ''
+  const c = r.commands
+  if (typeof c === 'string') return c.trim()
+  if (Array.isArray(c)) {
+    return c
+      .map((x) => String(x).trim())
+      .filter(Boolean)
+      .join('\n')
+  }
+  return ''
+}
+
+const codePreClass =
+  'max-h-[min(18rem,45vh)] overflow-auto rounded-md bg-neutral-900/90 p-2.5 font-mono text-xs text-neutral-100 whitespace-pre-wrap break-words'
+
+/** 工具 result：字符串含换行时按多行展示。 */
 function formatToolResultBody(data: unknown): { text: string; preWrap: boolean } {
   if (data === null || data === undefined) {
     return { text: formatJson(data), preWrap: false }
   }
   if (typeof data === 'string') {
     if (data.includes('\n') || data.includes('\\n')) {
-      const normalized = data.includes('\n')
-        ? data
-        : data.replace(/\\n/g, '\n')
+      const normalized = data.includes('\n') ? data : data.replace(/\\n/g, '\n')
       return { text: normalized, preWrap: true }
     }
     return { text: data, preWrap: false }
@@ -40,53 +77,88 @@ function formatToolResultBody(data: unknown): { text: string; preWrap: boolean }
   return { text: formatJson(data), preWrap: false }
 }
 
-/** 从一组事件中解析 step_start、最后一次 tool_call/tool_result、step_end。 */
-function analyzeRound(events: TaskEvent[]) {
-  const stepStart = events.find((e) => e.kind === 'step_start')
-  const toolCalls = events.filter((e) => e.kind === 'tool_call')
-  const toolResults = events.filter((e) => e.kind === 'tool_result')
-  const toolCall = toolCalls.length ? toolCalls[toolCalls.length - 1] : undefined
-  const toolResult = toolResults.length ? toolResults[toolResults.length - 1] : undefined
-  const stepEnd = events.find((e) => e.kind === 'step_end')
+type ToolReactTurn = {
+  kind: 'tool'
+  round: number
+  thought: string
+  call: TaskEvent
+  results: TaskEvent[]
+}
+
+type FinalReactTurn = {
+  kind: 'final'
+  round: number
+  thought: string
+  finalAnswer: string
+  seq: number
+}
+
+/** 按 seq 归并 tool_call、挂接 tool_result，并收录带 final_answer 的 react_turn。 */
+function buildReactTurns(events: TaskEvent[]): (ToolReactTurn | FinalReactTurn)[] {
+  const sorted = [...events].sort((a, b) => a.seq - b.seq)
+  const turns: (ToolReactTurn | FinalReactTurn)[] = []
+  let round = 0
+  for (const e of sorted) {
+    // 1. 新开一轮工具：推入占位，后续 tool_result 挂到该轮
+    if (e.kind === 'tool_call') {
+      round += 1
+      const p = e.payload as Record<string, unknown> | null
+      const thought = p && typeof p.thought === 'string' ? p.thought.trim() : ''
+      turns.push({ kind: 'tool', round, thought, call: e, results: [] })
+    } else if (e.kind === 'tool_result') {
+      // 2. 将结果挂到当前最后一个工具轮次
+      const last = turns[turns.length - 1]
+      if (last?.kind === 'tool') {
+        last.results.push(e)
+      }
+    } else if (e.kind === 'react_turn') {
+      // 3. 若带终答则单独成轮，便于与工具轮并列展示
+      const p = e.payload as Record<string, unknown> | null
+      const thought = p && typeof p.thought === 'string' ? p.thought.trim() : ''
+      const fa =
+        p && typeof p.final_answer === 'string' ? p.final_answer.trim() : ''
+      if (fa) {
+        round += 1
+        turns.push({ kind: 'final', round, thought, finalAnswer: fa, seq: e.seq })
+      }
+    }
+  }
+  return turns
+}
+
+/** 从步内事件提取标题、起止状态、工具成败与兜底摘抄等展示元数据。 */
+function analyzeStepMeta(events: TaskEvent[]) {
+  const sorted = [...events].sort((a, b) => a.seq - b.seq)
+  const stepStart = sorted.find((ev) => ev.kind === 'step_start')
+  const stepEnd = sorted.find((ev) => ev.kind === 'step_end')
+  const toolResults = sorted.filter((ev) => ev.kind === 'tool_result')
+  const toolResultLast = toolResults.length ? toolResults[toolResults.length - 1] : undefined
   const title =
     pickPayloadString(stepStart?.payload ?? null, 'title').trim() || '本步执行'
-  const thought = pickPayloadString(stepStart?.payload ?? null, 'thought').trim()
-  const toolName =
-    typeof toolCall?.payload?.tool === 'string' ? toolCall.payload.tool : ''
-  const args = toolCall?.payload?.args
+  const headerThought = pickPayloadString(stepStart?.payload ?? null, 'thought').trim()
   const endStatus =
     typeof stepEnd?.payload?.status === 'string' ? stepEnd.payload.status : ''
   const rawExcerpt =
     typeof stepEnd?.payload?.raw_excerpt === 'string'
       ? stepEnd.payload.raw_excerpt.trim()
       : ''
-  const toolOk = toolResult?.payload?.ok === true
-  const resultData = toolResult?.payload?.result
-  const resultErr = toolResult?.payload?.error
+  const toolOk = toolResultLast?.payload?.ok === true
   const hadAnyToolAttempt = toolResults.length > 0
   const firstSeq = events.reduce((m, e) => Math.min(m, e.seq), events[0]?.seq ?? 0)
   const ts = stepStart?.ts ?? events[0]?.ts ?? ''
   return {
-    stepStart,
-    toolCall,
-    toolResult,
-    stepEnd,
     title,
-    toolName,
-    args,
+    headerThought,
     endStatus,
+    rawExcerpt,
     toolOk,
-    resultData,
-    resultErr,
+    hadAnyToolAttempt,
     firstSeq,
     ts,
-    thought,
-    rawExcerpt,
-    hadAnyToolAttempt,
   }
 }
 
-/** 步骤级徽标：与后端 step_end.status 对齐，但区分「工具已回报成功但未产出终答」与「硬失败」。 */
+/** 根据 step_end 状态与工具结果映射徽标文案、样式与可选提示。 */
 function resolveStepEndBadge(
   endStatus: string,
   toolOk: boolean,
@@ -114,15 +186,11 @@ function resolveStepEndBadge(
       badgeClass: 'bg-amber-50 text-amber-900 border-amber-200',
     }
   }
-  if (
-    endStatus === 'failed' &&
-    hadAnyToolAttempt &&
-    toolOk
-  ) {
+  if (endStatus === 'failed' && hadAnyToolAttempt && toolOk) {
     return {
       label: '未收官',
       badgeClass: 'bg-amber-50 text-amber-900 border-amber-200',
-      hint: '工具已返回成功，但本子步未产出有效终答、解析失败或终答审核未通过。',
+      hint: '工具已一次或多次返回成功，但本子步未在后续轮次产出 final_answer、或解析失败。',
     }
   }
   if (endStatus === 'failed') {
@@ -137,23 +205,300 @@ function resolveStepEndBadge(
   }
 }
 
-export function TaskToolRoundBlock({ events }: TaskToolRoundBlockProps) {
-  const a = analyzeRound(events)
+/** 从 tool_call 事件解析工具名与参数对象。 */
+function toolCallNameArgs(ev: TaskEvent): { name: string; args: unknown } {
+  const p = ev.payload as Record<string, unknown> | null
+  const name = p && typeof p.tool === 'string' ? p.tool : ''
+  return { name, args: p?.args ?? {} }
+}
 
-  const hasTool = Boolean(a.toolCall && a.toolName)
-  const showResultPanel = Boolean(a.toolResult)
+/** 内置工具：Action 区展示与 JSON 不同的结构化参数；非以上工具返回 null 以便回退 JSON。 */
+function renderBuiltinToolActionBody(toolName: string, args: unknown): ReactNode {
+  const rec = asRecord(args)
+  if (toolName === 'read_file') {
+    const path = pickStr(rec, 'file_path')
+    return (
+      <div className="space-y-1.5 text-xs">
+        <p className="font-medium text-neutral-600">读取路径</p>
+        <pre className={codePreClass}>{path || '—'}</pre>
+      </div>
+    )
+  }
+  if (toolName === 'write_file') {
+    const path = pickStr(rec, 'file_path')
+    const append = rec?.append === true
+    return (
+      <div className="space-y-1.5 text-xs">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-medium text-neutral-600">写入路径</p>
+          {append ? (
+            <span className="rounded bg-amber-100/80 px-1.5 py-0.5 text-amber-900">追加模式</span>
+          ) : (
+            <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-neutral-600">覆盖写入</span>
+          )}
+        </div>
+        <pre className={codePreClass}>{path || '—'}</pre>
+        <p className="text-neutral-500">写入正文在下方「工具调用结果」中展示。</p>
+      </div>
+    )
+  }
+  if (toolName === 'shell') {
+    const cmds = formatShellCommands(args)
+    return (
+      <div className="space-y-1.5 text-xs">
+        <p className="font-medium text-neutral-600">执行的命令</p>
+        <pre className={codePreClass}>{cmds || '—'}</pre>
+      </div>
+    )
+  }
+  return null
+}
+
+/** write 正文：与对话区一致，默认仅前若干行。 */
+function WriteFileInlinePreview({ text, className }: { text: string; className: string }) {
+  const lines = text.split(/\r?\n/)
+  const n = COMPOSER_WRITE_PREVIEW_LINES
+  const hasMore = lines.length > n
+  const [expanded, setExpanded] = useState(false)
+  const shown = !hasMore || expanded ? text : lines.slice(0, n).join('\n')
+  return (
+    <div className="space-y-1.5">
+      <p className="font-medium text-neutral-700 text-xs">写入的正文</p>
+      <pre className={className}>{shown}</pre>
+      {hasMore ? (
+        <button
+          type="button"
+          className="fa-link text-xs"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? '收起' : `展开全文（共 ${lines.length} 行）`}
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
+/** 单条 tool_result：按内置工具类型突出正文，其余仍用 JSON。 */
+function ToolAttemptRow({
+  ev,
+  toolName,
+  toolArgs,
+}: {
+  ev: TaskEvent
+  toolName: string
+  toolArgs: unknown
+}) {
+  const p = ev.payload as Record<string, unknown> | null
+  const ok = p?.ok === true
+  const attempt = typeof p?.attempt === 'number' ? p.attempt : null
+  const err = p?.error
+  const result = p?.result ?? null
+  const argRec = asRecord(toolArgs)
+
+  const errBlock =
+    err != null && err !== '' ? (
+      <p className="mt-2 text-red-800 text-xs leading-relaxed">
+        {typeof err === 'string' ? err : formatJson(err)}
+      </p>
+    ) : null
+
+  let mainBody: ReactNode = null
+  if (toolName === 'read_file') {
+    const body = formatToolResultBody(result)
+    const contentText = ok ? body.text : body.text || '（未返回内容）'
+    mainBody = (
+      <div className="fa-chat-block-thinking !mt-2 !p-0">
+        <details className="fa-thinking-fold">
+          <summary className="fa-thinking-summary">
+            <span className="fa-chat-fold-link">读取到的文件内容</span>
+            <span className="fa-chat-fold-chevron" aria-hidden>
+              ›
+            </span>
+          </summary>
+          <pre
+            className={`${codePreClass} mt-1 ${body.preWrap ? '' : 'whitespace-pre-wrap break-words'}`}
+          >
+            {contentText}
+          </pre>
+        </details>
+      </div>
+    )
+  } else if (toolName === 'write_file') {
+    const path = pickStr(argRec, 'file_path')
+    const text = pickStr(argRec, 'text')
+    const ack = formatToolResultBody(result)
+    const showAck = result !== null && result !== undefined
+    mainBody = (
+      <div className="mt-2 space-y-3">
+        {path ? (
+          <p className="text-neutral-600 text-xs">
+            目标文件：<span className="font-mono text-neutral-800">{path}</span>
+          </p>
+        ) : null}
+        <WriteFileInlinePreview
+          text={text || '（无 text 参数）'}
+          className={codePreClass}
+        />
+        {showAck ? (
+          <div className="space-y-1.5">
+            <p className="font-medium text-neutral-700 text-xs">工具返回说明</p>
+            <pre className={codePreClass}>{ack.text || '（空）'}</pre>
+          </div>
+        ) : null}
+      </div>
+    )
+  } else if (toolName === 'shell') {
+    const body = formatToolResultBody(result)
+    mainBody = (
+      <div className="fa-chat-block-thinking !mt-2 !p-0">
+        <details className="fa-thinking-fold">
+          <summary className="fa-thinking-summary">
+            <span className="fa-chat-fold-link">命令输出（含退出码提示）</span>
+            <span className="fa-chat-fold-chevron" aria-hidden>
+              ›
+            </span>
+          </summary>
+          <pre
+            className={`${codePreClass} mt-1 ${body.preWrap ? '' : 'whitespace-pre-wrap break-words'}`}
+          >
+            {body.text}
+          </pre>
+        </details>
+      </div>
+    )
+  } else {
+    const body = formatToolResultBody(result)
+    mainBody = (
+      <pre
+        className={`mt-2 max-h-[min(16rem,40vh)] overflow-auto rounded-md bg-neutral-900/90 p-2 font-mono text-xs text-neutral-100 ${
+          body.preWrap ? 'whitespace-pre-wrap break-words' : ''
+        }`}
+      >
+        {body.text}
+      </pre>
+    )
+  }
+
+  return (
+    <div className="rounded border border-neutral-200 bg-neutral-50/80 p-2">
+      <p className="font-mono text-neutral-800 text-xs">
+        <span className="text-neutral-500">尝试</span> {attempt ?? '—'} ·{' '}
+        <span className={ok ? 'text-emerald-700' : 'text-red-700'}>{ok ? '成功' : '失败'}</span>
+      </p>
+      {errBlock}
+      {mainBody}
+    </div>
+  )
+}
+
+/** 展示同一 tool_call 下多次 tool_result（尝试序号、成败、错误与结果体）。 */
+function ToolAttemptBlocks({
+  results,
+  toolName,
+  toolArgs,
+}: {
+  results: TaskEvent[]
+  toolName: string
+  toolArgs: unknown
+}) {
+  if (results.length === 0) {
+    return <p className="text-neutral-500 text-xs">等待或缺失 tool_result</p>
+  }
+  return (
+    <div className="space-y-2">
+      {results.map((r) => (
+        <ToolAttemptRow key={r.seq} ev={r} toolName={toolName} toolArgs={toolArgs} />
+      ))}
+    </div>
+  )
+}
+
+/** 单轮工具调用的列表项（Thought / Action / 结果）。 */
+function ToolRoundListItem({ turn }: { turn: ToolReactTurn }) {
+  const { name: toolNm, args: toolArg } = toolCallNameArgs(turn.call)
+  const builtinAction = renderBuiltinToolActionBody(toolNm, toolArg)
+  return (
+    <li className="space-y-2">
+      <span className="text-xs text-neutral-500">轮次 {turn.round} · 工具</span>
+      <div className="fa-chat-block-thinking !p-0">
+        <details className="fa-thinking-fold" open>
+          <summary className="fa-thinking-summary">
+            <span className="fa-chat-fold-link">Thought</span>
+            <span className="fa-chat-fold-chevron" aria-hidden>
+              ›
+            </span>
+          </summary>
+          {turn.thought ? (
+            <pre className="fa-chat-thinking-pre mt-1">{turn.thought}</pre>
+          ) : (
+            <p className="mt-1 text-neutral-500 text-xs">
+              （事件未带 thought，多为运行中的旧任务或模型省略该字段）
+            </p>
+          )}
+        </details>
+      </div>
+      <div className="fa-chat-block-thinking !p-0">
+        <details className="fa-thinking-fold" open>
+          <summary className="fa-thinking-summary">
+            <span className="fa-chat-fold-link">Action · {toolNm || '—'}</span>
+            <span className="fa-chat-fold-chevron" aria-hidden>
+              ›
+            </span>
+          </summary>
+          <div className="mt-2 space-y-2">
+            {builtinAction ?? (
+              <pre className="mt-1 max-h-40 overflow-auto rounded-md bg-neutral-900/90 p-2.5 font-mono text-xs text-neutral-100">
+                {formatJson(toolArg)}
+              </pre>
+            )}
+            {builtinAction ? (
+              <details className="rounded border border-neutral-200/80 bg-neutral-50/50">
+                <summary className="cursor-pointer px-2 py-1.5 font-mono text-neutral-600 text-xs">
+                  原始 JSON 参数
+                </summary>
+                <pre className="max-h-32 overflow-auto border-neutral-200/80 border-t p-2 font-mono text-neutral-800 text-xs">
+                  {formatJson(toolArg)}
+                </pre>
+              </details>
+            ) : null}
+          </div>
+        </details>
+      </div>
+      <div className="fa-chat-block-thinking !p-0">
+        <details className="fa-thinking-fold" open>
+          <summary className="fa-thinking-summary">
+            <span className="fa-chat-fold-link">工具调用结果</span>
+            <span className="fa-chat-fold-chevron" aria-hidden>
+              ›
+            </span>
+          </summary>
+          <div className="mt-2">
+            <ToolAttemptBlocks results={turn.results} toolName={toolNm} toolArgs={toolArg} />
+          </div>
+        </details>
+      </div>
+    </li>
+  )
+}
+
+/** 渲染单步工具/ReAct 卡片：目标、各轮 Thought/Action/结果与状态徽标。 */
+export function TaskToolRoundBlock({ events }: TaskToolRoundBlockProps) {
+  // 1. 提取标题、起止状态等元数据
+  const meta = analyzeStepMeta(events)
+  // 2. 按序归并为工具轮与终答轮
+  const turns = buildReactTurns(events)
+  // 3. 终态已知时解析徽标
   const stepBadge =
-    a.endStatus !== ''
-      ? resolveStepEndBadge(a.endStatus, a.toolOk, a.hadAnyToolAttempt)
+    meta.endStatus !== ''
+      ? resolveStepEndBadge(meta.endStatus, meta.toolOk, meta.hadAnyToolAttempt)
       : null
-  const resultBody = formatToolResultBody(a.resultData ?? null)
 
   return (
     <article className="rounded-r-lg border border-neutral-200 border-l-4 border-l-primary-500/80 bg-white py-3 pl-4 pr-3 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="rounded bg-neutral-100 px-2 py-0.5 font-mono text-neutral-600">
-            #{a.firstSeq}
+            #{meta.firstSeq}
           </span>
           <span className="rounded bg-primary-500/10 px-2 py-0.5 font-medium text-primary-800">
             工具与步骤
@@ -172,113 +517,86 @@ export function TaskToolRoundBlock({ events }: TaskToolRoundBlockProps) {
           )}
         </div>
         <time className="shrink-0 font-mono text-xs text-neutral-500">
-          {formatDateTime(a.ts)}
+          {formatDateTime(meta.ts)}
         </time>
       </div>
 
       <div className="mt-3 space-y-3 text-sm">
-        {(a.thought || a.rawExcerpt) && (
-          <div className="fa-chat-block-thinking !p-0">
-            <details className="fa-thinking-fold">
-              <summary className="fa-thinking-summary">
-                <span className="fa-chat-fold-link">Thought</span>
-                <span className="fa-chat-fold-chevron" aria-hidden>
-                  ›
-                </span>
-              </summary>
-              {a.thought ? (
-                <pre className="fa-chat-thinking-pre">{a.thought}</pre>
+        <div className="fa-chat-block-thinking !p-0">
+          <details className="fa-thinking-fold" open>
+            <summary className="fa-thinking-summary">
+              <span className="fa-chat-fold-link">本步目标</span>
+              <span className="fa-chat-fold-chevron" aria-hidden>
+                ›
+              </span>
+            </summary>
+            <p className="text-neutral-700 text-sm leading-relaxed">{meta.title}</p>
+          </details>
+        </div>
+
+        {turns.length > 0 ? (
+          <ol className="list-decimal space-y-4 pl-5 text-neutral-800 marker:font-medium">
+            {turns.map((t) =>
+              t.kind === 'tool' ? (
+                <ToolRoundListItem key={`tool-${t.call.seq}`} turn={t} />
               ) : (
-                <>
-                  <p className="text-neutral-500 text-xs leading-relaxed">
-                    未解析到约定字段 <span className="font-mono">thought</span>
-                    （或等价的 reasoning / thinking 等）。以下为该轮模型原文节选，便于对照为何被判为{' '}
-                    <span className="font-mono">invalid_react_shape</span>：
-                  </p>
-                  <pre className="fa-chat-thinking-pre mt-2 max-h-[min(24rem,50vh)] overflow-auto">
-                    {a.rawExcerpt}
+                <li key={`final-${t.seq}`} className="space-y-2">
+                  <span className="text-xs text-neutral-500">轮次 {t.round} · 终答</span>
+                  <div className="fa-chat-block-thinking !p-0">
+                    <details className="fa-thinking-fold" open>
+                      <summary className="fa-thinking-summary">
+                        <span className="fa-chat-fold-link">Thought</span>
+                        <span className="fa-chat-fold-chevron" aria-hidden>
+                          ›
+                        </span>
+                      </summary>
+                      {t.thought ? (
+                        <pre className="fa-chat-thinking-pre mt-1">{t.thought}</pre>
+                      ) : (
+                        <p className="mt-1 text-neutral-500 text-xs">（无）</p>
+                      )}
+                    </details>
+                  </div>
+                  <div className="fa-chat-block-thinking !p-0">
+                    <details className="fa-thinking-fold" open>
+                      <summary className="fa-thinking-summary">
+                        <span className="fa-chat-fold-link">Action · final_answer</span>
+                        <span className="fa-chat-fold-chevron" aria-hidden>
+                          ›
+                        </span>
+                      </summary>
+                      <pre className="fa-chat-thinking-pre mt-1 max-h-[min(20rem,45vh)] overflow-auto">
+                        {t.finalAnswer}
+                      </pre>
+                    </details>
+                  </div>
+                </li>
+              ),
+            )}
+          </ol>
+        ) : (
+          <div className="rounded border border-amber-200 bg-amber-50/40 px-3 py-2 text-amber-950 text-xs leading-relaxed">
+            本段尚无 tool_call / react_turn 结构化事件。
+            {(meta.headerThought || meta.rawExcerpt) && (
+              <div className="mt-2 space-y-2 border-amber-200/80 border-t pt-2">
+                {meta.headerThought ? (
+                  <pre className="max-h-40 overflow-auto whitespace-pre-wrap font-mono text-xs">
+                    {meta.headerThought}
                   </pre>
-                </>
-              )}
-            </details>
+                ) : null}
+                {meta.rawExcerpt ? (
+                  <pre className="max-h-40 overflow-auto whitespace-pre-wrap font-mono text-xs text-neutral-800">
+                    {meta.rawExcerpt}
+                  </pre>
+                ) : null}
+              </div>
+            )}
           </div>
         )}
-
-        <div className="fa-chat-block-thinking !p-0">
-          <details className="fa-thinking-fold">
-            <summary className="fa-thinking-summary">
-              <span className="fa-chat-fold-link">Step</span>
-              <span className="fa-chat-fold-chevron" aria-hidden>
-                ›
-              </span>
-            </summary>
-            <p className="text-neutral-700 text-sm leading-relaxed">{a.title}</p>
-          </details>
-        </div>
-
-        <div className="fa-chat-block-thinking !p-0">
-          <details className="fa-thinking-fold">
-            <summary className="fa-thinking-summary">
-              <span className="fa-chat-fold-link">Action · {hasTool ? a.toolName : '—'}</span>
-              <span className="fa-chat-fold-chevron" aria-hidden>
-                ›
-              </span>
-            </summary>
-            {hasTool ? (
-              <div className="mt-1 space-y-1">
-                <p className="font-mono text-neutral-800 text-xs">调用工具：{a.toolName}</p>
-                <pre className="max-h-40 overflow-auto rounded-md bg-neutral-900/90 p-2.5 font-mono text-xs text-neutral-100">
-                  {formatJson(a.args ?? {})}
-                </pre>
-              </div>
-            ) : (
-              <p className="mt-1 text-neutral-600 text-xs leading-relaxed">
-                本步未发起工具调用（例如纯推理、或模型未输出有效 action）。
-              </p>
-            )}
-          </details>
-        </div>
 
         {stepBadge?.hint ? (
           <p className="text-amber-900/90 text-xs leading-relaxed">{stepBadge.hint}</p>
         ) : null}
-
-        {showResultPanel && (
-          <div className="fa-chat-block-thinking !p-0">
-            <details className="fa-thinking-fold">
-              <summary className="fa-thinking-summary">
-                <span className="fa-chat-fold-link">工具调用结果</span>
-                <span className="fa-chat-fold-chevron" aria-hidden>
-                  ›
-                </span>
-              </summary>
-              <div className="mt-2 space-y-2">
-                <p className="font-mono text-neutral-800 text-xs">
-                  <span className="text-neutral-500">状态</span>{' '}
-                  <span
-                    className={
-                      a.toolOk ? 'font-semibold text-emerald-700' : 'font-semibold text-red-700'
-                    }
-                  >
-                    {a.toolOk ? '成功' : '失败'}
-                  </span>
-                </p>
-                {a.resultErr != null && a.resultErr !== '' && (
-                  <p className="text-red-800 text-xs leading-relaxed">
-                    {typeof a.resultErr === 'string' ? a.resultErr : formatJson(a.resultErr)}
-                  </p>
-                )}
-                <pre
-                  className={`max-h-[min(20rem,45vh)] overflow-auto rounded-md bg-neutral-900/90 p-2.5 font-mono text-xs text-neutral-100 ${
-                    resultBody.preWrap ? 'whitespace-pre-wrap break-words' : ''
-                  }`}
-                >
-                  {resultBody.text}
-                </pre>
-              </div>
-            </details>
-          </div>
-        )}
       </div>
     </article>
   )

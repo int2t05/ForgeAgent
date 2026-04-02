@@ -1,4 +1,4 @@
-"""单计划步内的 ReAct：模型轮次输出工具调用或终答；已发生过工具调用时，终答须经独立审核与步骤及观测对齐。
+"""单计划步内的 ReAct：每轮模型可输出一批工具顺序执行，写入 Observation 后再进入下一轮直至 final_answer。
 
 供 Actor 按步调用；与 ``tool_runner`` 事件语义一致。
 """
@@ -12,26 +12,39 @@ from typing import Any
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
 from app.core.config import Settings, get_settings
+from app.core.database import AsyncSessionLocal
 from app.core.llm_openai import build_chat_model, is_llm_configured
 from app.core.llm_retry import ainvoke_with_retry
 from app.modules.execution.tool_runner import run_single_tool_with_retry
 from app.modules.prompts.step_react import build_step_react_system_prompt
-from app.modules.prompts.step_react_verify import (
-    STEP_REACT_FINAL_ANSWER_VERIFY_SYSTEM,
-    build_step_react_final_answer_verify_user_content,
-)
+from app.repositories import event_repository
 from app.schemas.tools import ToolItem
-from app.shared.llm_json_parse import collect_json_candidates, try_parse_single_candidate
 from app.shared.react_llm_output import (
+    extract_tool_invocations,
     parse_react_round_json,
-    pick_action_input,
     pick_final_answer,
-    pick_react_tool_name,
+    pick_thought,
 )
 
 logger = logging.getLogger(__name__)
 
 _PRIOR_TAIL = 4
+# 无 tiktoken 时的粗略估算（约 4 字符 / token，仅用于单步预算护栏）
+_CHARS_PER_TOKEN_EST: int = 4
+
+# 工具均已成功但主循环未得到 final_answer 时，追加一轮仅收官用的用户提示（禁止再发工具字段）
+_CLOSING_FINAL_NUDGE_ZH = (
+    "系统提示：当前步骤里已执行的工具均返回成功（见上文 Observation）。\n"
+    "请**仅**回复一个 JSON 对象，且**不要**包含 action、actions、tool_calls、calls。\n"
+    '必须含 final_answer，示例：{"thought":"一句话","final_answer":"给用户看的本步结论（可概括工具输出要点）"}'
+)
+
+
+def _estimate_tokens(text: str) -> int:
+    """按字符量粗估本轮输出占用 token，供单步预算阈值使用。"""
+    if not (text and text.strip()):
+        return 0
+    return max(1, len(text) // _CHARS_PER_TOKEN_EST)
 
 
 def _tail_prior(trace: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -49,6 +62,68 @@ def _msg_text(msg: Any) -> str:
     return str(content or "")
 
 
+async def _try_react_closing_final_answer(
+    chat: Any,
+    messages: list[BaseMessage],
+    s: Settings,
+    *,
+    task_id: str,
+    step_id: Any,
+    token_budget: int,
+    total_tokens_used: int,
+) -> tuple[str | None, str | None, int]:
+    """在工具已成功的前提下追加一轮模型调用，争取产出 final_answer。"""
+    # 1. 超单步 token 估算则不再追加调用
+    if token_budget > 0 and total_tokens_used >= token_budget:
+        return None, None, total_tokens_used
+    messages.append(HumanMessage(content=_CLOSING_FINAL_NUDGE_ZH))
+    try:
+        msg = await ainvoke_with_retry(chat, messages, s)
+    except Exception:
+        logger.exception(
+            "react closing final LLM invoke failed task=%s step=%s",
+            task_id,
+            step_id,
+        )
+        return None, None, total_tokens_used
+    text = _msg_text(msg)
+    used = total_tokens_used + _estimate_tokens(text)
+    messages.append(AIMessage(content=text))
+    data = parse_react_round_json(text)
+    if not data:
+        logger.warning(
+            "react closing final parse failed task=%s step=%s",
+            task_id,
+            step_id,
+        )
+        return None, None, used
+    if extract_tool_invocations(data):
+        logger.warning(
+            "react closing final still emitted tools task=%s step=%s",
+            task_id,
+            step_id,
+        )
+    fa = pick_final_answer(data)
+    th = pick_thought(data)
+    if fa:
+        return fa, th, used
+    return None, th, used
+
+
+def _synthetic_final_when_tools_ok(call_results: list[dict[str, Any]]) -> str:
+    """工具全部成功但模型仍未给出终答时的固定摘要，避免本子步被标为失败。"""
+    # 1. 汇总已成功调用的工具名，便于用户对照时间线
+    names: list[str] = []
+    for c in call_results:
+        if not isinstance(c, dict):
+            continue
+        t = c.get("tool")
+        if isinstance(t, str) and t.strip():
+            names.append(t.strip())
+    suffix = "、".join(names) if names else "（工具）"
+    return f"本步已执行工具：{suffix}，均已成功；详细输出见任务时间线中的工具结果。"
+
+
 def _observation_block(tool_name: str, last_exec: dict[str, Any]) -> str:
     """将单次工具执行结果序列化为 Observation 载荷字符串。"""
     payload = {
@@ -58,48 +133,6 @@ def _observation_block(tool_name: str, last_exec: dict[str, Any]) -> str:
         "error": last_exec.get("error"),
     }
     return json.dumps(payload, ensure_ascii=False)
-
-
-async def _verify_final_answer_against_step(
-    chat: Any,
-    settings: Settings,
-    *,
-    step: dict[str, Any],
-    user_message: str,
-    call_results: list[dict[str, Any]],
-    proposed_final: str,
-) -> tuple[bool, str]:
-    """调用辅助模型判断候选终答与工具结果、步骤目标是否一致，返回 (是否通过, 简述理由)。"""
-    sys = SystemMessage(content=STEP_REACT_FINAL_ANSWER_VERIFY_SYSTEM)
-    human = HumanMessage(
-        content=build_step_react_final_answer_verify_user_content(
-            user_message=user_message,
-            step=step,
-            call_results=call_results,
-            proposed_final=proposed_final,
-        ),
-    )
-    try:
-        msg = await ainvoke_with_retry(chat, [sys, human], settings)
-    except Exception:
-        logger.exception("verify final_answer alignment failed")
-        return False, "审核调用失败"
-    text = _msg_text(msg)
-    for cand in collect_json_candidates(text):
-        d = try_parse_single_candidate(cand)
-        if not d or not isinstance(d, dict):
-            continue
-        aligned = d.get("aligned")
-        ok_align: bool | None = None
-        if isinstance(aligned, bool):
-            ok_align = aligned
-        elif isinstance(aligned, str) and aligned.strip():
-            ok_align = aligned.strip().lower() in ("true", "1", "yes")
-        if ok_align is not None:
-            reason = d.get("brief_reason")
-            br = str(reason).strip() if reason is not None else ""
-            return ok_align, br
-    return False, "无法解析审核结果"
 
 
 async def run_step_react_loop(
@@ -114,7 +147,7 @@ async def run_step_react_loop(
     max_tool_tries: int,
     max_rounds: int,
 ) -> tuple[bool, list[dict[str, Any]], str | None]:
-    """在单步上限内运行 ReAct；无工具调用时可直接收终答，有工具时终答需审核通过。"""
+    """在单步轮次上限内运行 ReAct；每轮先执行模型给出的工具列表（可多个），再读 Observation 直至产出终答。"""
     s = settings or get_settings()
     # 1. 无可执行工具或模型未配置
     if not tools or not is_llm_configured(s):
@@ -127,7 +160,7 @@ async def run_step_react_loop(
         f"用户任务：{user_message}\n"
         f"当前步骤（仅目标）：{json.dumps(step, ensure_ascii=False)}\n"
         f"此前步骤轨迹摘要：{json.dumps(_tail_prior(prior_tool_trace), ensure_ascii=False)}\n"
-        "输出本轮 JSON（thought + action/action_input 或 final_answer）。"
+        "输出本轮 JSON：thought +（actions 批量或单 action，或 final_answer）。"
     )
     messages: list[BaseMessage] = [
         SystemMessage(content=sys_text),
@@ -136,12 +169,21 @@ async def run_step_react_loop(
 
     call_results: list[dict[str, Any]] = []
     step_final: str | None = None
+    closing_thought: str | None = None
     rounds = max(1, int(max_rounds))
     round_num = 0
+    token_budget = int(s.react_max_tokens_per_step)
+    total_tokens_used = 0
 
-    # 3. 步内循环：模型轮次 → 终答（或核准）或工具 → Observation
+    # 3. 步内循环：模型轮次 → 若有一批工具则顺序执行并回注 Observation → 否则收终答
     while True:
         if round_num >= rounds:
+            logger.warning(
+                "step react 达到轮次上限 task=%s step=%s max_rounds=%s",
+                task_id,
+                step_id,
+                rounds,
+            )
             break
         round_num += 1
         # 3.1 本步单轮：调用模型并解析 ReAct JSON
@@ -152,72 +194,119 @@ async def run_step_react_loop(
             break
 
         text = _msg_text(msg)
+        total_tokens_used += _estimate_tokens(text)
+        if token_budget > 0 and total_tokens_used > token_budget:
+            logger.warning(
+                "step react 单步 token 估算超预算 task=%s step=%s used≈%s budget=%s",
+                task_id,
+                step_id,
+                total_tokens_used,
+                token_budget,
+            )
+            messages.append(AIMessage(content=text))
+            break
         messages.append(AIMessage(content=text))
         data = parse_react_round_json(text)
         if not data:
             logger.warning("step react parse failed task=%s step=%s", task_id, step_id)
             break
 
+        invocations = extract_tool_invocations(data)
         fa = pick_final_answer(data)
-        # 3.2 终答分支：无前置工具则直接采纳；否则走核准
-        if fa:
-            if not call_results:
-                step_final = fa
-                break
-            ok_align, reason = await _verify_final_answer_against_step(
-                chat,
-                s,
-                step=step,
-                user_message=user_message,
-                call_results=call_results,
-                proposed_final=fa,
-            )
-            if ok_align:
-                step_final = fa
-                break
-            feedback = reason or "与步骤目标或工具观测不一致"
-            messages.append(
-                HumanMessage(
-                    content=(
-                        "审核未通过：候选 final_answer 未通过校验。"
-                        f"{feedback}。\n"
-                        "请结合已有 Observation，继续调用工具或修订推理，再输出 JSON（action 或 final_answer）。"
+        thought_round = pick_thought(data)
+
+        # 3.2 本轮若有工具调用（含批量）：顺序执行，每条 Observation 追加；终答留待下一轮结合结果输出
+        if invocations:
+            for tn, args in invocations:
+                final_ok, last_exec, attempt_rows = await run_single_tool_with_retry(
+                    task_id,
+                    step_id,
+                    tn,
+                    args,
+                    max_tool_tries,
+                    react_thought=thought_round,
+                )
+                call_results.append(
+                    {
+                        "tool": tn,
+                        "args": args,
+                        "ok": final_ok,
+                        "data": last_exec.get("data"),
+                        "error": last_exec.get("error"),
+                        "attempts": attempt_rows,
+                    }
+                )
+                messages.append(
+                    HumanMessage(
+                        content="Observation:\n" + _observation_block(tn, last_exec),
                     )
                 )
-            )
             continue
 
-        # 3.3 工具分支：解析可执行工具名；缺失则中止本步循环
-        tn = pick_react_tool_name(data)
-        if not tn:
+        # 3.3 无工具：仅终答则结束本步
+        if fa:
+            step_final = fa
+            closing_thought = thought_round
             break
 
-        # 3.4 执行单次工具（含重试）并将 Observation 追加到对话
-        args = pick_action_input(data)
-        final_ok, last_exec, attempt_rows = await run_single_tool_with_retry(
-            task_id,
-            step_id,
-            tn,
-            args,
-            max_tool_tries,
-        )
-        call_results.append(
-            {
-                "tool": tn,
-                "args": args,
-                "ok": final_ok,
-                "data": last_exec.get("data"),
-                "error": last_exec.get("error"),
-                "attempts": attempt_rows,
-            }
-        )
-        messages.append(
-            HumanMessage(
-                content="Observation:\n" + _observation_block(tn, last_exec),
-            )
-        )
+            break
 
     # 4. 本步整体成功与否：存在终答且历次工具均成功（无调用则视为真）
     all_tool_ok = all(c.get("ok") for c in call_results) if call_results else True
+
+    # 4.1 工具已成功但主循环未收官：追加一轮「仅 final_answer」提示；仍无则写入诚实兜底终答
+    if (
+        not step_final
+        and call_results
+        and all_tool_ok
+        and is_llm_configured(s)
+    ):
+        fa2, th2, total_tokens_used = await _try_react_closing_final_answer(
+            chat,
+            messages,
+            s,
+            task_id=task_id,
+            step_id=step_id,
+            token_budget=token_budget,
+            total_tokens_used=total_tokens_used,
+        )
+        if fa2:
+            step_final = fa2
+            closing_thought = th2
+        else:
+            logger.warning(
+                "react synthetic final after failed closing task=%s step=%s",
+                task_id,
+                step_id,
+            )
+            step_final = _synthetic_final_when_tools_ok(call_results)
+            closing_thought = closing_thought or th2
+
     overall = bool(step_final) and all_tool_ok
+
+    if step_final:
+        try:
+            payload_obj: dict[str, Any] = {
+                "step_id": str(step_id),
+                "final_answer": step_final,
+            }
+            ct = closing_thought if (closing_thought and str(closing_thought).strip()) else None
+            if ct:
+                payload_obj["thought"] = str(ct).strip()
+            async with AsyncSessionLocal() as db:
+                async with db.begin():
+                    await event_repository.append_event(
+                        db,
+                        task_id,
+                        "execution",
+                        "react_turn",
+                        json.dumps(payload_obj, ensure_ascii=False),
+                    )
+        except Exception:
+            logger.exception(
+                "append react_turn failed task=%s step=%s",
+                task_id,
+                step_id,
+            )
+
     return overall, call_results, step_final

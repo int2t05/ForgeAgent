@@ -27,6 +27,7 @@ const KIND_LABEL: Record<string, string> = {
   blackboard_update: '黑板更新',
   node_update: '节点状态更新',
   reflection: 'Learner 反思',
+  react_turn: 'ReAct 终答',
 }
 
 function moduleLabel(m: string): string {

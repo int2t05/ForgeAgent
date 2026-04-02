@@ -1,6 +1,7 @@
 """ReAct 轮次 JSON：须含 action 或 final_answer，避免误取文档示例。"""
 
 from app.shared.react_llm_output import (
+    extract_tool_invocations,
     parse_react_round_json,
     pick_final_answer,
     pick_react_tool_name,
@@ -60,3 +61,19 @@ def test_pseudo_action_spaced_name():
     d = parse_react_round_json('{"action":"Final Answer","message":"m"}')
     assert pick_react_tool_name(d) is None
     assert pick_final_answer(d) == "m"
+
+
+def test_actions_batch_order():
+    raw = (
+        '{"thought":"t","actions":['
+        '{"action":"read_file","action_input":{"file_path":"a"}},'
+        '{"tool":"list_directory","args":{"dir_path":"b"}}'
+        "]}"
+    )
+    d = parse_react_round_json(raw)
+    assert d is not None
+    inv = extract_tool_invocations(d)
+    assert inv == [
+        ("read_file", {"file_path": "a"}),
+        ("list_directory", {"dir_path": "b"}),
+    ]

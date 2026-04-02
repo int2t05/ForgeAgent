@@ -44,12 +44,22 @@ class Settings(BaseSettings):
         "http://localhost:3000,http://127.0.0.1:3000"
     )
 
-    # --- Agent：规划 / 记忆 / 步骤内工具重试 ---
+    # --- Agent：规划 / 记忆 / 步骤内工具重试 / ReAct 预算 ---
     max_replan_attempts: int = 3
     session_memory_max_messages: int = 32
     session_blackboard_max_notes: int = 64
     max_tool_failure_attempts: int = 3
-    max_react_rounds_per_step: int = 8
+    max_react_rounds_per_step: int = 20
+    react_max_tokens_per_step: int = 8000
+    tool_default_timeout_sec: float = 30.0
+    tool_search_timeout_sec: float = 10.0
+    tool_file_timeout_sec: float = 5.0
+    tool_retry_base_delay_sec: float = 0.5
+    tool_retry_max_delay_sec: float = 8.0
+    circuit_breaker_llm_failure_threshold: int = 5
+    circuit_breaker_llm_recovery_sec: float = 60.0
+    circuit_breaker_tool_failure_threshold: int = 10
+    circuit_breaker_tool_recovery_sec: float = 60.0
 
     # --- 内置工具：工作区、搜索、REPL、Shell ---
     agent_workspace_root: str | None = None

@@ -20,6 +20,8 @@ export function describeTaskEvent(ev: TaskEvent | undefined): string {
       return '调用工具'
     case 'tool_result':
       return '工具返回结果'
+    case 'react_turn':
+      return 'ReAct 本子步终答'
     case 'error': {
       const msg = ev.payload?.message
       return typeof msg === 'string' ? `出错：${msg}` : '执行出错'

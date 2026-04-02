@@ -15,7 +15,6 @@ from app.modules.memory.session_blackboard import (
     flush_blackboard_from_graph_checkpoint,
     load_blackboard_seed,
 )
-from app.modules.planning.nodes import initial_force_replan_budget
 from app.modules.workflow.graph import get_compiled_agent_graph
 from app.models.task import Task
 from app.repositories import (
@@ -213,7 +212,6 @@ async def run_agent_task(
         "replan_count": 0,
         "max_replan_attempts": settings.max_replan_attempts,
         "replan_requested": False,
-        "force_replan_budget": initial_force_replan_budget(user_message),
         "blackboard_notes": list(seed_notes),
         "actor_tool_trace": [],
     }

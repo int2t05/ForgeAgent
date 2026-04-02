@@ -25,10 +25,32 @@ export function sliceTaskEventsForActivePlanCycle(sorted: TaskEvent[]): TaskEven
 }
 
 /** 单轮 Action 折叠块 */
+export interface ComposerToolActionPanel {
+  id: string
+  /** 小节标题（plain 或 code 非折叠时用作说明） */
+  title?: string
+  variant: 'plain' | 'code'
+  content: string
+  /**
+   * code：套在 details 内且默认收起（read 结果、shell 输出）。
+   */
+  collapsible?: boolean
+  /**
+   * code 且非 collapsible：默认只显示前 N 行，用按钮展开全文（write 正文）。
+   */
+  previewLines?: number
+}
+
+/** write_file 在对话区默认展开的行数上限 */
+export const COMPOSER_WRITE_PREVIEW_LINES = 8
+
+/** 单轮 Action 折叠块 */
 export interface ComposerActionBlock {
   id: string
   subtitle?: string
   body: string
+  /** 内置 read/write/shell 等：结构化小节 + 代码块样式（优先于纯文本 body） */
+  panels?: ComposerToolActionPanel[]
 }
 
 /** 按 ReAct / 执行步顺序：一轮 Thought 紧跟一轮 Action（可无） */
@@ -44,18 +66,74 @@ export function composerRoundsHaveContent(rounds: ComposerRoundSegment[]): boole
 }
 
 export function composerRoundsPayloadLength(rounds: ComposerRoundSegment[]): number {
-  return rounds.reduce((n, r) => n + r.thought.length + (r.action?.body.length ?? 0), 0)
+  return rounds.reduce((n, r) => {
+    const actionLen =
+      r.action?.panels && r.action.panels.length > 0
+        ? r.action.panels.reduce((m, p) => m + p.content.length, 0)
+        : (r.action?.body.length ?? 0)
+    return n + r.thought.length + actionLen
+  }, 0)
 }
 
+function asRecord(v: unknown): Record<string, unknown> | null {
+  if (v && typeof v === 'object' && !Array.isArray(v)) return v as Record<string, unknown>
+  return null
+}
+
+function pickStr(r: Record<string, unknown> | null, key: string): string {
+  if (!r) return ''
+  const v = r[key]
+  return typeof v === 'string' ? v : ''
+}
+
+/** shell 的 args.commands 转成多行文本（与任务时间线一致）。 */
+function formatShellCommandsForComposer(args: unknown): string {
+  const r = asRecord(args)
+  if (!r) return ''
+  const c = r.commands
+  if (typeof c === 'string') return c.trim()
+  if (Array.isArray(c)) {
+    return c
+      .map((x) => String(x).trim())
+      .filter(Boolean)
+      .join('\n')
+  }
+  return ''
+}
+
+/**
+ * 对话区 Action 正文：避免对 write_file.text 等整段 JSON.stringify 导致 \\n 无法换行。
+ */
 function formatToolCallPayload(payload: Record<string, unknown> | null): string {
   if (!payload) return ''
-  const tool = payload.tool
-  const args = payload.args
-  if (typeof tool !== 'string' || !tool.trim()) return ''
-  const argsObj =
-    args && typeof args === 'object' && !Array.isArray(args)
-      ? (args as Record<string, unknown>)
-      : {}
+  const toolRaw = payload.tool
+  if (typeof toolRaw !== 'string' || !toolRaw.trim()) return ''
+  const tool = toolRaw.trim()
+  const argsObj = asRecord(payload.args) ?? {}
+
+  if (tool === 'read_file') {
+    const path = pickStr(argsObj, 'file_path')
+    return `调用工具：${tool}\n路径：\n${path || '—'}`
+  }
+  if (tool === 'write_file') {
+    const path = pickStr(argsObj, 'file_path')
+    const text = pickStr(argsObj, 'text')
+    const append = argsObj.append === true
+    const mode = append ? '追加' : '覆盖'
+    return [
+      `调用工具：${tool}`,
+      `路径：${path || '—'}`,
+      `模式：${mode}`,
+      '',
+      '── 写入内容 ──',
+      text || '（空）',
+    ].join('\n')
+  }
+  if (tool === 'shell') {
+    const cmds = formatShellCommandsForComposer(argsObj)
+    return [`调用工具：${tool}`, '', '── 命令 ──', cmds || '—'].join('\n')
+  }
+
   try {
     return `调用工具：${tool}\n${JSON.stringify(argsObj, null, 2)}`
   } catch {
@@ -63,13 +141,211 @@ function formatToolCallPayload(payload: Record<string, unknown> | null): string 
   }
 }
 
-function toolEventToBlock(e: TaskEvent): ComposerActionBlock | null {
+function formatToolResultValue(result: unknown): string {
+  if (result === null || result === undefined) return '（无）'
+  if (typeof result === 'string') return result
+  try {
+    return JSON.stringify(result, null, 2)
+  } catch {
+    return String(result)
+  }
+}
+
+/** 紧随 tool_call 的 tool_result 列表格式化为可读块（对话区 appended 到 Action）。 */
+function formatToolResultsForComposer(toolName: string, results: TaskEvent[]): string {
+  if (results.length === 0) return ''
+  const lines: string[] = ['── 工具调用结果 ──']
+  for (const r of results) {
+    const p = r.payload as Record<string, unknown> | null
+    const ok = p?.ok === true
+    const attempt = typeof p?.attempt === 'number' ? p.attempt : null
+    const err = p?.error
+    lines.push('')
+    lines.push(`尝试 ${attempt ?? '—'} · ${ok ? '成功' : '失败'}`)
+    if (err != null && err !== '') {
+      lines.push(typeof err === 'string' ? err : formatToolResultValue(err))
+    }
+    if (toolName === 'read_file') {
+      lines.push('── 读取到的内容 ──')
+      lines.push(formatToolResultValue(p?.result))
+    } else if (toolName === 'write_file') {
+      if (p?.result !== null && p?.result !== undefined) {
+        lines.push('── 工具返回 ──')
+        lines.push(formatToolResultValue(p.result))
+      }
+    } else if (toolName === 'shell') {
+      lines.push('── 命令输出 ──')
+      lines.push(formatToolResultValue(p?.result))
+    } else {
+      lines.push('── 返回 ──')
+      lines.push(formatToolResultValue(p?.result))
+    }
+  }
+  return lines.join('\n').trimEnd()
+}
+
+/**
+ * 取某次 tool_call 之后、上界 seq 之前、连续紧随的 tool_result（含多次重试）。
+ * 中间若出现其它事件则中断，避免误吞后续步骤的结果。
+ */
+function toolResultsFollowingCall(
+  sortedAsc: TaskEvent[],
+  callSeq: number,
+  upperSeq: number,
+): TaskEvent[] {
+  const slice = sortedAsc.filter((e) => e.seq > callSeq && e.seq < upperSeq)
+  const out: TaskEvent[] = []
+  for (const ev of slice) {
+    if (ev.kind === 'tool_result') {
+      out.push(ev)
+      continue
+    }
+    if (out.length > 0) break
+  }
+  return out
+}
+
+function toolResultAttemptPlain(r: TaskEvent): string {
+  const rp = r.payload as Record<string, unknown> | null
+  const ok = rp?.ok === true
+  const attempt = typeof rp?.attempt === 'number' ? rp.attempt : null
+  const err = rp?.error
+  const lines: string[] = [`尝试 ${attempt ?? '—'} · ${ok ? '成功' : '失败'}`]
+  if (err != null && err !== '') {
+    lines.push(typeof err === 'string' ? err : formatToolResultValue(err))
+  }
+  return lines.join('\n')
+}
+
+function buildReadFileComposerBlock(
+  seq: number,
+  p: Record<string, unknown>,
+  followingResults?: TaskEvent[],
+): ComposerActionBlock {
+  const argsObj = asRecord(p.args) ?? {}
+  const path = pickStr(argsObj, 'file_path')
+  const panels: ComposerToolActionPanel[] = [
+    { id: 'meta', variant: 'plain', content: `路径：${path || '—'}` },
+  ]
+  if (followingResults?.length) {
+    for (const r of followingResults) {
+      panels.push({
+        id: `attempt-${r.seq}`,
+        variant: 'plain',
+        content: toolResultAttemptPlain(r),
+      })
+      const rp = r.payload as Record<string, unknown> | null
+      panels.push({
+        id: `read-${r.seq}`,
+        title: '读取到的文件内容',
+        variant: 'code',
+        collapsible: true,
+        content: formatToolResultValue(rp?.result),
+      })
+    }
+  }
+  return { id: `tool-${seq}`, subtitle: 'read_file', body: '', panels }
+}
+
+function buildWriteFileComposerBlock(
+  seq: number,
+  p: Record<string, unknown>,
+  followingResults?: TaskEvent[],
+): ComposerActionBlock {
+  const argsObj = asRecord(p.args) ?? {}
+  const path = pickStr(argsObj, 'file_path')
+  const text = pickStr(argsObj, 'text')
+  const append = argsObj.append === true
+  const mode = append ? '追加' : '覆盖'
+  const panels: ComposerToolActionPanel[] = [
+    {
+      id: 'meta',
+      variant: 'plain',
+      content: `路径：${path || '—'}\n模式：${mode}`,
+    },
+    {
+      id: 'text',
+      title: '写入内容',
+      variant: 'code',
+      content: text || '（空）',
+      previewLines: COMPOSER_WRITE_PREVIEW_LINES,
+    },
+  ]
+  if (followingResults?.length) {
+    for (const r of followingResults) {
+      panels.push({
+        id: `attempt-${r.seq}`,
+        variant: 'plain',
+        content: toolResultAttemptPlain(r),
+      })
+      const rp = r.payload as Record<string, unknown> | null
+      if (rp?.result !== null && rp?.result !== undefined) {
+        panels.push({
+          id: `ack-${r.seq}`,
+          title: '工具返回',
+          variant: 'plain',
+          content: formatToolResultValue(rp.result),
+        })
+      }
+    }
+  }
+  return { id: `tool-${seq}`, subtitle: 'write_file', body: '', panels }
+}
+
+function buildShellComposerBlock(
+  seq: number,
+  p: Record<string, unknown>,
+  followingResults?: TaskEvent[],
+): ComposerActionBlock {
+  const argsObj = asRecord(p.args) ?? {}
+  const cmds = formatShellCommandsForComposer(argsObj)
+  const panels: ComposerToolActionPanel[] = [
+    { id: 'cmd', title: '命令', variant: 'code', content: cmds || '—' },
+  ]
+  if (followingResults?.length) {
+    for (const r of followingResults) {
+      panels.push({
+        id: `attempt-${r.seq}`,
+        variant: 'plain',
+        content: toolResultAttemptPlain(r),
+      })
+      const rp = r.payload as Record<string, unknown> | null
+      panels.push({
+        id: `out-${r.seq}`,
+        title: '命令输出',
+        variant: 'code',
+        collapsible: true,
+        content: formatToolResultValue(rp?.result),
+      })
+    }
+  }
+  return { id: `tool-${seq}`, subtitle: 'shell', body: '', panels }
+}
+
+function toolEventToBlock(e: TaskEvent, followingResults?: TaskEvent[]): ComposerActionBlock | null {
   if (e.kind !== 'tool_call' || !e.payload || typeof e.payload !== 'object') return null
   const p = e.payload as Record<string, unknown>
   const tool = typeof p.tool === 'string' ? p.tool.trim() : ''
-  const body = formatToolCallPayload(p)
-  if (!body) return null
-  return { id: `tool-${e.seq}`, subtitle: tool || undefined, body }
+  if (!tool) return null
+
+  if (tool === 'read_file') {
+    return buildReadFileComposerBlock(e.seq, p, followingResults)
+  }
+  if (tool === 'write_file') {
+    return buildWriteFileComposerBlock(e.seq, p, followingResults)
+  }
+  if (tool === 'shell') {
+    return buildShellComposerBlock(e.seq, p, followingResults)
+  }
+
+  const callPart = formatToolCallPayload(p)
+  if (!callPart) return null
+  const resultPart =
+    followingResults && followingResults.length > 0
+      ? formatToolResultsForComposer(tool, followingResults)
+      : ''
+  const body = resultPart ? `${callPart}\n\n${resultPart}` : callPart
+  return { id: `tool-${e.seq}`, subtitle: tool, body }
 }
 
 /** 落在 (afterSeq, untilSeq] 内的 llm_stream_delta（untilSeq 可极大） */
@@ -210,22 +486,74 @@ function buildComposerRoundSegmentsSorted(
   if (stepStarts.length === 0) {
     const stream = foldLlmStreamDeltasInSeqRange(scoped, 0, maxSeq)
     const merged = mergeAnswerThinkIntoDisplayThinking(stream.thinking, stream.answer)
-    const thought = merged.thinking.trim()
+    const streamThought = merged.thinking.trim()
+    const reactOrdered = scoped
+      .filter((e) => e.kind === 'tool_call' || e.kind === 'react_turn')
+      .sort((a, b) => a.seq - b.seq)
+
+    if (reactOrdered.length > 0) {
+      const scopedAsc = [...scoped].sort((a, b) => a.seq - b.seq)
+      const segments: ComposerRoundSegment[] = []
+      for (let j = 0; j < reactOrdered.length; j++) {
+        const e = reactOrdered[j]!
+        if (e.kind === 'tool_call') {
+          const p = e.payload as Record<string, unknown> | undefined
+          const localTh =
+            p && typeof p.thought === 'string' ? p.thought.trim() : ''
+          const thought =
+            j === 0
+              ? mergeThoughtDisplayParts(streamThought, localTh).trim()
+              : localTh
+          const upper = reactOrdered[j + 1]?.seq ?? maxSeq
+          const results = toolResultsFollowingCall(scopedAsc, e.seq, upper)
+          const block = toolEventToBlock(e, results)
+          if (block) {
+            segments.push({
+              id: `tc-${e.seq}`,
+              roundIndex: segments.length + 1,
+              thought,
+              action: block,
+            })
+          }
+        } else {
+          const p = e.payload as Record<string, unknown> | undefined
+          const localTh =
+            p && typeof p.thought === 'string' ? p.thought.trim() : ''
+          const fa =
+            p && typeof p.final_answer === 'string' ? p.final_answer.trim() : ''
+          segments.push({
+            id: `rt-${e.seq}`,
+            roundIndex: segments.length + 1,
+            thought: localTh,
+            action: fa
+              ? { id: `rt-a-${e.seq}`, subtitle: '终答', body: fa }
+              : null,
+          })
+        }
+      }
+      if (segments.length > 0) return segments
+    }
+
+    let action: ComposerActionBlock | null = null
     const tools = scoped.filter((e) => e.kind === 'tool_call')
     const lastTool = tools[tools.length - 1]
-    let action: ComposerActionBlock | null = lastTool ? toolEventToBlock(lastTool) : null
-    if (!action && stream.action.trim()) {
+    if (lastTool) {
+      const scopedAsc = [...scoped].sort((a, b) => a.seq - b.seq)
+      const results = toolResultsFollowingCall(scopedAsc, lastTool.seq, maxSeq)
+      action = toolEventToBlock(lastTool, results)
+    } else if (stream.action.trim()) {
       action = {
         id: 'stream-0',
         subtitle: busy ? '进行中' : '流式',
         body: stream.action,
       }
     }
-    if (!thought && !action) return []
-    return [{ id: 'r1', roundIndex: 1, thought, action }]
+    if (!streamThought && !action) return []
+    return [{ id: 'r1', roundIndex: 1, thought: streamThought, action }]
   }
 
   const out: ComposerRoundSegment[] = []
+  let roundCounter = 0
   for (let i = 0; i < stepStarts.length; i++) {
     const ss = stepStarts[i]!
     const nextSeq = stepStarts[i + 1]?.seq ?? maxSeq
@@ -233,7 +561,53 @@ function buildComposerRoundSegmentsSorted(
     const merged = mergeAnswerThinkIntoDisplayThinking(stream.thinking, stream.answer)
     const rawThought =
       typeof ss.payload?.thought === 'string' ? ss.payload.thought.trim() : ''
-    const thought = mergeThoughtDisplayParts(rawThought, merged.thinking).trim()
+    const baseThought = mergeThoughtDisplayParts(rawThought, merged.thinking).trim()
+
+    const inStep = scoped.filter((e) => e.seq > ss.seq && e.seq < nextSeq)
+    const inStepAsc = [...inStep].sort((a, b) => a.seq - b.seq)
+    const reactOrdered = inStep
+      .filter((e) => e.kind === 'tool_call' || e.kind === 'react_turn')
+      .sort((a, b) => a.seq - b.seq)
+
+    if (reactOrdered.length > 0) {
+      for (let j = 0; j < reactOrdered.length; j++) {
+        const e = reactOrdered[j]!
+        roundCounter += 1
+        if (e.kind === 'tool_call') {
+          const p = e.payload as Record<string, unknown> | undefined
+          const localTh =
+            p && typeof p.thought === 'string' ? p.thought.trim() : ''
+          const thought =
+            j === 0
+              ? mergeThoughtDisplayParts(baseThought, localTh).trim()
+              : localTh
+          const upper = reactOrdered[j + 1]?.seq ?? nextSeq
+          const results = toolResultsFollowingCall(inStepAsc, e.seq, upper)
+          const block = toolEventToBlock(e, results)
+          out.push({
+            id: `tc-${e.seq}`,
+            roundIndex: roundCounter,
+            thought,
+            action: block,
+          })
+        } else {
+          const p = e.payload as Record<string, unknown> | undefined
+          const localTh =
+            p && typeof p.thought === 'string' ? p.thought.trim() : ''
+          const fa =
+            p && typeof p.final_answer === 'string' ? p.final_answer.trim() : ''
+          out.push({
+            id: `rt-${e.seq}`,
+            roundIndex: roundCounter,
+            thought: localTh,
+            action: fa
+              ? { id: `rt-a-${e.seq}`, subtitle: '终答', body: fa }
+              : null,
+          })
+        }
+      }
+      continue
+    }
 
     const toolsInRange = scoped.filter(
       (e) => e.kind === 'tool_call' && e.seq > ss.seq && e.seq <= nextSeq,
@@ -241,7 +615,8 @@ function buildComposerRoundSegmentsSorted(
     const lastTool = toolsInRange[toolsInRange.length - 1]
     let action: ComposerActionBlock | null = null
     if (lastTool) {
-      action = toolEventToBlock(lastTool)
+      const results = toolResultsFollowingCall(inStepAsc, lastTool.seq, nextSeq)
+      action = toolEventToBlock(lastTool, results)
     } else if (stream.action.trim()) {
       action = {
         id: `stream-${ss.seq}`,
@@ -250,6 +625,7 @@ function buildComposerRoundSegmentsSorted(
       }
     }
 
+    roundCounter += 1
     const sid =
       typeof ss.payload?.step_id === 'string' && ss.payload.step_id.trim()
         ? ss.payload.step_id
@@ -257,8 +633,8 @@ function buildComposerRoundSegmentsSorted(
 
     out.push({
       id: sid,
-      roundIndex: i + 1,
-      thought,
+      roundIndex: roundCounter,
+      thought: baseThought,
       action,
     })
   }

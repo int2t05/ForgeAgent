@@ -293,6 +293,9 @@ export function ChatPage() {
   const [editDraft, setEditDraft] = useState('')
   const messagesScrollRef = useRef<HTMLDivElement>(null)
   const listEndRef = useRef<HTMLDivElement>(null)
+  /** 打开或切换到会话后吸底一次，避免「进行中任务 + 初始 scrollTop=0」被误判为用户上卷而不滚动。 */
+  const forceScrollToLatestRef = useRef(false)
+  const prevSessionIdForScrollRef = useRef<string | null | undefined>(undefined)
   const prevBusyRef = useRef(false)
   /** 发送或从服务端恢复进行中任务时记下会话：clearPending 后仅靠 store 无法判断是否本轮对话。 */
   const composerTargetSessionRef = useRef<string | null>(null)
@@ -688,15 +691,32 @@ export function ChatPage() {
     planFromServerByTaskId,
   ])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (sessionId !== prevSessionIdForScrollRef.current) {
+      prevSessionIdForScrollRef.current = sessionId
+      forceScrollToLatestRef.current = true
+    }
+
     const root = messagesScrollRef.current
     const end = listEndRef.current
-    if (!end) return
-    if (busy && root && !isNearScrollBottom(root)) {
+    if (!end || !sessionId) return
+
+    const force = forceScrollToLatestRef.current
+    if (force && messagesQuery.isLoading) {
       return
     }
+
+    if (!force && busy && root && !isNearScrollBottom(root)) {
+      return
+    }
+
     end.scrollIntoView({ behavior: 'auto', block: 'end' })
+    if (force) {
+      forceScrollToLatestRef.current = false
+    }
   }, [
+    sessionId,
+    messagesQuery.isLoading,
     messagesQuery.data?.messages.length,
     busy,
     composerRoundsPayloadLength(streamedLlm.rounds),

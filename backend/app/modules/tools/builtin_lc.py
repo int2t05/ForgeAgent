@@ -4,7 +4,7 @@
 
 - DuckDuckGo：https://docs.langchain.com/oss/python/integrations/providers/duckduckgo_search
 - Tavily：https://docs.langchain.com/oss/python/integrations/tools/tavily_search（推荐 ``langchain-tavily``）
-- 文件读写列举：``langchain_community.tools.file_management``（根目录由 ``Settings.resolved_agent_workspace_path`` 约束）
+- 文件读写列举：``read_file`` / ``write_file`` 为工作区封装（支持按行局部读写），``list_directory`` 用 ``langchain_community.tools.file_management``（根目录由 ``Settings.resolved_agent_workspace_path`` 约束）
 - Python 交互执行：``langchain_experimental.tools.PythonREPLTool``（可经 ``AGENT_ENABLE_PYTHON_REPL`` 关闭）
 - Shell：自建 ``StructuredTool``（与文件工具共享工作区根 + 子进程超时；Windows 默认 ``cmd.exe /c``，Unix 常见 ``/bin/sh``）
 
@@ -28,6 +28,10 @@ from langchain_core.tools import BaseTool, StructuredTool, tool
 from pydantic import BaseModel, Field, model_validator
 
 from app.core.config import Settings, get_settings
+from app.modules.tools.forge_file_tools import (
+    build_forge_read_file_tool,
+    build_forge_write_file_tool,
+)
 from app.schemas.tools import ToolItem
 
 logger = logging.getLogger(__name__)
@@ -261,17 +265,13 @@ def _workspace_root_str(settings: Settings) -> str:
 
 def _build_file_management_tools() -> tuple[BaseTool, ...]:
     """在配置的工作区根下提供 read / write / list_directory。"""
-    from langchain_community.tools.file_management import (
-        ListDirectoryTool,
-        ReadFileTool,
-        WriteFileTool,
-    )
+    from langchain_community.tools.file_management import ListDirectoryTool
 
     settings = get_settings()
     root = _workspace_root_str(settings)
     return (
-        ReadFileTool(root_dir=root),
-        WriteFileTool(root_dir=root),
+        build_forge_read_file_tool(root),
+        build_forge_write_file_tool(root),
         ListDirectoryTool(root_dir=root),
     )
 

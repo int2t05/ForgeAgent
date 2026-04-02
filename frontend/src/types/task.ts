@@ -16,6 +16,7 @@ export type EventKind =
   | 'error'
   | 'replan'
   | 'llm_stream_delta'
+  | 'react_turn'
   | (string & {})
 
 /** 任务列表摘要项。 */

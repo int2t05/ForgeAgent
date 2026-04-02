@@ -145,7 +145,7 @@ backend/
 | `workflow/state.py` | `AgentState(TypedDict)`：`task_id`、`session_id`、`user_message`、`plan_steps`、`replan_count` / `max_replan_attempts`、`blackboard_notes`、`actor_tool_trace`、`replan_requested`、`outcome`、`summary` 等 |
 | `workflow/graph.py` | `build_agent_graph`：`START` → `planner` → `actor` → `learner` → 条件边 → `planner` 或 `END`；`init_compiled_agent_graph(checkpointer)` 在 lifespan 中注入持久化 saver |
 | `planning/llm.py` | 规划用 LLM 调用与计划 JSON 解析 |
-| `planning/nodes.py` | `planner_node`：会话消息（`SessionLLMContextManager`）+ 黑板要点注入；若 `replan_requested` 则先 bump `plan_version` 并写 `replan` 事件；`initial_force_replan_budget`（测试令牌） |
+| `planning/nodes.py` | `planner_node`：会话消息（`SessionLLMContextManager`）+ 黑板要点注入；若 `replan_requested` 则先 bump `plan_version` 并写 `replan` 事件 |
 | `execution/nodes.py` | `actor_node`：按步 `tool_call` / `tool_result` / `step_end`，可选仅 `step_start` 的强制重规划预算；流式总结写 `llm_stream_delta`；`route_after_learner`（兼容别名 `route_after_actor` / `route_after_executor`） |
 | `execution/llm_reply.py` | Actor 收尾阶段流式助手回复（thinking / answer） |
 | `execution/stream_split.py` | think/answer 流式分段（若仍被回复管线引用） |

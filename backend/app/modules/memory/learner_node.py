@@ -35,7 +35,7 @@ def _synthesize_lesson_lines(state: AgentState) -> list[str]:
     outcome = state.get("outcome")
 
     if not trace and replan:
-        lines.append("预演或重规划路径：已走过计划步骤骨架，黑板记录供下一轮 Planner 调整。")
+        lines.append("重规划请求：当前尚无工具轨迹，黑板记录供下一轮 Planner 调整。")
     for row in trace:
         sid = row.get("step_id")
         title = row.get("title") or ""

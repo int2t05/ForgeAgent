@@ -19,14 +19,6 @@ from app.repositories import event_repository, task_repository
 
 logger = logging.getLogger(__name__)
 
-_FORCE_REPLAN_TOKEN = "__FORCE_REPLAN__"
-
-
-def initial_force_replan_budget(user_message: str) -> int:
-    """由用户消息推断初始预演/强制重规划预算（测试令牌触发时为 1，否则 0）。"""
-    return 1 if _FORCE_REPLAN_TOKEN in user_message else 0
-
-
 async def planner_node(state: AgentState) -> dict:
     """产出并写回 ``plan_steps``，同步规划链上事件与重规划计数器。"""
     task_id = state["task_id"]  # type: ignore

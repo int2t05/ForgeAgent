@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, ValidationError
 
+from app.core.config import Settings, get_settings
 from app.modules.tools.builtin_lc import builtin_lc_tools_by_name
 
 logger = logging.getLogger(__name__)
@@ -24,14 +26,37 @@ def _tool_validation_error_message(exc: ValidationError) -> str:
     return f"{loc}: {msg}" if loc else str(msg)
 
 
+def _tool_timeout_sec(name: str, settings: Settings) -> float:
+    """按工具类型解析墙钟超时（秒）；与 ``shell`` / ``python_repl`` 既有子进程上限对齐或取外包一层。"""
+    if name == "shell":
+        return max(5.0, float(settings.shell_tool_timeout_sec))
+    if name == "python_repl":
+        return max(5.0, float(settings.python_repl_timeout_sec))
+    if name in {"tavily_search", "duckduckgo_search"}:
+        return max(3.0, float(settings.tool_search_timeout_sec))
+    if name in {"read_file", "write_file", "list_directory"}:
+        return max(2.0, float(settings.tool_file_timeout_sec))
+    if name == "list_tools":
+        return min(15.0, max(2.0, float(settings.tool_default_timeout_sec)))
+    return max(5.0, float(settings.tool_default_timeout_sec))
+
+
 async def execute_builtin(name: str, args: dict[str, Any]) -> dict[str, Any]:
     """通过 LangChain ``BaseTool.ainvoke`` 执行内置工具，返回注册表约定的 ok/data/error 结构。"""
     tool = builtin_lc_tools_by_name().get(name)
     if tool is None:
         return {"ok": False, "error": f"未实现的内置工具: {name}"}
     payload = dict(args) if args else {}
+    settings = get_settings()
+    timeout_sec = _tool_timeout_sec(name, settings)
     try:
-        data = await _ainvoke_builtin(tool, payload)
+        async with asyncio.timeout(timeout_sec):
+            data = await _ainvoke_builtin(tool, payload)
+    except TimeoutError:
+        return {
+            "ok": False,
+            "error": f"工具执行超时（{int(timeout_sec)}s）: {name}",
+        }
     except ValidationError as e:
         return {"ok": False, "error": _tool_validation_error_message(e)}
     except Exception:

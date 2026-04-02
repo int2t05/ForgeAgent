@@ -20,7 +20,8 @@ backend/app/
 | 文件 | 功能 |
 |------|------|
 | `step_react_loop.py` | **ReAct 循环执行核心** - Agent的主循环 |
-| `nodes.py` | 节点定义 |
+| `step_executor.py` | 单步 step_start/ReAct/step_end，与 Actor 编排解耦 |
+| `nodes.py` | Actor 节点定义（编排；单步执行委托 ``step_executor``） |
 | `tool_runner.py` | 工具运行器 |
 | `llm_reply.py` | LLM回复处理 |
 | `stream_split.py` | 流式输出分割 |
@@ -28,7 +29,7 @@ backend/app/
 ### 2. 工作流管理 (modules/workflow/)
 | 文件 | 功能 |
 |------|------|
-| `graph.py` | 图结构定义 |
+| `graph.py` | 图结构定义；``build_agent_graph`` 可注入 planner/actor/learner，默认惰性加载 |
 | `state.py` | 状态管理 |
 
 ### 3. 规划模块 (modules/planning/)
@@ -58,7 +59,6 @@ backend/app/
 | 文件 | 功能 |
 |------|------|
 | `step_react.py` | ReAct模式提示词 |
-| `step_react_verify.py` | ReAct验证提示词 |
 | `planning.py` | 规划提示词 |
 | `assistant_reply.py` | 助手回复提示词 |
 | `learner_reflection.py` | 学习者反思提示词 |

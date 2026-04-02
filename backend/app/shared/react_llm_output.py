@@ -181,6 +181,28 @@ def pick_react_tool_name(data: dict[str, Any]) -> str | None:
     return act
 
 
+def extract_tool_invocations(data: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    """解析本轮待执行工具列表；支持根级单工具或 ``actions`` / ``tool_calls`` / ``calls`` 数组。"""
+    out: list[tuple[str, dict[str, Any]]] = []
+    for key in ("actions", "tool_calls", "calls"):
+        raw = data.get(key)
+        if not isinstance(raw, list) or not raw:
+            continue
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            name = pick_react_tool_name(item)
+            if not name:
+                continue
+            out.append((name, pick_action_input(item)))
+        if out:
+            return out
+    name = pick_react_tool_name(data)
+    if name:
+        out.append((name, pick_action_input(data)))
+    return out
+
+
 def pick_thought(data: dict[str, Any]) -> str | None:
     """单轮推理文本（多别名）。"""
     for key in _THOUGHT_FIELD_KEYS:
@@ -193,12 +215,12 @@ def pick_thought(data: dict[str, Any]) -> str | None:
 
 
 def react_payload_has_action_or_answer(data: dict[str, Any]) -> bool:
-    """是否含可提交的终答或可调用工具名（避免把文档示例 JSON 当成本轮输出）。"""
-    return bool(pick_final_answer(data) or pick_react_tool_name(data))
+    """是否含可提交的终答或可调用工具（含批量）。"""
+    return bool(pick_final_answer(data) or extract_tool_invocations(data))
 
 
 def parse_react_round_json(text: str) -> dict[str, Any] | None:
-    """在多段候选中取首个同时含终答或可执行工具名的对象。"""
+    """在多段候选中取首个同时含终答或可执行工具（含 actions 批量）的对象。"""
     if not text or not str(text).strip():
         return None
     for cand in collect_json_candidates(text):
