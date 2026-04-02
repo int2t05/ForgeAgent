@@ -70,6 +70,11 @@ function ToolRow({ tool }: { tool: ToolInfo }) {
   )
 }
 
+interface McpToolGroup {
+  serverName: string
+  tools: ToolInfo[]
+}
+
 export function ToolsRegistrySection() {
   const queryClient = useQueryClient()
   const { data, isLoading, isFetching, error } = useTools()
@@ -99,6 +104,31 @@ export function ToolsRegistrySection() {
       return a.name.localeCompare(b.name)
     })
   }, [filtered])
+
+  const mcpGroups = useMemo<McpToolGroup[]>(() => {
+    const grouped = new Map<string, ToolInfo[]>()
+    for (const tool of sorted) {
+      if (tool.source !== 'mcp') continue
+      const serverName = tool.mcp_server_name?.trim() || 'mcp'
+      const bucket = grouped.get(serverName)
+      if (bucket) {
+        bucket.push(tool)
+      } else {
+        grouped.set(serverName, [tool])
+      }
+    }
+    return [...grouped.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([serverName, tools]) => ({
+        serverName,
+        tools: [...tools].sort((a, b) => a.name.localeCompare(b.name)),
+      }))
+  }, [sorted])
+
+  const nonMcpTools = useMemo(
+    () => sorted.filter((tool) => tool.source !== 'mcp'),
+    [sorted],
+  )
 
   /** 是否仅有内置工具（此时「全部」与「内置」列表一致，避免误以为筛选失效）。 */
   const onlyBuiltin =
@@ -190,13 +220,43 @@ export function ToolsRegistrySection() {
       )}
 
       {!error && sorted.length > 0 && (
-        <ul className="flex flex-col gap-3">
-          {sorted.map((tool) => (
-            <li key={`${tool.source}:${tool.name}`}>
-              <ToolRow tool={tool} />
-            </li>
+        <div className="space-y-3">
+          {mcpGroups.map((group) => (
+            <details
+              key={`mcp-group:${group.serverName}`}
+              className="fa-card border-neutral-200/90 overflow-hidden"
+            >
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 [&::-webkit-details-marker]:hidden">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-neutral-500 select-none">▸</span>
+                  <span className="font-medium text-neutral-900">
+                    MCP · <code className="font-mono text-sm">{group.serverName}</code>
+                  </span>
+                </div>
+                <span className="fa-text-caption tabular-nums text-neutral-500">
+                  {group.tools.length} tools
+                </span>
+              </summary>
+              <ul className="space-y-3 border-t border-neutral-200 bg-neutral-50/40 p-3">
+                {group.tools.map((tool) => (
+                  <li key={`mcp:${group.serverName}:${tool.name}`}>
+                    <ToolRow tool={tool} />
+                  </li>
+                ))}
+              </ul>
+            </details>
           ))}
-        </ul>
+
+          {nonMcpTools.length > 0 && (
+            <ul className="flex flex-col gap-3">
+              {nonMcpTools.map((tool) => (
+                <li key={`${tool.source}:${tool.name}`}>
+                  <ToolRow tool={tool} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
 
       {!error && !isLoading && tools.length > 0 && (

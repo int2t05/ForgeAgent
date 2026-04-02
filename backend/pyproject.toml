@@ -18,6 +18,7 @@ dependencies = [
   "langchain-tavily>=0.2.0,<0.4",
   "ddgs>=8.0.0",
   "tiktoken>=0.8.0,<1",
+  "mcp>=1.26.0,<2",
 ]
 
 [build-system]

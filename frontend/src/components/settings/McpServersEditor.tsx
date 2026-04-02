@@ -27,6 +27,7 @@ const TRANSPORT_OPTIONS: Array<{ value: McpTransport; label: string }> = [
   { value: 'mock', label: 'Mock' },
   { value: 'stdio', label: 'Stdio' },
   { value: 'sse', label: 'SSE' },
+  { value: 'http', label: 'HTTP (Streamable)' },
 ]
 
 function updateServer(
@@ -212,6 +213,15 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
           完整 JSON
         </summary>
         <div className="space-y-2 border-neutral-200 border-t px-4 py-3">
+          <p className="text-neutral-600 text-xs leading-relaxed">
+            支持与「粘贴导入」相同：数组、Cursor{' '}
+            <code className="rounded bg-neutral-100 px-1">mcpServers</code>、VS Code{' '}
+            <code className="rounded bg-neutral-100 px-1">servers</code>
+            （可与 <code className="rounded bg-neutral-100 px-1">inputs</code> 同文件）、根级名表等。
+            <code className="rounded bg-neutral-100 px-1">headers</code> /{' '}
+            <code className="rounded bg-neutral-100 px-1">env</code> /{' '}
+            <code className="rounded bg-neutral-100 px-1">tools</code> / URL 别名会自动回填。
+          </p>
           <textarea
             value={fullMcpText}
             onChange={(e) => setFullMcpText(e.target.value)}
@@ -258,7 +268,7 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
           rows={5}
           spellCheck={false}
           className="fa-input mb-2 max-h-40 w-full resize-y font-mono"
-          placeholder={`{\n  "mcpServers": {\n    "filesystem": {\n      "command": "npx",\n      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path"]\n    }\n  }\n}`}
+          placeholder={`直接粘贴 ~/.cursor/mcp.json 全文，例如：\n{\n  "mcpServers": {\n    "github": {\n      "transport": "streamable-http",\n      "url": "https://api.githubcopilot.com/mcp/",\n      "headers": { "Authorization": "Bearer xxx" }\n    }\n  }\n}`}
         />
         <button
           type="button"
@@ -563,10 +573,24 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
                               }
                             />
                           </label>
+                          <label className="block sm:col-span-2">
+                            <span className="fa-kv-label mb-1 block">
+                              环境变量 env（每行 KEY=value）
+                            </span>
+                            <textarea
+                              value={s.envText}
+                              onChange={(e) =>
+                                patchServer(s.localId, { envText: e.target.value })
+                              }
+                              rows={2}
+                              className="fa-input resize-none font-mono"
+                              placeholder={'FIRECRAWL_API_KEY=fc-xxx\nOTHER_VAR=value'}
+                            />
+                          </label>
                         </div>
                       )}
 
-                      {s.transport === 'sse' && (
+                      {(s.transport === 'sse' || s.transport === 'http') && (
                         <div className="mt-4 border-neutral-200 border-t pt-4">
                           <label className="block">
                             <span className="fa-kv-label mb-1 block">SSE URL</span>
@@ -579,6 +603,20 @@ export function McpServersEditor({ servers, onChange }: McpServersEditorProps) {
                               className="fa-input py-2 font-mono"
                               placeholder="https://example.com/mcp/sse"
                               autoComplete="off"
+                            />
+                          </label>
+                          <label className="mt-3 block">
+                            <span className="fa-kv-label mb-1 block">
+                              请求头 headers（每行 Key: Value）
+                            </span>
+                            <textarea
+                              value={s.headersText}
+                              onChange={(e) =>
+                                patchServer(s.localId, { headersText: e.target.value })
+                              }
+                              rows={2}
+                              className="fa-input resize-none font-mono"
+                              placeholder={'Authorization: Bearer github_pat_xxx'}
                             />
                           </label>
                         </div>

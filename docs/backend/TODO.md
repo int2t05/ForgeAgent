@@ -48,13 +48,11 @@
 
 ## 二、工具生态
 
-### 5. [TODO] MCP 真实 Transport（stdio / SSE）
+### 5. [DONE] MCP 真实 Transport（stdio / SSE）
 
-**现状**: `mcp_sources.py` 仍可能以 mock / 元数据为主（以代码为准）。
+**现状**: `McpClientManager`（`mcp_client.py`）维护 stdio / SSE 长连接池；`mcp_sources.py` 在 refresh 时真实拉取工具列表；`registry.execute` 对 `source=mcp` 的工具经 `McpClientManager.call_tool` 调用真实 Server；Actor 的可选工具已包含 MCP。mock transport 作为无外部 Server 时的降级路径保留。
 
-**目标**: 真实 MCP Client stdio 或 HTTP，与 `tool_registry.execute` 路由一致。
-
-**涉及文件**: `app/modules/tools/mcp_sources.py`、`app/modules/tools/registry.py`
+**涉及文件**: `app/modules/tools/mcp_client.py`（新增）、`app/modules/tools/mcp_sources.py`、`app/modules/tools/registry.py`、`app/modules/execution/nodes.py`、`app/schemas/tools.py`、`app/main.py`
 
 ---
 
@@ -148,7 +146,7 @@
 |--------|------|
 | P0 | 9. 任务取消与运行中协同（若仍缺口） |
 | P1 | 4. 工具 Schema / 规划一体 |
-| P1 | 5. MCP 真实 Transport |
+| ~~P1~~ | ~~5. MCP 真实 Transport~~ (DONE) |
 | P1 | 7. Human-in-the-Loop |
 | P2 | 6. Skill 执行框架 |
 | P2 | 11. 自动化测试 |

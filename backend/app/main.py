@@ -12,7 +12,7 @@ from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal, close_db, init_db
 from app.core.exceptions import AppHTTPException
 from app.modules.memory.checkpointer import close_langgraph_checkpointer, open_langgraph_checkpointer
-from app.modules.tools.registry import tool_registry
+from app.modules.tools import mcp_client_manager, tool_registry
 from app.modules.workflow.graph import (
     get_checkpoint_guard_ref,
     init_compiled_agent_graph,
@@ -37,7 +37,9 @@ async def lifespan(_app: FastAPI):
     yield
     # 4. 先收敛后台 Agent（否则会话 close 与引擎 dispose / 客户端断开取消叠加易触发 aiosqlite「no active connection」）
     await drain_agent_background_tasks()
-    # 5. 关闭 checkpoint 连接与图引用，再释放 ORM 池
+    # 5. 关闭 MCP 连接池
+    await mcp_client_manager.close_all()
+    # 6. 关闭 checkpoint 连接与图引用，再释放 ORM 池
     await close_langgraph_checkpointer(get_checkpoint_guard_ref())
     shutdown_compiled_agent_graph()
     await close_db()

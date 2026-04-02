@@ -16,6 +16,10 @@ class ToolItem(BaseModel):
         default=None,
         description="OpenAPI/JSON Schema 风格的入参定义（与 LangChain args_schema 对齐时可提供）。",
     )
+    mcp_server_name: str | None = Field(
+        default=None,
+        description="MCP 来源工具所属 Server 名称；source='mcp' 时由注册表填充。",
+    )
 
 
 class ToolsListResponse(BaseModel):

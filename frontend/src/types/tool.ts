@@ -10,6 +10,8 @@ export interface ToolInfo {
   description: string
   source: ToolSource
   read_only?: boolean
+  /** MCP 来源时对应的 server 名称。 */
+  mcp_server_name?: string | null
   /** OpenAPI/JSON Schema 风格入参（与后端 LangChain args_schema 对齐）。 */
   parameters?: Record<string, unknown> | null
 }

@@ -71,8 +71,11 @@ class _StreamDeltaBatcher:
 
 
 def _executable_tools_for_selection() -> list[ToolItem]:
-    """当前内置且已在注册表中可执行的 ``ToolItem`` 列表。"""
-    return [t for t in tool_registry.list_tools_public().tools if t.source == "builtin"]
+    """当前注册表中可执行的 ``ToolItem`` 列表（内置 + 已连接 MCP）。"""
+    return [
+        t for t in tool_registry.list_tools_public().tools
+        if t.source in ("builtin", "mcp")
+    ]
 
 
 async def actor_node(state: AgentState) -> dict:

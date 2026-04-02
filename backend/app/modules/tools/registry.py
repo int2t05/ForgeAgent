@@ -10,6 +10,7 @@ from app.core.config import get_settings
 from app.core.workspace_config import set_explicit_workspace_root
 from app.modules.tools.builtin import list_builtin_tools
 from app.modules.tools.builtin_executor import execute_builtin
+from app.modules.tools.mcp_client import mcp_client_manager
 from app.modules.tools.mcp_sources import tools_from_mcp_settings
 from app.modules.tools.skill_sources import tools_from_skill_paths
 from app.schemas.tools import ToolItem, ToolsListResponse
@@ -17,8 +18,7 @@ from app.services.settings_service import get_settings_public
 
 
 class ToolRegistry:
-    """
-    统一注册表：内置 + MCP（当前为 mock 元数据）+ Skill。
+    """统一注册表：内置 + MCP（mock 与真实 transport）+ Skill。
 
     合并规则：同名工具以先声明者为准（内置优先，其次 MCP，最后 Skill）。
     """
@@ -51,7 +51,7 @@ class ToolRegistry:
             set_explicit_workspace_root(settings.agent_workspace_root)
             # 3. 重建内置工具（绑定新根）并与 MCP/Skill 元数据合并
             builtins = list_builtin_tools()
-            mcp_part = tools_from_mcp_settings(settings.mcp)
+            mcp_part = await tools_from_mcp_settings(settings.mcp)
             skill_part = tools_from_skill_paths(settings.skills_paths)
             merged = self._merge((builtins, mcp_part, skill_part))
             self._tools = merged
@@ -72,12 +72,25 @@ class ToolRegistry:
         item = self._by_name.get(name)
         if item is None:
             return {"ok": False, "error": f"未知工具: {name}"}
-        if item.source != "builtin":
-            return {
-                "ok": False,
-                "error": f"来源为 {item.source} 的工具尚未接入执行器",
-            }
-        return await execute_builtin(name, dict(args) if args else {})
+        if item.source == "builtin":
+            return await execute_builtin(name, dict(args) if args else {})
+        if item.source == "mcp":
+            return await self._execute_mcp(item, dict(args) if args else {})
+        return {
+            "ok": False,
+            "error": f"来源为 {item.source} 的工具尚未接入执行器",
+        }
+
+    async def _execute_mcp(
+        self, item: ToolItem, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """通过 McpClientManager 调用真实 MCP 工具。"""
+        server_name = item.mcp_server_name
+        if not server_name:
+            return {"ok": False, "error": f"MCP 工具缺少 server 名称: {item.name}"}
+        if server_name not in mcp_client_manager.connected_server_names:
+            return {"ok": False, "error": f"MCP Server 未连接: {server_name}"}
+        return await mcp_client_manager.call_tool(server_name, item.name, args)
 
 
 tool_registry = ToolRegistry()

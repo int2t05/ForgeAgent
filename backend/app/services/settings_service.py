@@ -56,21 +56,29 @@ def _json_list_from_row(value_json: str | None) -> list[Any]:
         return []
 
 
-def _walk_no_secret_keys(obj: Any) -> None:
-    """深度优先遍历 JSON 可序列化结构，发现可疑键名则抛错。"""
+def _walk_no_secret_keys(obj: Any, *, _parent_key: str | None = None) -> None:
+    """深度优先遍历 JSON 可序列化结构，发现可疑键名则抛错。
+
+    MCP 的 ``headers`` / ``env`` 子对象中为合法 HTTP 头名与环境变量名，
+    不再按子串匹配拦截（否则 ``Authorization``、``MYTOKEN``、``OPENAI_API_KEY`` 等无法保存）。
+    """
     if isinstance(obj, dict):
+        parent_lk = (_parent_key or "").lower()
+        skip_key_names = parent_lk in ("headers", "env")
         for k, v in obj.items():
             lk = str(k).lower()
-            if any(fragment in lk for fragment in _FORBIDDEN_KEY_FRAGMENTS):
+            if not skip_key_names and any(
+                fragment in lk for fragment in _FORBIDDEN_KEY_FRAGMENTS
+            ):
                 raise AppHTTPException(
                     f"禁止在设置中写入字段: {k}",
                     code="SECRET_FIELD",
                     status_code=400,
                 )
-            _walk_no_secret_keys(v)
+            _walk_no_secret_keys(v, _parent_key=str(k))
     elif isinstance(obj, list):
         for item in obj:
-            _walk_no_secret_keys(item)
+            _walk_no_secret_keys(item, _parent_key=None)
 
 
 async def get_settings_public(db: AsyncSession) -> SettingsPublic:
