@@ -2,8 +2,11 @@
  * 对话页「当前任务」的客户端状态：pending 任务 id、SSE 聚合出的事件列表、按会话缓存的规划等。
  */
 import { create } from 'zustand'
-import { latestPlanStepsFromEvents } from '@/utils/normalizeTaskPlan'
-import type { PlanStep } from '@/utils/normalizeTaskPlan'
+import {
+  derivePlanTodoProgress,
+  latestPlanStepsFromEvents,
+} from '@/utils/normalizeTaskPlan'
+import type { PlanStep, PlanTodoProgress } from '@/utils/normalizeTaskPlan'
 import type { TaskEvent } from '@/types/task'
 import {
   composerRoundsHaveContent,
@@ -24,6 +27,8 @@ export type ComposerSsePhase = 'idle' | 'loading' | 'streaming' | 'error'
 export interface ArchivedPlanEntry {
   sessionId: string
   steps: PlanStep[]
+  /** 任务结束时由 live 事件推导，避免仅内存态丢失 To-do 勾选 */
+  todoProgress?: PlanTodoProgress
 }
 
 /**
@@ -119,9 +124,10 @@ export const useComposerTaskStore = create<ComposerTaskState>()((set) => ({
         const steps =
           fromLive?.length ? fromLive : sticky?.length ? sticky : null
         if (steps?.length) {
+          const todoProgress = derivePlanTodoProgress(state.liveTaskEvents, steps)
           nextPlans = {
             ...state.plansByTaskId,
-            [tid]: { sessionId: sid, steps },
+            [tid]: { sessionId: sid, steps, todoProgress },
           }
         }
       }

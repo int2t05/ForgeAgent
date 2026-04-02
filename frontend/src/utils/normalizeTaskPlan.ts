@@ -9,6 +9,58 @@ export interface PlanStep {
   title: string
 }
 
+/** 对话区 To-do 与步骤 id 对齐的三种状态。 */
+export type PlanStepTodoStatus = 'pending' | 'active' | 'done'
+
+/** 由执行事件推导：react_turn 含非空 final_answer 时该 step_id 记为完成；进行中取最近一次 `step_start` 且尚未终答的步骤。 */
+export interface PlanTodoProgress {
+  statusByStepId: Record<string, PlanStepTodoStatus>
+}
+
+function normStepId(id: string): string {
+  return String(id)
+}
+
+/** 按 seq 扫描 `step_start` / `react_turn`，供消息区 To-do 与后端 ReAct 终答对齐。 */
+export function derivePlanTodoProgress(
+  events: TaskEvent[],
+  steps: PlanStep[],
+): PlanTodoProgress {
+  const sorted = [...events].sort((a, b) => a.seq - b.seq)
+  const completed = new Set<string>()
+  let lastStepStartId: string | null = null
+
+  for (const e of sorted) {
+    if (e.kind === 'step_start') {
+      const sid = e.payload?.step_id
+      if (sid != null && String(sid).trim() !== '') {
+        lastStepStartId = String(sid)
+      }
+    } else if (e.kind === 'react_turn') {
+      const p = e.payload
+      const fa = p && typeof p.final_answer === 'string' ? p.final_answer.trim() : ''
+      const rid = p?.step_id
+      if (fa && rid != null && String(rid).trim() !== '') {
+        completed.add(String(rid))
+      }
+    }
+  }
+
+  const statusByStepId: Record<string, PlanStepTodoStatus> = {}
+  for (const s of steps) {
+    const id = normStepId(s.id)
+    if (completed.has(id)) {
+      statusByStepId[id] = 'done'
+    } else if (lastStepStartId != null && id === lastStepStartId) {
+      statusByStepId[id] = 'active'
+    } else {
+      statusByStepId[id] = 'pending'
+    }
+  }
+
+  return { statusByStepId }
+}
+
 /** 从任意对象解析 steps；至少 1 步且每步需有非空 title。 */
 export function normalizePlanStepsFromUnknown(data: unknown): PlanStep[] | null {
   if (data == null || typeof data !== 'object') return null

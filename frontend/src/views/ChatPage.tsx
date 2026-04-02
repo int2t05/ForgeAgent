@@ -11,6 +11,7 @@ import {
   lazy,
   memo,
   Suspense,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -33,7 +34,11 @@ import {
   foldComposerLlmStreamForBusy,
   foldComposerLlmStreamForFreeze,
 } from '@/utils/foldComposerLlmStream'
-import { latestPlanStepsFromEvents, normalizePlanStepsFromUnknown } from '@/utils/normalizeTaskPlan'
+import {
+  derivePlanTodoProgress,
+  latestPlanStepsFromEvents,
+  normalizePlanStepsFromUnknown,
+} from '@/utils/normalizeTaskPlan'
 import { splitThinkingFromMessage } from '@/utils/parseMessageThinking'
 import { ChatWorkspaceSidebar } from '@/components/chat/ChatWorkspaceSidebar'
 import { ComposerLlmStreamPanel } from '@/components/chat/ComposerLlmStreamPanel'
@@ -60,8 +65,9 @@ import {
   getTasks,
   patchTask,
 } from '@/api/tasks'
-import type { PlanStep } from '@/utils/normalizeTaskPlan'
+import type { PlanStep, PlanTodoProgress } from '@/utils/normalizeTaskPlan'
 import type { Message } from '@/types/session'
+import type { TaskEvent } from '@/types/task'
 
 const ChatMarkdown = lazy(() =>
   import('@/components/chat/ChatMarkdown').then((m) => ({
@@ -280,12 +286,36 @@ const AssistantThinkingPanel = memo(function AssistantThinkingPanel({
   )
 })
 
+/** 折叠标题左侧：列表+圆点，与 To-do 语义一致 */
+function PlanTodoSummaryGlyph({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <path
+        d="M5 7.25h10M5 12h14M5 16.75h10"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      <circle cx="17.25" cy="7.25" r="1.35" fill="currentColor" />
+      <circle cx="17.25" cy="16.75" r="1.35" fill="currentColor" />
+    </svg>
+  )
+}
+
 const PlanStepsDialogBubble = memo(function PlanStepsDialogBubble({
   steps,
+  todoProgress,
 }: {
   steps: PlanStep[]
+  todoProgress: PlanTodoProgress
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(true)
 
   return (
     <div className="fa-chat-thread">
@@ -296,7 +326,9 @@ const PlanStepsDialogBubble = memo(function PlanStepsDialogBubble({
           onToggle={(e) => setOpen(e.currentTarget.open)}
         >
           <summary className="fa-plan-summary">
-            <span className="fa-chat-fold-link">Planning</span>
+            <PlanTodoSummaryGlyph className="size-[1.05rem] shrink-0 text-neutral-400" />
+            <span className="fa-chat-fold-link">To-dos</span>
+            <span className="tabular-nums text-neutral-400">{steps.length}</span>
             <span className="fa-chat-fold-chevron" aria-hidden>
               ›
             </span>
@@ -304,6 +336,7 @@ const PlanStepsDialogBubble = memo(function PlanStepsDialogBubble({
           <div className="fa-plan-body">
             <TaskPlanSteps
               steps={steps}
+              todoProgress={todoProgress}
               className="border-0 bg-transparent px-0 py-0 shadow-none"
             />
           </div>
@@ -425,6 +458,25 @@ export function ChatPage() {
       staleTime: 60_000,
     })),
   })
+
+  /** 用于消息区 To-do 进度；与详情查询并行，刷新后仍可自事件推导勾选态 */
+  const taskEventsProgressQueries = useQueries({
+    queries: tasksChrono.map((t) => ({
+      queryKey: ['task', t.id, 'events', 'chat-progress'] as const,
+      queryFn: () => getTaskEvents(t.id, undefined, 400),
+      enabled: Boolean(sessionId) && tasksChrono.length > 0,
+      staleTime: 60_000,
+    })),
+  })
+
+  const taskEventsByIdForChat = useMemo(() => {
+    const m: Record<string, TaskEvent[]> = {}
+    tasksChrono.forEach((t, i) => {
+      const ev = taskEventsProgressQueries[i]?.data?.events
+      if (ev?.length) m[t.id] = ev
+    })
+    return m
+  }, [tasksChrono, taskEventsProgressQueries])
 
   const planFromServerByTaskId = useMemo(() => {
     const map: Record<string, PlanStep[] | null> = {}
@@ -686,10 +738,11 @@ export function ChatPage() {
   /**
    * 每条用户消息对应一轮任务：任务按创建时间排序后与 user 气泡顺序对齐；
    * 最后一轮用 pending/列表末任务，以兼容同一条用户消息重跑产生多任务。
+   * 返回 `taskId` 供 To-do 进度与 SSE / 归档 / 事件查询对齐。
    */
-  const planStepsAfterUserMessageAt = useMemo(() => {
+  const planContextAfterUserMessageAt = useMemo(() => {
     const userMessageCount = messages.filter((x) => x.role === 'user').length
-    return (messageIndex: number): PlanStep[] | null => {
+    return (messageIndex: number): { steps: PlanStep[]; taskId: string } | null => {
       const row = messages[messageIndex]
       if (!row || row.role !== 'user') return null
       if (tasksChrono.length === 0) return null
@@ -714,13 +767,20 @@ export function ChatPage() {
         tid = tasksChrono[userTurn]?.id
       }
       if (!tid) return null
-      if (isLastUser && busy && planForComposer?.length) return planForComposer
-      const archived = plansByTaskId[tid]?.steps
-      if (archived?.length) return archived
-      const fromServer = planFromServerByTaskId[tid]
-      if (fromServer?.length) return fromServer
-      if (isLastUser && planForComposer?.length) return planForComposer
-      return null
+      let steps: PlanStep[] | null = null
+      if (isLastUser && busy && planForComposer?.length) {
+        steps = planForComposer
+      } else {
+        const archived = plansByTaskId[tid]?.steps
+        if (archived?.length) steps = archived
+        else {
+          const fromServer = planFromServerByTaskId[tid]
+          if (fromServer?.length) steps = fromServer
+          else if (isLastUser && planForComposer?.length) steps = planForComposer
+        }
+      }
+      if (!steps?.length) return null
+      return { steps, taskId: tid }
     }
   }, [
     messages,
@@ -732,6 +792,23 @@ export function ChatPage() {
     plansByTaskId,
     planFromServerByTaskId,
   ])
+
+  /** live > 归档终态 todo > GET events 推导；无事件时等价于全部待办。 */
+  const resolvePlanTodoProgress = useCallback(
+    (taskId: string, steps: PlanStep[]): PlanTodoProgress => {
+      if (pendingTaskId === taskId && liveTaskEvents.length > 0) {
+        return derivePlanTodoProgress(liveTaskEvents, steps)
+      }
+      const archivedTodo = plansByTaskId[taskId]?.todoProgress
+      if (archivedTodo) return archivedTodo
+      const remoteEv = taskEventsByIdForChat[taskId]
+      if (remoteEv?.length) {
+        return derivePlanTodoProgress(remoteEv, steps)
+      }
+      return derivePlanTodoProgress([], steps)
+    },
+    [pendingTaskId, liveTaskEvents, plansByTaskId, taskEventsByIdForChat],
+  )
 
   useLayoutEffect(() => {
     if (sessionId !== prevSessionIdForScrollRef.current) {
@@ -931,7 +1008,7 @@ export function ChatPage() {
                     </div>
                   )}
                   {messages.map((m, i) => {
-                    const planAfter = planStepsAfterUserMessageAt(i)
+                    const planCtx = planContextAfterUserMessageAt(i)
                     const archiveBeforeThisAssistant =
                       insertArchiveBeforeLastAssistant &&
                       i === messages.length - 1 &&
@@ -973,8 +1050,14 @@ export function ChatPage() {
                             startTaskMutation.isPending || stopTaskMutation.isPending
                           }
                         />
-                        {m.role === 'user' && planAfter?.length ? (
-                          <PlanStepsDialogBubble steps={planAfter} />
+                        {m.role === 'user' && planCtx ? (
+                          <PlanStepsDialogBubble
+                            steps={planCtx.steps}
+                            todoProgress={resolvePlanTodoProgress(
+                              planCtx.taskId,
+                              planCtx.steps,
+                            )}
+                          />
                         ) : null}
                       </Fragment>
                     )
@@ -982,7 +1065,13 @@ export function ChatPage() {
                   {detachedComposerPlan?.sessionId === sessionId &&
                   detachedComposerPlan.steps.length > 0 ? (
                     <div className="fa-chat-thread">
-                      <PlanStepsDialogBubble steps={detachedComposerPlan.steps} />
+                      <PlanStepsDialogBubble
+                        steps={detachedComposerPlan.steps}
+                        todoProgress={resolvePlanTodoProgress(
+                          detachedComposerPlan.taskId,
+                          detachedComposerPlan.steps,
+                        )}
+                      />
                     </div>
                   ) : null}
                   {busy ? (
