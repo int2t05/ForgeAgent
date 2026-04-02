@@ -31,7 +31,7 @@ async def execute_plan_step_react(
     sid = step.get("id")
     title = step.get("title")
 
-    # 1. 落库 step_start（附带当时工作区根及单层列表快照）
+    # 1. 落库 step_start（短事务；ReAct 耗时不一定持有同一会话，以免占满连接池）
     async with AsyncSessionLocal() as db:
         async with db.begin():
             await event_repository.append_event(

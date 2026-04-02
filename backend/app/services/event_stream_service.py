@@ -18,7 +18,7 @@ from app.models.task_event import TaskEvent
 from app.repositories import event_repository, task_repository
 
 _TERMINAL_STATUSES = frozenset({"success", "failed", "cancelled"})
-_POLL_INTERVAL_SEC = 0.15
+_POLL_INTERVAL_SEC = 0.1
 _STABLE_ROUNDS_BEFORE_CLOSE = 4
 
 
@@ -62,9 +62,9 @@ async def iter_task_event_sse(
     last_seq = after_seq
     stable_empty_rounds = 0
 
-    while True:
-        # 1. 读任务状态并拉取 seq 大于游标的已提交事件批次
-        async with AsyncSessionLocal() as db:
+    async with AsyncSessionLocal() as db:
+        while True:
+            # 1. 读任务状态并拉取 seq 大于游标的已提交事件批次（整段流复用同一连接）
             task = await task_repository.get_task_by_id(db, task_id)
             if task is None:
                 return
@@ -74,24 +74,24 @@ async def iter_task_event_sse(
                 after_seq=last_seq,
                 limit=200,
             )
-        # 2. 有新事件则推送 SSE 并重置「无新事件」计数
-        if rows:
-            stable_empty_rounds = 0
-            for row in rows:
-                data = _event_row_to_payload(row)
-                yield _format_sse_message(
-                    event=row.kind,
-                    event_id=row.seq,
-                    data=data,
-                )
-                last_seq = row.seq
+            # 2. 有新事件则推送 SSE 并重置「无新事件」计数
+            if rows:
+                stable_empty_rounds = 0
+                for row in rows:
+                    data = _event_row_to_payload(row)
+                    yield _format_sse_message(
+                        event=row.kind,
+                        event_id=row.seq,
+                        data=data,
+                    )
+                    last_seq = row.seq
+                await asyncio.sleep(_POLL_INTERVAL_SEC)
+                continue
+            # 3. 无新事件：终态任务在连续空转多轮后结束流；否则继续轮询
+            if task.status in _TERMINAL_STATUSES:
+                stable_empty_rounds += 1
+                if stable_empty_rounds >= _STABLE_ROUNDS_BEFORE_CLOSE:
+                    return
+            else:
+                stable_empty_rounds = 0
             await asyncio.sleep(_POLL_INTERVAL_SEC)
-            continue
-        # 3. 无新事件：终态任务在连续空转多轮后结束流；否则继续轮询
-        if task.status in _TERMINAL_STATUSES:
-            stable_empty_rounds += 1
-            if stable_empty_rounds >= _STABLE_ROUNDS_BEFORE_CLOSE:
-                return
-        else:
-            stable_empty_rounds = 0
-        await asyncio.sleep(_POLL_INTERVAL_SEC)

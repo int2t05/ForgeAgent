@@ -40,11 +40,12 @@ class _StreamDeltaBatcher:
         self._pending[phase].append(delta)
         self._buf_chars += len(delta)
         now = time.monotonic()
-        if self._buf_chars >= 480 or (now - self._last_flush) >= 0.12:
+        if self._buf_chars >= 1200 or (now - self._last_flush) >= 0.25:
             await self.flush()
 
     async def flush(self) -> None:
         """将各相位剩余缓冲合并写入 ``llm_stream_delta`` 事件。"""
+        payloads: list[str] = []
         for ph in ("thinking", "action", "answer"):
             if not self._pending[ph]:
                 continue
@@ -53,16 +54,18 @@ class _StreamDeltaBatcher:
             obj: dict[str, object] = {"phase": ph, "delta": merged}
             if self._step_id:
                 obj["step_id"] = self._step_id
-            payload = json.dumps(obj, ensure_ascii=False)
+            payloads.append(json.dumps(obj, ensure_ascii=False))
+        if payloads:
             async with AsyncSessionLocal() as db:
                 async with db.begin():
-                    await event_repository.append_event(
-                        db,
-                        self._task_id,
-                        "execution",
-                        "llm_stream_delta",
-                        payload,
-                    )
+                    for payload in payloads:
+                        await event_repository.append_event(
+                            db,
+                            self._task_id,
+                            "execution",
+                            "llm_stream_delta",
+                            payload,
+                        )
         self._buf_chars = 0
         self._last_flush = time.monotonic()
 

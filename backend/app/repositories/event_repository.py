@@ -1,6 +1,6 @@
 """任务事件表 task_events 数据访问（seq 单调语义）。"""
 
-from sqlalchemy import func, select
+from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.task_event import TaskEvent
@@ -13,26 +13,25 @@ async def append_event(
     kind: str,
     payload_json: str | None = None,
 ) -> TaskEvent:
-    """在同一 DB 事务内为某任务追加下一条事件行。"""
-    # 1. 查询当前 task_id 下最大 seq
-    stmt = select(func.coalesce(func.max(TaskEvent.seq), 0)).where(
-        TaskEvent.task_id == task_id
+    """在同一 DB 事务内为某任务追加下一条事件行（单条 INSERT + RETURNING，避免先 SELECT MAX）。"""
+    next_seq = (
+        select(func.coalesce(func.max(TaskEvent.seq), 0) + 1)
+        .where(TaskEvent.task_id == task_id)
+        .scalar_subquery()
     )
-    result = await session.execute(stmt)
-    max_seq: int = result.scalar_one()
-    # 2. 使用 max+1 作为新 seq（依赖 UNIQUE 约束兜底并发）
-    next_seq = max_seq + 1
-    event = TaskEvent(
-        task_id=task_id,
-        seq=next_seq,
-        module=module,
-        kind=kind,
-        payload_json=payload_json,
+    stmt = (
+        insert(TaskEvent)
+        .values(
+            task_id=task_id,
+            seq=next_seq,
+            module=module,
+            kind=kind,
+            payload_json=payload_json,
+        )
+        .returning(TaskEvent)
     )
-    session.add(event)
-    await session.flush()
-    await session.refresh(event)
-    return event
+    result = await session.scalars(stmt)
+    return result.one()
 
 
 async def list_events(

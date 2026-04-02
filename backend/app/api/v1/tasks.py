@@ -108,9 +108,9 @@ async def get_task_events(
     task_id: str,
     db: AsyncSession = Depends(get_db),
     after_seq: int | None = Query(None, ge=0),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=400),
 ) -> TaskEventsResponse:
-    """可观测事件历史，支持 after_seq 增量拉取。"""
+    """可观测事件历史，支持 after_seq 增量拉取（上限与对话页一次拉取进度一致）。"""
     return await task_service.list_task_events(
         db, task_id, after_seq=after_seq, limit=limit
     )

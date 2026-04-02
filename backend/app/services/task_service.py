@@ -58,21 +58,22 @@ def _compact_graph_delta(delta: dict) -> dict:
     return compact
 
 
-async def _persist_langgraph_stream_updates(task_id: str, update: dict) -> None:
-    """将 ``stream_mode='updates'`` 的单次产出（节点名 → 状态增量）对齐为 task_events，供 SSE 增量读取。"""
-    async with AsyncSessionLocal() as db:
-        async with db.begin():
-            for node_name, delta in update.items():
-                if not isinstance(delta, dict):
-                    delta = {"_value": delta}
-                payload = {"node": node_name, "delta": _compact_graph_delta(delta)}
-                await event_repository.append_event(
-                    db,
-                    task_id,
-                    "workflow",
-                    "node_update",
-                    json.dumps(payload, ensure_ascii=False, default=str),
-                )
+async def _persist_langgraph_stream_updates(
+    db: AsyncSession, task_id: str, update: dict
+) -> None:
+    """将 ``stream_mode='updates'`` 的单次产出写入 task_events；由调用方复用同一 ``AsyncSession`` 以减少连接抖动。"""
+    async with db.begin():
+        for node_name, delta in update.items():
+            if not isinstance(delta, dict):
+                delta = {"_value": delta}
+            payload = {"node": node_name, "delta": _compact_graph_delta(delta)}
+            await event_repository.append_event(
+                db,
+                task_id,
+                "workflow",
+                "node_update",
+                json.dumps(payload, ensure_ascii=False, default=str),
+            )
 
 
 async def _run_agent_graph_to_completion(
@@ -83,13 +84,14 @@ async def _run_agent_graph_to_completion(
     stream_input: dict | None,
 ) -> dict:
     """执行编译图至终止： LangGraph ``astream(..., stream_mode='updates')`` ，节点完成即落库 ``node_update``，终态取自 checkpointer。"""
-    async for update in graph.astream(
-        stream_input,
-        config,
-        stream_mode="updates",
-    ):
-        if isinstance(update, dict):
-            await _persist_langgraph_stream_updates(task_id, update)
+    async with AsyncSessionLocal() as db:
+        async for update in graph.astream(
+            stream_input,
+            config,
+            stream_mode="updates",
+        ):
+            if isinstance(update, dict):
+                await _persist_langgraph_stream_updates(db, task_id, update)
     snap = await graph.aget_state(config)
     return dict(snap.values) if snap.values else {}
 

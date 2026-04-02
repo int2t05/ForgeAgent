@@ -27,10 +27,10 @@ async def planner_node(state: AgentState) -> dict:
     settings = get_settings()
     out: dict = {}
 
-    # 1. 若上一跳请求重规划：提升 ``plan_version``、写 ``replan`` 并累加计数
-    if state.get("replan_requested"):
-        new_version = 0
-        async with AsyncSessionLocal() as db:
+    # 1. 重规划写库与加载会话消息同连接（中间不夹 LLM，避免多开一次连接）
+    mgr = SessionLLMContextManager(settings.session_memory_max_messages)
+    async with AsyncSessionLocal() as db:
+        if state.get("replan_requested"):
             async with db.begin():
                 new_version = await task_repository.bump_plan_version(db, task_id)
                 await event_repository.append_event(
@@ -40,19 +40,16 @@ async def planner_node(state: AgentState) -> dict:
                     "replan",
                     json.dumps({"plan_version": new_version}, ensure_ascii=False),
                 )
-        next_count = int(state.get("replan_count") or 0) + 1
-        logger.info(
-            "task %s replan in planner: plan_version=%s replan_count=%s",
-            task_id,
-            new_version,
-            next_count,
-        )
-        out["replan_count"] = next_count
-        out["replan_requested"] = False
+            next_count = int(state.get("replan_count") or 0) + 1
+            logger.info(
+                "task %s replan in planner: plan_version=%s replan_count=%s",
+                task_id,
+                new_version,
+                next_count,
+            )
+            out["replan_count"] = next_count
+            out["replan_requested"] = False
 
-    # 2. 组装会话消息与黑板条，调用规划 LLM 得抽象步骤列表
-    mgr = SessionLLMContextManager(settings.session_memory_max_messages)
-    async with AsyncSessionLocal() as db:
         chat_messages = await mgr.load_chat_messages(
             db,
             session_id=session_id,
@@ -63,6 +60,7 @@ async def planner_node(state: AgentState) -> dict:
         tail = notes[-10:]
         bb = "【共享黑板·来自 Learner 的要点】\n" + "\n".join(tail)
         chat_messages = [*chat_messages, HumanMessage(content=bb)]
+    # 2. 组装黑板条后调用规划 LLM（释放上一条 DB 会话后再跑模型，避免长时间占连接）
     steps = await plan_steps_with_llm(chat_messages, settings)
 
     payload = json.dumps({"steps": steps}, ensure_ascii=False)

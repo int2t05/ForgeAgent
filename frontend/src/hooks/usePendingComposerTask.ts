@@ -63,11 +63,29 @@ export function usePendingComposerTaskSync() {
     const sessionId = pendingSessionId
     const ac = new AbortController()
     let cancelled = false
+    let rafId = 0
 
     async function run() {
       store.setSsePhase('loading')
       store.setSseError(null)
       const bySeq = new Map<number, TaskEvent>()
+      let sortedLive: TaskEvent[] = []
+
+      const flushLive = () => {
+        if (rafId) {
+          cancelAnimationFrame(rafId)
+          rafId = 0
+        }
+        useComposerTaskStore.getState().setLiveEvents(sortedLive)
+      }
+
+      const scheduleLive = () => {
+        if (rafId) return
+        rafId = requestAnimationFrame(() => {
+          rafId = 0
+          useComposerTaskStore.getState().setLiveEvents(sortedLive)
+        })
+      }
 
       try {
         const initial = await getAllTaskEvents(taskId)
@@ -79,7 +97,7 @@ export function usePendingComposerTaskSync() {
           useComposerTaskStore.setState({ lastComposerHadLlmStream: true })
         }
 
-        let sortedLive = sortEventsFromMap(bySeq)
+        sortedLive = sortEventsFromMap(bySeq)
         useComposerTaskStore.getState().setLiveEvents(sortedLive)
         if (cancelled) return
 
@@ -90,7 +108,7 @@ export function usePendingComposerTaskSync() {
           if (cancelled) return
           markLlmStreamIfDelta(e)
           sortedLive = appendOrResortEvents(bySeq, sortedLive, e)
-          useComposerTaskStore.getState().setLiveEvents(sortedLive)
+          scheduleLive()
           if (
             e.kind === 'plan_created' ||
             e.kind === 'replan' ||
@@ -102,18 +120,7 @@ export function usePendingComposerTaskSync() {
 
         if (cancelled) return
 
-        const lastSeq = maxSeqInMap(bySeq)
-        const gap = await getAllTaskEvents(taskId, lastSeq)
-        if (!cancelled && gap.length > 0) {
-          for (const e of gap) {
-            bySeq.set(e.seq, e)
-          }
-          if (gap.some((e) => e.kind === 'llm_stream_delta')) {
-            useComposerTaskStore.setState({ lastComposerHadLlmStream: true })
-          }
-          sortedLive = sortEventsFromMap(bySeq)
-          useComposerTaskStore.getState().setLiveEvents(sortedLive)
-        }
+        flushLive()
 
         await queryClient.invalidateQueries({ queryKey: ['task', taskId] })
         if (sessionId) {
@@ -145,6 +152,7 @@ export function usePendingComposerTaskSync() {
     void run()
     return () => {
       cancelled = true
+      if (rafId) cancelAnimationFrame(rafId)
       ac.abort()
     }
   }, [pendingTaskId, pendingSessionId, queryClient])

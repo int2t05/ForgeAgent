@@ -492,16 +492,17 @@ export function ChatPage() {
     return map
   }, [tasksChrono, taskPlanDetailQueries])
 
-  const latestSessionTaskDetailQuery = useQuery({
-    queryKey: ['task', latestSessionTaskId],
-    queryFn: () => getTask(latestSessionTaskId!),
-    enabled: Boolean(latestSessionTaskId),
-  })
+  /** 与会话列表首条（最新）任务对应的详情，复用 taskPlanDetailQueries 避免重复 GET /task */
+  const latestTaskDetailQuery = useMemo(() => {
+    if (!latestSessionTaskId || tasksChrono.length === 0) return null
+    const idx = tasksChrono.findIndex((t) => t.id === latestSessionTaskId)
+    if (idx < 0) return null
+    return taskPlanDetailQueries[idx] ?? null
+  }, [latestSessionTaskId, tasksChrono, taskPlanDetailQueries])
 
   const planFromTaskDetail = useMemo(
-    () =>
-      normalizePlanStepsFromUnknown(latestSessionTaskDetailQuery.data?.plan ?? null),
-    [latestSessionTaskDetailQuery.data?.plan],
+    () => normalizePlanStepsFromUnknown(latestTaskDetailQuery?.data?.plan ?? null),
+    [latestTaskDetailQuery?.data?.plan],
   )
 
   /** 详情里 plan 偶发为空时，从事件表恢复 plan_created（修复刷新后步骤丢失） */
@@ -510,7 +511,7 @@ export function ChatPage() {
     queryFn: () => getTaskEvents(latestSessionTaskId!, undefined, 200),
     enabled:
       Boolean(latestSessionTaskId) &&
-      latestSessionTaskDetailQuery.isSuccess &&
+      Boolean(latestTaskDetailQuery?.isSuccess) &&
       !planFromTaskDetail?.length,
   })
 
@@ -660,8 +661,8 @@ export function ChatPage() {
     tailTask.status === 'failed' &&
     tailTaskId === latestSessionTaskId
   const lastTaskFailureMessage =
-    lastTaskExecutionFailed && latestSessionTaskDetailQuery.isSuccess
-      ? latestSessionTaskDetailQuery.data?.error_message?.trim() || null
+    lastTaskExecutionFailed && latestTaskDetailQuery?.isSuccess
+      ? latestTaskDetailQuery.data?.error_message?.trim() || null
       : null
 
   /** 刷新后内存无 freeze 时，分页拉全量事件重建 Thought/Action（单次 limit 会截断在 delta 里导致缺 tool_call）。 */
@@ -955,7 +956,7 @@ export function ChatPage() {
                       message="本轮任务执行失败"
                       detail={
                         lastTaskFailureMessage ??
-                        (latestSessionTaskDetailQuery.isFetching
+                        (latestTaskDetailQuery?.isFetching
                           ? '正在加载失败原因…'
                           : '任务未正常结束，请稍后重试或查看任务详情中的事件记录。')
                       }
