@@ -13,6 +13,7 @@ from app.core.database import AsyncSessionLocal
 from app.modules.execution.step_react_loop import run_step_react_loop
 from app.repositories import event_repository
 from app.schemas.tools import ToolItem
+from app.shared.workspace_snapshot import build_workspace_snapshot
 
 
 async def execute_plan_step_react(
@@ -30,7 +31,7 @@ async def execute_plan_step_react(
     sid = step.get("id")
     title = step.get("title")
 
-    # 1. 写入 step_start
+    # 1. 落库 step_start（附带当时工作区根及单层列表快照）
     async with AsyncSessionLocal() as db:
         async with db.begin():
             await event_repository.append_event(
@@ -39,7 +40,7 @@ async def execute_plan_step_react(
                 "execution",
                 "step_start",
                 json.dumps(
-                    {"step_id": sid, "title": title},
+                    {"step_id": sid, "title": title} | build_workspace_snapshot(settings),
                     ensure_ascii=False,
                 ),
             )

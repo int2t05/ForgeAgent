@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.workspace_config import set_explicit_workspace_root
 from app.modules.tools.builtin import list_builtin_tools
 from app.modules.tools.builtin_executor import execute_builtin
 from app.modules.tools.mcp_sources import tools_from_mcp_settings
@@ -41,11 +42,14 @@ class ToolRegistry:
         return merged
 
     async def refresh(self, db: AsyncSession) -> None:
-        """根据 settings_kv 与当前环境变量重建快照（在 lifespan、GET /tools、PUT /settings 后调用）。"""
-        # 使 .env / 进程环境变更（如 TAVILY_API_KEY）在不重载进程时可被 pydantic-settings 重新读取
+        """按 settings_kv 与当前进程环境重建工具快照并同步工作区显式根。"""
+        # 1. 丢弃 Settings 单例缓存，便于 .env 等变更在无重启进程时生效
         get_settings.cache_clear()
         async with self._lock:
+            # 2. 读库并写入工作区覆盖路径（供 resolved_agent_workspace_path）
             settings = await get_settings_public(db)
+            set_explicit_workspace_root(settings.agent_workspace_root)
+            # 3. 重建内置工具（绑定新根）并与 MCP/Skill 元数据合并
             builtins = list_builtin_tools()
             mcp_part = tools_from_mcp_settings(settings.mcp)
             skill_part = tools_from_skill_paths(settings.skills_paths)

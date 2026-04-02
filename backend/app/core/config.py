@@ -121,14 +121,18 @@ class Settings(BaseSettings):
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     def resolved_agent_workspace_path(self) -> Path:
-        """解析文件工具允许读写的根目录（默认 monorepo 根）。"""
-        raw = (self.agent_workspace_root or "").strip()
+        """解析 Agent 文件工具与 shell 使用的根目录（显式配置优先，其次 env，否则仓库根）。"""
+        from app.core.workspace_config import get_explicit_workspace_root
+
+        # 1. 合并显式根（API 持久化）与 env 字段
+        raw = (get_explicit_workspace_root() or self.agent_workspace_root or "").strip()
+        # 2. 得到绝对路径（相对路径相对 monorepo 根）
         if not raw:
             p = _REPO_ROOT.resolve()
         else:
             path = Path(raw)
             p = path.resolve() if path.is_absolute() else (_REPO_ROOT / path).resolve()
-        # 自定义工作区常见为新目录；LangChain 文件工具初始化会访问 root_dir，缺失则 Windows 报 WinError 3。
+        # 3. 确保目录存在，避免 LangChain 文件工具在 Windows 上访问不存在 root 失败
         p.mkdir(parents=True, exist_ok=True)
         return p
 

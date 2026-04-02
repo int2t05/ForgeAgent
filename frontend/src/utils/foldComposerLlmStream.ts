@@ -31,6 +31,8 @@ export interface ComposerToolActionPanel {
   title?: string
   variant: 'plain' | 'code'
   content: string
+  /** 若设置，在面板旁展示复制按钮（如绝对路径） */
+  copyText?: string
   /**
    * code：套在 details 内且默认收起（read 结果、shell 输出）。
    */
@@ -86,6 +88,15 @@ function pickStr(r: Record<string, unknown> | null, key: string): string {
   return typeof v === 'string' ? v : ''
 }
 
+/** 优先使用后端附带的 args_for_display（路径已为绝对路径）。 */
+function toolCallArgsForComposer(p: Record<string, unknown>): Record<string, unknown> {
+  const disp = p.args_for_display
+  if (disp && typeof disp === 'object' && !Array.isArray(disp)) {
+    return disp as Record<string, unknown>
+  }
+  return asRecord(p.args) ?? {}
+}
+
 /** shell 的 args.commands 转成多行文本（与任务时间线一致）。 */
 function formatShellCommandsForComposer(args: unknown): string {
   const r = asRecord(args)
@@ -109,11 +120,11 @@ function formatToolCallPayload(payload: Record<string, unknown> | null): string 
   const toolRaw = payload.tool
   if (typeof toolRaw !== 'string' || !toolRaw.trim()) return ''
   const tool = toolRaw.trim()
-  const argsObj = asRecord(payload.args) ?? {}
+  const argsObj = toolCallArgsForComposer(payload)
 
   if (tool === 'read_file') {
     const path = pickStr(argsObj, 'file_path')
-    return `调用工具：${tool}\n路径：\n${path || '—'}`
+    return `调用工具：${tool}\n绝对路径：\n${path || '—'}`
   }
   if (tool === 'write_file') {
     const path = pickStr(argsObj, 'file_path')
@@ -122,7 +133,7 @@ function formatToolCallPayload(payload: Record<string, unknown> | null): string 
     const mode = append ? '追加' : '覆盖'
     return [
       `调用工具：${tool}`,
-      `路径：${path || '—'}`,
+      `绝对路径：${path || '—'}`,
       `模式：${mode}`,
       '',
       '── 写入内容 ──',
@@ -132,6 +143,10 @@ function formatToolCallPayload(payload: Record<string, unknown> | null): string 
   if (tool === 'shell') {
     const cmds = formatShellCommandsForComposer(argsObj)
     return [`调用工具：${tool}`, '', '── 命令 ──', cmds || '—'].join('\n')
+  }
+  if (tool === 'list_directory') {
+    const path = pickStr(argsObj, 'dir_path')
+    return `调用工具：${tool}\n绝对路径：\n${path || '—'}`
   }
 
   try {
@@ -222,10 +237,15 @@ function buildReadFileComposerBlock(
   p: Record<string, unknown>,
   followingResults?: TaskEvent[],
 ): ComposerActionBlock {
-  const argsObj = asRecord(p.args) ?? {}
+  const argsObj = toolCallArgsForComposer(p)
   const path = pickStr(argsObj, 'file_path')
   const panels: ComposerToolActionPanel[] = [
-    { id: 'meta', variant: 'plain', content: `路径：${path || '—'}` },
+    {
+      id: 'meta',
+      variant: 'plain',
+      content: `绝对路径：${path || '—'}`,
+      copyText: path || undefined,
+    },
   ]
   if (followingResults?.length) {
     for (const r of followingResults) {
@@ -252,7 +272,7 @@ function buildWriteFileComposerBlock(
   p: Record<string, unknown>,
   followingResults?: TaskEvent[],
 ): ComposerActionBlock {
-  const argsObj = asRecord(p.args) ?? {}
+  const argsObj = toolCallArgsForComposer(p)
   const path = pickStr(argsObj, 'file_path')
   const text = pickStr(argsObj, 'text')
   const append = argsObj.append === true
@@ -261,7 +281,8 @@ function buildWriteFileComposerBlock(
     {
       id: 'meta',
       variant: 'plain',
-      content: `路径：${path || '—'}\n模式：${mode}`,
+      content: `绝对路径：${path || '—'}\n模式：${mode}`,
+      copyText: path || undefined,
     },
     {
       id: 'text',
@@ -290,6 +311,41 @@ function buildWriteFileComposerBlock(
     }
   }
   return { id: `tool-${seq}`, subtitle: 'write_file', body: '', panels }
+}
+
+function buildListDirectoryComposerBlock(
+  seq: number,
+  p: Record<string, unknown>,
+  followingResults?: TaskEvent[],
+): ComposerActionBlock {
+  const argsObj = toolCallArgsForComposer(p)
+  const path = pickStr(argsObj, 'dir_path')
+  const panels: ComposerToolActionPanel[] = [
+    {
+      id: 'meta',
+      variant: 'plain',
+      content: `列出目录（绝对路径）：${path || '—'}`,
+      copyText: path || undefined,
+    },
+  ]
+  if (followingResults?.length) {
+    for (const r of followingResults) {
+      panels.push({
+        id: `attempt-${r.seq}`,
+        variant: 'plain',
+        content: toolResultAttemptPlain(r),
+      })
+      const rp = r.payload as Record<string, unknown> | null
+      panels.push({
+        id: `listing-${r.seq}`,
+        title: '列举结果',
+        variant: 'code',
+        collapsible: true,
+        content: formatToolResultValue(rp?.result),
+      })
+    }
+  }
+  return { id: `tool-${seq}`, subtitle: 'list_directory', body: '', panels }
 }
 
 function buildShellComposerBlock(
@@ -333,6 +389,9 @@ function toolEventToBlock(e: TaskEvent, followingResults?: TaskEvent[]): Compose
   }
   if (tool === 'write_file') {
     return buildWriteFileComposerBlock(e.seq, p, followingResults)
+  }
+  if (tool === 'list_directory') {
+    return buildListDirectoryComposerBlock(e.seq, p, followingResults)
   }
   if (tool === 'shell') {
     return buildShellComposerBlock(e.seq, p, followingResults)

@@ -24,6 +24,7 @@ export function useSettings() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['settings'] })
       void queryClient.invalidateQueries({ queryKey: ['tools'] })
+      void queryClient.invalidateQueries({ queryKey: ['workspace', 'snapshot'] })
     },
   })
 
@@ -32,6 +33,7 @@ export function useSettings() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['settings'] })
       void queryClient.invalidateQueries({ queryKey: ['tools'] })
+      void queryClient.invalidateQueries({ queryKey: ['workspace', 'snapshot'] })
     },
   })
 
@@ -40,6 +42,7 @@ export function useSettings() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['settings'] })
       void queryClient.invalidateQueries({ queryKey: ['tools'] })
+      void queryClient.invalidateQueries({ queryKey: ['workspace', 'snapshot'] })
     },
   })
 

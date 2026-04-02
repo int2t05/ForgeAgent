@@ -10,13 +10,18 @@ class SettingsPatch(BaseModel):
 
     mcp: list[Any] | None = None
     skills_paths: list[str] | None = None
+    agent_workspace_root: str | None = None
 
 
 class SettingsPublic(BaseModel):
-    """GET/PUT 对外字段：MCP 服务元数据列表与 Skills 搜索路径。"""
+    """GET/PUT 对外字段：MCP、Skills 与 Agent 工作区根（非密钥）。"""
 
     mcp: list[Any] = Field(default_factory=list)
     skills_paths: list[str] = Field(default_factory=list)
+    agent_workspace_root: str | None = Field(
+        None,
+        description="工作区绝对路径或相对 monorepo 的路径；空则使用环境变量 AGENT_WORKSPACE_ROOT",
+    )
 
 
 class SettingsUpdate(SettingsPublic):

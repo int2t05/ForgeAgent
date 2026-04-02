@@ -35,6 +35,7 @@ import {
 } from '@/utils/foldComposerLlmStream'
 import { latestPlanStepsFromEvents, normalizePlanStepsFromUnknown } from '@/utils/normalizeTaskPlan'
 import { splitThinkingFromMessage } from '@/utils/parseMessageThinking'
+import { ChatWorkspaceSidebar } from '@/components/chat/ChatWorkspaceSidebar'
 import { ComposerLlmStreamPanel } from '@/components/chat/ComposerLlmStreamPanel'
 import { TaskPlanSteps } from '@/components/task/TaskPlanSteps'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
@@ -89,6 +90,35 @@ function ChatHeaderNavToggleIcon({ className }: { className?: string }) {
       />
       <path
         d="M9 7.5v9"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+/** 顶栏：切换右侧工作区侧栏（与对话区并排） */
+function ChatHeaderWorkspaceIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <rect
+        x="3.25"
+        y="4.75"
+        width="17.5"
+        height="14.5"
+        rx="2.25"
+        stroke="currentColor"
+        strokeWidth="1.75"
+      />
+      <path
+        d="M9.25 4.75v14.5"
         stroke="currentColor"
         strokeWidth="1.75"
         strokeLinecap="round"
@@ -299,6 +329,18 @@ export function ChatPage() {
   const prevBusyRef = useRef(false)
   /** 发送或从服务端恢复进行中任务时记下会话：clearPending 后仅靠 store 无法判断是否本轮对话。 */
   const composerTargetSessionRef = useRef<string | null>(null)
+
+  const [workspaceSidebarOpen, setWorkspaceSidebarOpen] = useState(() => {
+    if (typeof window === 'undefined') return true
+    return window.localStorage.getItem('fa-chat-workspace-sidebar') !== '0'
+  })
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      'fa-chat-workspace-sidebar',
+      workspaceSidebarOpen ? '1' : '0',
+    )
+  }, [workspaceSidebarOpen])
 
   const sessionDetailQuery = useQuery({
     queryKey: ['session', sessionId, 'detail'],
@@ -750,6 +792,17 @@ export function ChatPage() {
             >
               <ChatHeaderNewSessionIcon className="size-[1.375rem]" />
             </button>
+            {sessionId ? (
+              <button
+                type="button"
+                onClick={() => setWorkspaceSidebarOpen((v) => !v)}
+                aria-pressed={workspaceSidebarOpen}
+                aria-label={workspaceSidebarOpen ? '隐藏工作区侧栏' : '显示工作区侧栏'}
+                className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-neutral-900 transition hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500/35"
+              >
+                <ChatHeaderWorkspaceIcon className="size-[1.375rem]" />
+              </button>
+            ) : null}
             <div className="min-w-0 flex-1 text-center">
               {sessionId ? (
                 <>
@@ -846,7 +899,8 @@ export function ChatPage() {
                 </div>
               )}
 
-              <div className="fa-chat-canvas min-h-0">
+              <div className="fa-chat-canvas flex min-h-0 flex-1 min-w-0 flex-col md:flex-row">
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col">
                 <div ref={messagesScrollRef} className="fa-chat-messages">
                   {messagesQuery.isLoading && <LoadingSpinner />}
                   {messages.length === 0 && !messagesQuery.isLoading && (
@@ -990,6 +1044,8 @@ export function ChatPage() {
                     </button>
                   </div>
                 </form>
+                </div>
+                {workspaceSidebarOpen ? <ChatWorkspaceSidebar /> : null}
               </div>
             </div>
           )}

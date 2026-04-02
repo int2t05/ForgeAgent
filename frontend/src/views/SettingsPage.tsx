@@ -21,18 +21,21 @@ import type { Settings } from '@/types/settings'
 /** 设置表单内容（仅在 settings 加载完成后渲染）。 */
 function SettingsForm({
   initialSkillsPaths,
+  initialAgentWorkspaceRoot,
   initialMcp,
   updateSettings,
   isUpdating,
   updateError,
 }: {
   initialSkillsPaths: string
+  initialAgentWorkspaceRoot: string
   initialMcp: unknown[]
   updateSettings: ReturnType<typeof useSettings>['updateSettings']
   isUpdating: boolean
   updateError: ReturnType<typeof useSettings>['updateError']
 }) {
   const [skillsPaths, setSkillsPaths] = useState(initialSkillsPaths)
+  const [agentWorkspaceRoot, setAgentWorkspaceRoot] = useState(initialAgentWorkspaceRoot)
   const [mcpServers, setMcpServers] = useState<McpServerDraft[]>(() =>
     parseMcpListFromApi(initialMcp),
   )
@@ -46,6 +49,7 @@ function SettingsForm({
         .split('\n')
         .map((s) => s.trim())
         .filter(Boolean),
+      agent_workspace_root: agentWorkspaceRoot.trim() || null,
     }
     updateSettings(body)
   }
@@ -65,6 +69,20 @@ function SettingsForm({
           }
         />
       )}
+
+      <section>
+        <h2 className="mb-3 text-base font-semibold text-neutral-800">Agent 工作区根目录</h2>
+        <textarea
+          value={agentWorkspaceRoot}
+          onChange={(e) => setAgentWorkspaceRoot(e.target.value)}
+          rows={2}
+          className="fa-input resize-none font-mono"
+          placeholder="绝对路径，或相对仓库根的路径；留空则使用环境变量 AGENT_WORKSPACE_ROOT"
+        />
+        <p className="fa-text-caption mt-1.5 text-neutral-500">
+          保存后工具注册表会立即同步。对话侧栏需再点「刷新」以回到工作区根并刷新列表。
+        </p>
+      </section>
 
       <section>
         <h2 className="mb-3 text-base font-semibold text-neutral-800">Skills</h2>
@@ -121,7 +139,7 @@ export function SettingsPage() {
         options?.onSuccess?.(data, variables, onMutateResult, context)
         showFeedback(
           '配置已保存',
-          'MCP 与 Skills 已写入服务端，下方工具注册表会自动更新；也可手动点「刷新列表」。',
+          '设置已写入服务端，工具注册表已更新；对话页工作区侧栏可点「刷新」同步根目录与列表。',
         )
       },
     })
@@ -132,7 +150,10 @@ export function SettingsPage() {
       ...options,
       onSuccess: (data, variables, onMutateResult, context) => {
         options?.onSuccess?.(data, variables, onMutateResult, context)
-        showFeedback('已重置', 'MCP 与 Skills 列表已清空。')
+        showFeedback(
+          '已重置',
+          'MCP、Skills 与 Agent 工作区根目录已清空（工作区将回退为环境变量）。',
+        )
       },
     })
   }
@@ -142,12 +163,17 @@ export function SettingsPage() {
     [settings],
   )
 
+  const initialAgentWorkspaceRoot = useMemo(
+    () => settings?.agent_workspace_root?.trim() ?? '',
+    [settings],
+  )
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <ConfirmDialog
         open={confirmReset}
         title="重置"
-        description="清空 MCP 与 Skills 列表。"
+        description="清空 MCP、Skills 与工作区根（回退环境变量）。"
         confirmLabel="重置"
         pending={isResetting}
         onCancel={() => !isResetting && setConfirmReset(false)}
@@ -199,6 +225,7 @@ export function SettingsPage() {
           <SettingsForm
             key={dataUpdatedAt}
             initialSkillsPaths={initialSkillsPaths}
+            initialAgentWorkspaceRoot={initialAgentWorkspaceRoot}
             initialMcp={settings.mcp}
             updateSettings={updateSettings}
             isUpdating={isUpdating}

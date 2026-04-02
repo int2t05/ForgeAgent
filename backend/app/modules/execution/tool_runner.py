@@ -11,6 +11,11 @@ import logging
 import random
 from typing import Any
 
+from langchain_community.tools.file_management.utils import (
+    FileValidationError,
+    get_validated_relative_path,
+)
+
 from app.core.circuit_breaker import CircuitOpenError, get_tool_circuit_breaker
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
@@ -18,6 +23,35 @@ from app.modules.tools.registry import tool_registry
 from app.repositories import event_repository
 
 logger = logging.getLogger(__name__)
+
+
+def _args_for_display(tool_name: str, tool_args: dict[str, Any]) -> dict[str, Any] | None:
+    """生成落库展示用 args 副本；文件类工具的路径字段在可校验时改为绝对路径。"""
+    # 1. 仅文件工具需要路径展示增强
+    if tool_name not in {"read_file", "write_file", "list_directory"}:
+        return None
+    settings = get_settings()
+    root_path = settings.resolved_agent_workspace_path()
+    out = dict(tool_args)
+    try:
+        # 2. read / write：替换 file_path
+        if tool_name in ("read_file", "write_file"):
+            fp = tool_args.get("file_path")
+            if isinstance(fp, str) and fp.strip():
+                p = get_validated_relative_path(root_path, fp)
+                out["file_path"] = str(p.resolve())
+            return out
+        # 3. list_directory：替换 dir_path（缺省或「.」视为根）
+        dp = tool_args.get("dir_path")
+        if not isinstance(dp, str) or not dp.strip() or dp.strip() == ".":
+            out["dir_path"] = str(root_path.resolve())
+            return out
+        p = get_validated_relative_path(root_path, dp)
+        out["dir_path"] = str(p.resolve())
+        return out
+    except FileValidationError:
+        # 4. 校验失败则保持原始入参，避免掩盖模型传入的非法路径
+        return dict(tool_args)
 
 
 def _tool_call_payload(
@@ -35,6 +69,9 @@ def _tool_call_payload(
     }
     if react_thought and str(react_thought).strip():
         row["thought"] = str(react_thought).strip()
+    disp = _args_for_display(tool_name, tool_args)
+    if disp is not None:
+        row["args_for_display"] = disp
     return row
 
 

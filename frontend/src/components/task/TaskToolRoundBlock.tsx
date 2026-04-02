@@ -4,6 +4,7 @@
 
 import type { ReactNode } from 'react'
 import { useState } from 'react'
+import { CopyTextButton } from '@/components/common/CopyTextButton'
 import { formatDateTime } from '@/utils/format'
 import type { TaskEvent } from '@/types/task'
 import { COMPOSER_WRITE_PREVIEW_LINES } from '@/utils/foldComposerLlmStream'
@@ -42,6 +43,57 @@ function pickStr(r: Record<string, unknown> | null, key: string): string {
   if (!r) return ''
   const v = r[key]
   return typeof v === 'string' ? v : ''
+}
+
+/** 判断是否为常见绝对路径形式（含 Windows 盘符）。 */
+function isProbablyAbsolutePath(p: string): boolean {
+  if (!p) return false
+  if (p.startsWith('\\\\')) return true
+  if (/^[A-Za-z]:[\\/]/.test(p)) return true
+  if (p.startsWith('/')) return true
+  return false
+}
+
+/** 将工作区根与相对路径拼成展示用绝对路径（浏览器侧简单拼接）。 */
+function joinWorkspaceAbsolute(root: string, relative: string): string {
+  const r = root.replace(/[/\\]+$/, '')
+  const rel = relative.replace(/^[/\\]+/, '')
+  const sep = root.includes('\\') ? '\\' : '/'
+  return `${r}${sep}${rel}`
+}
+
+/** 无后端 args_for_display 时，用 step 快照中的 workspace_root 将路径转为绝对路径展示。 */
+function clientResolveToolPathsForDisplay(
+  toolName: string,
+  args: unknown,
+  workspaceRoot: string,
+): unknown {
+  if (!workspaceRoot.trim()) return args
+  const rec = asRecord(args)
+  if (!rec) return args
+  const out: Record<string, unknown> = { ...rec }
+  if (toolName === 'read_file' || toolName === 'write_file') {
+    const fp = pickStr(rec, 'file_path')
+    if (fp && !isProbablyAbsolutePath(fp)) {
+      out.file_path = joinWorkspaceAbsolute(workspaceRoot, fp)
+    }
+  } else if (toolName === 'list_directory') {
+    const dp = pickStr(rec, 'dir_path')
+    if (!dp.trim() || dp.trim() === '.') {
+      out.dir_path = workspaceRoot
+    } else if (!isProbablyAbsolutePath(dp)) {
+      out.dir_path = joinWorkspaceAbsolute(workspaceRoot, dp)
+    }
+  }
+  return out
+}
+
+/** 从 step_start 取 workspace_root，供工具参数在缺省 args_for_display 时拼绝对路径。 */
+function workspaceRootFromStepStart(stepStart: TaskEvent | undefined): string {
+  const p = stepStart?.payload
+  if (!p) return ''
+  const root = p.workspace_root
+  return typeof root === 'string' ? root.trim() : ''
 }
 
 /** shell 工具的 commands 参数格式化为可展示的多行文本。 */
@@ -155,6 +207,7 @@ function analyzeStepMeta(events: TaskEvent[]) {
     hadAnyToolAttempt,
     firstSeq,
     ts,
+    stepStart,
   }
 }
 
@@ -205,11 +258,19 @@ function resolveStepEndBadge(
   }
 }
 
-/** 从 tool_call 事件解析工具名与参数对象。 */
-function toolCallNameArgs(ev: TaskEvent): { name: string; args: unknown } {
+/** 从 tool_call 解析工具名、原始参数与展示用参数（路径类已为绝对路径）。 */
+function toolCallNameArgs(ev: TaskEvent): {
+  name: string
+  args: unknown
+  argsForDisplay: unknown
+} {
   const p = ev.payload as Record<string, unknown> | null
   const name = p && typeof p.tool === 'string' ? p.tool : ''
-  return { name, args: p?.args ?? {} }
+  const rawArgs = p?.args ?? {}
+  const disp = p?.args_for_display
+  const argsForDisplay =
+    disp && typeof disp === 'object' && !Array.isArray(disp) ? disp : rawArgs
+  return { name, args: rawArgs, argsForDisplay }
 }
 
 /** 内置工具：Action 区展示与 JSON 不同的结构化参数；非以上工具返回 null 以便回退 JSON。 */
@@ -219,8 +280,11 @@ function renderBuiltinToolActionBody(toolName: string, args: unknown): ReactNode
     const path = pickStr(rec, 'file_path')
     return (
       <div className="space-y-1.5 text-xs">
-        <p className="font-medium text-neutral-600">读取路径</p>
-        <pre className={codePreClass}>{path || '—'}</pre>
+        <p className="font-medium text-neutral-600">读取文件（绝对路径）</p>
+        <div className="flex flex-wrap items-start gap-2">
+          <pre className={`${codePreClass} min-w-0 flex-1`}>{path || '—'}</pre>
+          {path ? <CopyTextButton text={path} label="复制路径" /> : null}
+        </div>
       </div>
     )
   }
@@ -230,15 +294,30 @@ function renderBuiltinToolActionBody(toolName: string, args: unknown): ReactNode
     return (
       <div className="space-y-1.5 text-xs">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="font-medium text-neutral-600">写入路径</p>
+          <p className="font-medium text-neutral-600">写入文件（绝对路径）</p>
           {append ? (
             <span className="rounded bg-amber-100/80 px-1.5 py-0.5 text-amber-900">追加模式</span>
           ) : (
             <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-neutral-600">覆盖写入</span>
           )}
         </div>
-        <pre className={codePreClass}>{path || '—'}</pre>
+        <div className="flex flex-wrap items-start gap-2">
+          <pre className={`${codePreClass} min-w-0 flex-1`}>{path || '—'}</pre>
+          {path ? <CopyTextButton text={path} label="复制路径" /> : null}
+        </div>
         <p className="text-neutral-500">写入正文在下方「工具调用结果」中展示。</p>
+      </div>
+    )
+  }
+  if (toolName === 'list_directory') {
+    const path = pickStr(rec, 'dir_path')
+    return (
+      <div className="space-y-1.5 text-xs">
+        <p className="font-medium text-neutral-600">列出目录（绝对路径）</p>
+        <div className="flex flex-wrap items-start gap-2">
+          <pre className={`${codePreClass} min-w-0 flex-1`}>{path || '—'}</pre>
+          {path ? <CopyTextButton text={path} label="复制路径" /> : null}
+        </div>
       </div>
     )
   }
@@ -331,9 +410,13 @@ function ToolAttemptRow({
     mainBody = (
       <div className="mt-2 space-y-3">
         {path ? (
-          <p className="text-neutral-600 text-xs">
-            目标文件：<span className="font-mono text-neutral-800">{path}</span>
-          </p>
+          <div className="flex flex-wrap items-center gap-2 text-neutral-600 text-xs">
+            <span>
+              目标文件（绝对路径）：{' '}
+              <span className="font-mono text-neutral-800">{path}</span>
+            </span>
+            <CopyTextButton text={path} label="复制路径" />
+          </div>
         ) : null}
         <WriteFileInlinePreview
           text={text || '（无 text 参数）'}
@@ -414,9 +497,23 @@ function ToolAttemptBlocks({
 }
 
 /** 单轮工具调用的列表项（Thought / Action / 结果）。 */
-function ToolRoundListItem({ turn }: { turn: ToolReactTurn }) {
-  const { name: toolNm, args: toolArg } = toolCallNameArgs(turn.call)
-  const builtinAction = renderBuiltinToolActionBody(toolNm, toolArg)
+function ToolRoundListItem({
+  turn,
+  workspaceRoot,
+}: {
+  turn: ToolReactTurn
+  workspaceRoot: string
+}) {
+  const { name: toolNm, args: toolArg, argsForDisplay: toolArgDisplay } = toolCallNameArgs(
+    turn.call,
+  )
+  const p0 = turn.call.payload as Record<string, unknown> | null
+  const hasServerDisplay = p0?.args_for_display != null
+  const resolvedArgs =
+    hasServerDisplay || !workspaceRoot
+      ? toolArgDisplay
+      : clientResolveToolPathsForDisplay(toolNm, toolArgDisplay, workspaceRoot)
+  const builtinAction = renderBuiltinToolActionBody(toolNm, resolvedArgs)
   return (
     <li className="space-y-2">
       <span className="text-xs text-neutral-500">轮次 {turn.round} · 工具</span>
@@ -473,7 +570,7 @@ function ToolRoundListItem({ turn }: { turn: ToolReactTurn }) {
             </span>
           </summary>
           <div className="mt-2">
-            <ToolAttemptBlocks results={turn.results} toolName={toolNm} toolArgs={toolArg} />
+            <ToolAttemptBlocks results={turn.results} toolName={toolNm} toolArgs={resolvedArgs} />
           </div>
         </details>
       </div>
@@ -485,6 +582,7 @@ function ToolRoundListItem({ turn }: { turn: ToolReactTurn }) {
 export function TaskToolRoundBlock({ events }: TaskToolRoundBlockProps) {
   // 1. 提取标题、起止状态等元数据
   const meta = analyzeStepMeta(events)
+  const workspaceRoot = workspaceRootFromStepStart(meta.stepStart)
   // 2. 按序归并为工具轮与终答轮
   const turns = buildReactTurns(events)
   // 3. 终态已知时解析徽标
@@ -538,7 +636,11 @@ export function TaskToolRoundBlock({ events }: TaskToolRoundBlockProps) {
           <ol className="list-decimal space-y-4 pl-5 text-neutral-800 marker:font-medium">
             {turns.map((t) =>
               t.kind === 'tool' ? (
-                <ToolRoundListItem key={`tool-${t.call.seq}`} turn={t} />
+                <ToolRoundListItem
+                  key={`tool-${t.call.seq}`}
+                  turn={t}
+                  workspaceRoot={workspaceRoot}
+                />
               ) : (
                 <li key={`final-${t.seq}`} className="space-y-2">
                   <span className="text-xs text-neutral-500">轮次 {t.round} · 终答</span>

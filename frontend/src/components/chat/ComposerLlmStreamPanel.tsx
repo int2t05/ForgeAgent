@@ -12,6 +12,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { CopyTextButton } from '@/components/common/CopyTextButton'
 import type {
   ComposerRoundSegment,
   ComposerToolActionPanel,
@@ -109,12 +110,16 @@ const ToolActionPanelView = memo(function ToolActionPanelView({
   panel: ComposerToolActionPanel
 }) {
   if (panel.variant === 'plain') {
+    const ct = panel.copyText?.trim()
     return (
-      <div className="text-neutral-700 text-xs leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]">
-        {panel.title ? (
-          <p className="mb-1 font-medium text-neutral-600">{panel.title}</p>
-        ) : null}
-        {panel.content}
+      <div className="flex flex-wrap items-start gap-2 text-neutral-700 text-xs leading-relaxed">
+        <div className="min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere]">
+          {panel.title ? (
+            <p className="mb-1 font-medium text-neutral-600">{panel.title}</p>
+          ) : null}
+          {panel.content}
+        </div>
+        {ct ? <CopyTextButton text={ct} label="复制路径" /> : null}
       </div>
     )
   }
