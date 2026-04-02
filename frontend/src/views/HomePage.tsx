@@ -4,20 +4,25 @@
 
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Header } from '@/layouts/Header'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ErrorAlert } from '@/components/ui/ErrorAlert'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useTasks } from '@/hooks/useTasks'
 import { useSession } from '@/hooks/useSession'
-import { createSession } from '@/api/sessions'
+import {
+  createSession,
+  getSessionContext,
+  sessionContextQueryKey,
+} from '@/api/sessions'
 import { createTask } from '@/api/tasks'
 import { STATUS_COLOR_MAP, STATUS_LABEL_MAP } from '@/constants/task'
 import { formatRelativeTime } from '@/utils/format'
 
 export function HomePage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { sessionId, setSessionId } = useSession()
   const { data, isLoading, error } = useTasks({ limit: 5 })
   const [message, setMessage] = useState('')
@@ -30,10 +35,15 @@ export function HomePage() {
         sid = created.session_id
         setSessionId(sid)
       }
-      return createTask({ session_id: sid, user_message: userMessage })
+      const res = await createTask({ session_id: sid, user_message: userMessage })
+      return { res, sid }
     },
-    onSuccess: (res) => {
+    onSuccess: ({ res, sid }) => {
       setMessage('')
+      void queryClient.fetchQuery({
+        queryKey: sessionContextQueryKey(sid),
+        queryFn: () => getSessionContext(sid),
+      })
       navigate(`/tasks/${res.task_id}`)
     },
   })

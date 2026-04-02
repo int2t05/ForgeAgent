@@ -59,7 +59,7 @@ async def assistant_reply_stream_with_llm(
     )
     # 2. 未配置模型时输出内置占位说明流
     if not is_llm_configured(s):
-        ans = "任务已完成（LangGraph 最小闭环）。配置 API Key 后可使用完整模型。\n"
+        ans = "任务已完成。配置 API Key 后可使用完整模型。\n"
         for i in range(0, len(ans), 4):
             for phase, delta in splitter.feed(ans[i : i + 4]):
                 yield phase, delta

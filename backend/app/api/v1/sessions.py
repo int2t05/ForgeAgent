@@ -10,6 +10,7 @@ from app.schemas.session import (
     MessageOut,
     MessageUpdate,
     MessagesListResponse,
+    SessionContextResponse,
     SessionCreate,
     SessionCreateResponse,
     SessionDetail,
@@ -51,6 +52,15 @@ async def get_session_messages(
     return await session_service.list_messages_for_session(
         db, session_id, limit=limit, offset=offset
     )
+
+
+@router.get("/{session_id}/context", response_model=SessionContextResponse)
+async def get_session_context(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> SessionContextResponse:
+    """返回会话黑板、规划侧消息窗口与输入 token 粗估，供前端展示（不触发摘要 LLM）。"""
+    return await session_service.get_session_context_preview(db, session_id)
 
 
 @router.post("/{session_id}/messages", response_model=MessageOut)

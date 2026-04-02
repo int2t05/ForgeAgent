@@ -63,3 +63,39 @@ export interface MessageCreateBody {
 export interface MessageUpdateBody {
   content: string
 }
+
+/** GET /sessions/{id}/context 窗口内单条消息（含 LangChain 等价表示）。 */
+export interface SessionContextWindowItem {
+  id: number
+  role: string
+  created_at: string
+  llm_type: string
+  llm_content: string
+}
+
+/** GET /sessions/{id}/context 内摘要策略说明（不表示已生成摘要正文）。 */
+export interface SessionContextSummaryMeta {
+  enabled: boolean
+  summarize_when_over: number
+  keep_recent: number
+  eligible: boolean
+}
+
+/** GET /sessions/{id}/context 内 token 粗估与预算。 */
+export interface SessionContextTokenBudget {
+  estimated_input: number
+  llm_max_input_tokens: number
+  llm_context_window_tokens: number
+  llm_reserved_completion_tokens: number
+}
+
+/** GET /sessions/{id}/context：黑板 + 规划侧消息窗口 + token 粗估。 */
+export interface SessionContextResponse {
+  session_id: string
+  blackboard_notes: string[]
+  window: SessionContextWindowItem[]
+  session_message_total: number
+  window_max_messages: number
+  summary: SessionContextSummaryMeta
+  tokens: SessionContextTokenBudget
+}

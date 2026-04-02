@@ -13,9 +13,10 @@ import {
   type ReactNode,
 } from 'react'
 import { CopyTextButton } from '@/components/common/CopyTextButton'
-import type {
-  ComposerRoundSegment,
-  ComposerToolActionPanel,
+import {
+  shouldShowComposerRoundThought,
+  type ComposerRoundSegment,
+  type ComposerToolActionPanel,
 } from '@/utils/foldComposerLlmStream'
 
 const ChatMarkdown = lazy(() =>
@@ -25,16 +26,26 @@ const ChatMarkdown = lazy(() =>
 const codeBlockPreClass =
   'max-h-[min(28rem,55vh)] overflow-y-auto rounded-md border border-neutral-700/40 bg-neutral-900/90 px-3 py-2.5 font-mono text-xs leading-relaxed text-neutral-100 whitespace-pre-wrap break-words [overflow-wrap:anywhere]'
 
+/** write_file 的 Action 默认展开，便于直接看到写入/返回。 */
+function isWriteFileActionSubtitle(subtitle: string | undefined): boolean {
+  return /^\s*write_file\b/.test(subtitle ?? '')
+}
+
 const LlmStreamFold = memo(function LlmStreamFold({
   title,
   body,
   children,
+  defaultOpen,
 }: {
   title: string
   body?: string
   children?: ReactNode
+  /** 覆盖默认：Thought 默开，其余默关。 */
+  defaultOpen?: boolean
 }) {
-  const [open, setOpen] = useState(() => title === 'Thought')
+  const [open, setOpen] = useState(
+    () => defaultOpen ?? title === 'Thought',
+  )
   const preRef = useRef<HTMLPreElement>(null)
   const hasBody = Boolean(body?.trim())
 
@@ -170,12 +181,15 @@ export const ComposerLlmStreamPanel = memo(function ComposerLlmStreamPanel({
 }: ComposerLlmStreamPanelProps) {
   return (
     <>
-      {rounds.map((r) => (
+      {rounds.map((r, i) => (
         <Fragment key={r.id}>
-          {r.thought.trim() ? <LlmStreamFold title="Thought" body={r.thought} /> : null}
+          {shouldShowComposerRoundThought(rounds, i) ? (
+            <LlmStreamFold title="Thought" body={r.thought} />
+          ) : null}
           {r.action && r.action.subtitle?.trim() !== '终答' ? (
             <LlmStreamFold
               title={`Action · ${r.action.subtitle?.trim() ? r.action.subtitle : '…'}`}
+              defaultOpen={isWriteFileActionSubtitle(r.action.subtitle)}
               body={
                 r.action.panels && r.action.panels.length > 0 ? undefined : r.action.body
               }

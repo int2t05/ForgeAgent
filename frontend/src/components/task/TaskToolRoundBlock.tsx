@@ -333,12 +333,12 @@ function renderBuiltinToolActionBody(toolName: string, args: unknown): ReactNode
   return null
 }
 
-/** write 正文：与对话区一致，默认仅前若干行。 */
+/** write 正文：默认全文展示，超长时可收起。 */
 function WriteFileInlinePreview({ text, className }: { text: string; className: string }) {
   const lines = text.split(/\r?\n/)
   const n = COMPOSER_WRITE_PREVIEW_LINES
   const hasMore = lines.length > n
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(true)
   const shown = !hasMore || expanded ? text : lines.slice(0, n).join('\n')
   return (
     <div className="space-y-1.5">

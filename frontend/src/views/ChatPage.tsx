@@ -56,8 +56,10 @@ import {
 import { useComposerTaskStore } from '@/store/composerTaskStore'
 import {
   createSession,
+  fetchAllSessionMessages,
   getSession,
-  getSessionMessages,
+  getSessionContext,
+  sessionContextQueryKey,
 } from '@/api/sessions'
 import {
   createTask,
@@ -413,7 +415,7 @@ export function ChatPage() {
 
   const messagesQuery = useQuery({
     queryKey: ['session', sessionId, 'messages'],
-    queryFn: () => getSessionMessages(sessionId!, { limit: 200 }),
+    queryFn: () => fetchAllSessionMessages(sessionId!),
     enabled: Boolean(sessionId),
   })
 
@@ -480,7 +482,11 @@ export function ChatPage() {
       refetchInterval: (query: Query<TaskDetail, Error, TaskDetail, readonly ['task', string]>) => {
         const row = query.state.data
         if (!row || TERMINAL_STATUSES.has(row.status)) return false
-        return 1000
+        const tid = query.queryKey[1]
+        if (tid === useComposerTaskStore.getState().pendingTaskId) {
+          return false
+        }
+        return 5000
       },
     })),
   })
@@ -590,6 +596,10 @@ export function ChatPage() {
       if (sessionId) {
         composerTargetSessionRef.current = sessionId
         useComposerTaskStore.getState().setPending(res.task_id, sessionId)
+        void queryClient.fetchQuery({
+          queryKey: sessionContextQueryKey(sessionId),
+          queryFn: () => getSessionContext(sessionId),
+        })
       }
       void queryClient.invalidateQueries({ queryKey: ['session', sessionId, 'messages'] })
       void queryClient.invalidateQueries({ queryKey: ['tasks'] })
@@ -741,7 +751,7 @@ export function ChatPage() {
     stopTaskMutation.isPending ||
     (!isStreamingTask && !draft.trim())
 
-  /** 底栏上下文环：落库消息 + 草稿 +（生成中）流式块 +（完成后）归档 Thought/Action 粗估 */
+  /** 底栏上下文环：整会话落库消息 + 草稿 +（生成中）流式块 +（完成后）归档 Thought/Action 粗估 */
   const composerContextUsedTokens = useMemo(() => {
     let n = estimateMessagesContextTokens(messages)
     n += estimateTokensFromText(draft)

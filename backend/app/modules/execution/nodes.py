@@ -124,7 +124,7 @@ async def actor_node(state: AgentState) -> dict:
     if full_t.strip():
         summary = f"{_TK_O}{full_t.strip()}{_TK_C}\n\n{full_a.strip()}"
     else:
-        summary = full_a.strip() or "任务已完成（LangGraph 最小闭环）"
+        summary = full_a.strip() or "任务已完成"
     return {
         "outcome": "success",
         "summary": summary,

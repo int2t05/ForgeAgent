@@ -43,7 +43,7 @@ export interface ComposerToolActionPanel {
   previewLines?: number
 }
 
-/** write_file 在对话区默认展开的行数上限 */
+/** 任务时间线中 write 正文折叠阈值（对话区 write 默认可全文滚动，不用此行数裁剪） */
 export const COMPOSER_WRITE_PREVIEW_LINES = 8
 
 /** 单轮 Action 折叠块 */
@@ -75,6 +75,18 @@ export function composerRoundsPayloadLength(rounds: ComposerRoundSegment[]): num
         : (r.action?.body.length ?? 0)
     return n + r.thought.length + actionLen
   }, 0)
+}
+
+/** 与上一轮 ``thought`` 经 trim 后全文相同则不再重复展示 Thought 折叠块（Action 仍照常展示） */
+export function shouldShowComposerRoundThought(
+  rounds: ComposerRoundSegment[],
+  index: number,
+): boolean {
+  if (index < 0 || index >= rounds.length) return false
+  const t = rounds[index]!.thought.trim()
+  if (!t) return false
+  if (index === 0) return true
+  return t !== rounds[index - 1]!.thought.trim()
 }
 
 function asRecord(v: unknown): Record<string, unknown> | null {
@@ -289,7 +301,6 @@ function buildWriteFileComposerBlock(
       title: '写入内容',
       variant: 'code',
       content: text || '（空）',
-      previewLines: COMPOSER_WRITE_PREVIEW_LINES,
     },
   ]
   if (followingResults?.length) {
@@ -376,6 +387,212 @@ function buildShellComposerBlock(
     }
   }
   return { id: `tool-${seq}`, subtitle: 'shell', body: '', panels }
+}
+
+/** 连续多条 tool_call 且 tool 名相同时，合并为同一 Action 展示（按序插入「第 N 次调用」分界）。 */
+function mergeComposerActionBlocksForSameTool(
+  blocks: ComposerActionBlock[],
+  toolLabel: string,
+): ComposerActionBlock | null {
+  const ok = blocks.filter(Boolean)
+  if (ok.length === 0) return null
+  if (ok.length === 1) return ok[0]!
+  const mergedPanels: ComposerToolActionPanel[] = []
+  for (let i = 0; i < ok.length; i++) {
+    const b = ok[i]!
+    if (i > 0) {
+      mergedPanels.push({
+        id: `${b.id}-sep`,
+        variant: 'plain',
+        content: `第 ${i + 1} 次调用`,
+      })
+    }
+    if (b.panels?.length) {
+      for (const p of b.panels) {
+        mergedPanels.push({ ...p, id: `${b.id}__${p.id}` })
+      }
+    } else if (b.body.trim()) {
+      mergedPanels.push({
+        id: `${b.id}-body`,
+        title: i > 0 ? `正文（第 ${i + 1} 次）` : undefined,
+        variant: 'code',
+        collapsible: true,
+        content: b.body,
+      })
+    }
+  }
+  return {
+    id: ok.map((b) => b.id).join('+'),
+    subtitle: `${toolLabel} · ${ok.length} 次`,
+    body: '',
+    panels: mergedPanels,
+  }
+}
+
+function toolCallNameKey(e: TaskEvent): string {
+  if (e.kind !== 'tool_call' || !e.payload || typeof e.payload !== 'object') return ''
+  const t = (e.payload as Record<string, unknown>).tool
+  if (typeof t === 'string' && t.trim()) return t.trim()
+  return `\0${e.seq}`
+}
+
+function toolCallLocalThought(p: Record<string, unknown> | undefined): string {
+  return p && typeof p.thought === 'string' ? p.thought.trim() : ''
+}
+
+/**
+ * 当前 thought 子段在组内首条下标 chunkFirstG 处展示用文案；
+ * 仅「整条 react 的第一个 tool 组」且「该组内下标为 0」时与流式 base 合并。
+ */
+function thoughtForToolCallChunk(
+  group: TaskEvent[],
+  chunkFirstG: number,
+  j: number,
+  thoughtBaseForFirst: string,
+): string {
+  const localTh = toolCallLocalThought(
+    group[chunkFirstG]!.payload as Record<string, unknown> | undefined,
+  )
+  if (chunkFirstG === 0 && j === 0) {
+    return mergeThoughtDisplayParts(thoughtBaseForFirst, localTh).trim()
+  }
+  return localTh
+}
+
+/**
+ * 连续相同工具的一组 tool_call 内，按「连续相同 thought」再分子段：仅归一化后的 thought 相同且连续才留在同一段；
+ * 空 thought 视为延续当前段（不新起一段）。
+ */
+function chunkGroupIndicesByConsecutiveThought(
+  group: TaskEvent[],
+  j: number,
+  thoughtBaseForFirst: string,
+): number[][] {
+  const chunks: number[][] = []
+  for (let g = 0; g < group.length; g++) {
+    const localTh = toolCallLocalThought(group[g]!.payload as Record<string, unknown> | undefined)
+    if (chunks.length === 0) {
+      chunks.push([g])
+      continue
+    }
+    const cur = chunks[chunks.length - 1]!
+    if (!localTh) {
+      cur.push(g)
+      continue
+    }
+    const displayFirst = thoughtForToolCallChunk(group, cur[0]!, j, thoughtBaseForFirst)
+    if (collapseWs(localTh) === collapseWs(displayFirst)) {
+      cur.push(g)
+    } else {
+      chunks.push([g])
+    }
+  }
+  return chunks
+}
+
+/**
+ * 将 reactOrdered（tool_call | react_turn 交错）转为 ComposerRoundSegment；
+ * 连续相同 tool 名的 tool_call 合并为一轮 Action。
+ */
+function appendSegmentsFromReactOrdered(
+  reactOrdered: TaskEvent[],
+  scopedAsc: TaskEvent[],
+  thoughtBaseForFirst: string,
+  maxSeq: number,
+  out: ComposerRoundSegment[],
+  roundIndexMode: 'fromOutLength' | 'incremental',
+  incrementalCounter: { n: number } | null,
+): void {
+  let j = 0
+  while (j < reactOrdered.length) {
+    const e = reactOrdered[j]!
+    if (e.kind === 'react_turn') {
+      const p = e.payload as Record<string, unknown> | undefined
+      const localTh =
+        p && typeof p.thought === 'string' ? p.thought.trim() : ''
+      if (!localTh) {
+        j += 1
+        continue
+      }
+      const roundIndex =
+        roundIndexMode === 'fromOutLength'
+          ? out.length + 1
+          : ++incrementalCounter!.n
+      out.push({
+        id: `rt-${e.seq}`,
+        roundIndex,
+        thought: localTh,
+        action: null,
+      })
+      j += 1
+      continue
+    }
+    if (e.kind !== 'tool_call') {
+      j += 1
+      continue
+    }
+    const key0 = toolCallNameKey(e)
+    const group: TaskEvent[] = [e]
+    let k = j + 1
+    while (k < reactOrdered.length) {
+      const next = reactOrdered[k]!
+      if (next.kind !== 'tool_call') break
+      if (toolCallNameKey(next) !== key0) break
+      group.push(next)
+      k++
+    }
+    const nextAfterGroup = reactOrdered[k]
+
+    const thoughtChunks = chunkGroupIndicesByConsecutiveThought(group, j, thoughtBaseForFirst)
+    for (const idxs of thoughtChunks) {
+      const blocks: ComposerActionBlock[] = []
+      for (const g of idxs) {
+        const ev = group[g]!
+        const upper =
+          g + 1 < group.length
+            ? group[g + 1]!.seq
+            : nextAfterGroup?.seq ?? maxSeq
+        const results = toolResultsFollowingCall(scopedAsc, ev.seq, upper)
+        const block = toolEventToBlock(ev, results)
+        if (block) blocks.push(block)
+      }
+
+      const thought = thoughtForToolCallChunk(group, idxs[0]!, j, thoughtBaseForFirst)
+
+      if (blocks.length > 0) {
+        const firstG = idxs[0]!
+        const p0 = group[firstG]!.payload as Record<string, unknown> | undefined
+        const t0 = p0 && typeof p0.tool === 'string' ? p0.tool.trim() : ''
+        const toolLabel = t0 || blocks[0]!.subtitle?.trim() || '工具'
+        const mergedAction =
+          blocks.length === 1
+            ? blocks[0]!
+            : mergeComposerActionBlocksForSameTool(blocks, toolLabel)
+        const roundIndex =
+          roundIndexMode === 'fromOutLength'
+            ? out.length + 1
+            : ++incrementalCounter!.n
+        out.push({
+          id: idxs.map((g) => `tc-${group[g]!.seq}`).join('+'),
+          roundIndex,
+          thought,
+          action: mergedAction,
+        })
+      } else if (thought.trim()) {
+        const roundIndex =
+          roundIndexMode === 'fromOutLength'
+            ? out.length + 1
+            : ++incrementalCounter!.n
+        out.push({
+          id: idxs.map((g) => `tc-${group[g]!.seq}`).join('+'),
+          roundIndex,
+          thought,
+          action: null,
+        })
+      }
+    }
+    j = k
+  }
 }
 
 function toolEventToBlock(e: TaskEvent, followingResults?: TaskEvent[]): ComposerActionBlock | null {
@@ -553,40 +770,15 @@ function buildComposerRoundSegmentsSorted(
     if (reactOrdered.length > 0) {
       const scopedAsc = [...scoped].sort((a, b) => a.seq - b.seq)
       const segments: ComposerRoundSegment[] = []
-      for (let j = 0; j < reactOrdered.length; j++) {
-        const e = reactOrdered[j]!
-        if (e.kind === 'tool_call') {
-          const p = e.payload as Record<string, unknown> | undefined
-          const localTh =
-            p && typeof p.thought === 'string' ? p.thought.trim() : ''
-          const thought =
-            j === 0
-              ? mergeThoughtDisplayParts(streamThought, localTh).trim()
-              : localTh
-          const upper = reactOrdered[j + 1]?.seq ?? maxSeq
-          const results = toolResultsFollowingCall(scopedAsc, e.seq, upper)
-          const block = toolEventToBlock(e, results)
-          if (block) {
-            segments.push({
-              id: `tc-${e.seq}`,
-              roundIndex: segments.length + 1,
-              thought,
-              action: block,
-            })
-          }
-        } else {
-          const p = e.payload as Record<string, unknown> | undefined
-          const localTh =
-            p && typeof p.thought === 'string' ? p.thought.trim() : ''
-          if (!localTh) continue
-          segments.push({
-            id: `rt-${e.seq}`,
-            roundIndex: segments.length + 1,
-            thought: localTh,
-            action: null,
-          })
-        }
-      }
+      appendSegmentsFromReactOrdered(
+        reactOrdered,
+        scopedAsc,
+        streamThought,
+        maxSeq,
+        segments,
+        'fromOutLength',
+        null,
+      )
       if (segments.length > 0) return segments
     }
 
@@ -626,40 +818,17 @@ function buildComposerRoundSegmentsSorted(
       .sort((a, b) => a.seq - b.seq)
 
     if (reactOrdered.length > 0) {
-      for (let j = 0; j < reactOrdered.length; j++) {
-        const e = reactOrdered[j]!
-        if (e.kind === 'tool_call') {
-          roundCounter += 1
-          const p = e.payload as Record<string, unknown> | undefined
-          const localTh =
-            p && typeof p.thought === 'string' ? p.thought.trim() : ''
-          const thought =
-            j === 0
-              ? mergeThoughtDisplayParts(baseThought, localTh).trim()
-              : localTh
-          const upper = reactOrdered[j + 1]?.seq ?? nextSeq
-          const results = toolResultsFollowingCall(inStepAsc, e.seq, upper)
-          const block = toolEventToBlock(e, results)
-          out.push({
-            id: `tc-${e.seq}`,
-            roundIndex: roundCounter,
-            thought,
-            action: block,
-          })
-        } else {
-          const p = e.payload as Record<string, unknown> | undefined
-          const localTh =
-            p && typeof p.thought === 'string' ? p.thought.trim() : ''
-          if (!localTh) continue
-          roundCounter += 1
-          out.push({
-            id: `rt-${e.seq}`,
-            roundIndex: roundCounter,
-            thought: localTh,
-            action: null,
-          })
-        }
-      }
+      const ctr = { n: roundCounter }
+      appendSegmentsFromReactOrdered(
+        reactOrdered,
+        inStepAsc,
+        baseThought,
+        nextSeq,
+        out,
+        'incremental',
+        ctr,
+      )
+      roundCounter = ctr.n
       continue
     }
 

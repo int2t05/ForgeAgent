@@ -47,6 +47,13 @@ async def list_messages(
     return list(result.scalars().all())
 
 
+async def count_messages_for_session(session: AsyncSession, session_id: str) -> int:
+    """统计某会话下消息条数。"""
+    stmt = select(func.count()).select_from(Message).where(Message.session_id == session_id)
+    result = await session.execute(stmt)
+    return int(result.scalar_one() or 0)
+
+
 async def list_recent_messages(
     session: AsyncSession,
     session_id: str,

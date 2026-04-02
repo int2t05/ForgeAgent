@@ -11,17 +11,25 @@ from app.modules.memory.checkpointer import delete_checkpoint_threads
 from app.models.session import Session as ChatSession
 from app.repositories import message_repository, session_repository, task_repository
 from app.schemas.common import OperationOkResponse
+from app.modules.memory.llm_context_budget import estimate_messages_tokens
+from app.modules.memory.session_blackboard import decode_blackboard_json
+from app.modules.memory.session_context import session_messages_to_chat_messages
 from app.schemas.session import (
     MessageCreate,
     MessageOut,
     MessageUpdate,
     MessagesListResponse,
+    SessionContextResponse,
+    SessionContextSummaryMeta,
+    SessionContextTokenBudget,
+    SessionContextWindowItem,
     SessionCreateResponse,
     SessionDetail,
     SessionListResponse,
     SessionSummary,
     SessionUpdate,
 )
+from app.shared.langchain_content import message_content_text
 
 _PREVIEW_MAX_CHARS = 480
 _MESSAGE_ROLES = frozenset({"user", "assistant", "system"})
@@ -99,6 +107,60 @@ async def get_session_detail(db: AsyncSession, session_id: str) -> SessionDetail
     """返回单条会话元数据。"""
     chat = await _require_session(db, session_id)
     return SessionDetail(id=chat.id, title=chat.title, created_at=chat.created_at)
+
+
+async def get_session_context_preview(
+    db: AsyncSession, session_id: str
+) -> SessionContextResponse:
+    """返回会话黑板 + 进入规划侧的消息窗口及 token 粗估（不调用摘要 LLM）。"""
+    chat = await _require_session(db, session_id)
+    settings = get_settings()
+    max_n = max(1, int(settings.session_memory_max_messages))
+
+    total = await message_repository.count_messages_for_session(db, session_id)
+    rows = await message_repository.list_recent_messages(db, session_id, limit=max_n)
+    lc_msgs = session_messages_to_chat_messages(rows)
+    window: list[SessionContextWindowItem] = []
+    for row, lm in zip(rows, lc_msgs, strict=True):
+        mtype = getattr(lm, "type", None)
+        if not isinstance(mtype, str) or not mtype:
+            mtype = "human"
+        window.append(
+            SessionContextWindowItem(
+                id=row.id,
+                role=row.role,
+                created_at=row.created_at,
+                llm_type=mtype,
+                llm_content=message_content_text(lm.content),
+            )
+        )
+
+    est = estimate_messages_tokens(None, lc_msgs)
+    board = decode_blackboard_json(chat.blackboard_notes_json)
+    thr = int(settings.session_summarize_when_over)
+    summary_eligible = bool(settings.session_conversation_summary_enabled) and len(
+        lc_msgs
+    ) > thr
+
+    return SessionContextResponse(
+        session_id=session_id,
+        blackboard_notes=board,
+        window=window,
+        session_message_total=total,
+        window_max_messages=max_n,
+        summary=SessionContextSummaryMeta(
+            enabled=bool(settings.session_conversation_summary_enabled),
+            summarize_when_over=thr,
+            keep_recent=int(settings.session_summary_keep_recent),
+            eligible=summary_eligible,
+        ),
+        tokens=SessionContextTokenBudget(
+            estimated_input=est,
+            llm_max_input_tokens=settings.llm_max_input_tokens,
+            llm_context_window_tokens=int(settings.llm_context_window_tokens),
+            llm_reserved_completion_tokens=int(settings.llm_reserved_completion_tokens),
+        ),
+    )
 
 
 async def update_session(

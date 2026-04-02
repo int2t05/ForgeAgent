@@ -9,6 +9,7 @@ import type {
   MessageCreateBody,
   MessageUpdateBody,
   MessagesListResponse,
+  SessionContextResponse,
   SessionCreateBody,
   SessionCreateResponse,
   SessionDetail,
@@ -39,6 +40,20 @@ export function getSession(sessionId: string): Promise<SessionDetail> {
   return get<SessionDetail>(`/api/v1/sessions/${encodeURIComponent(sessionId)}`)
 }
 
+/** TanStack Query 缓存键：`GET .../sessions/{id}/context`。 */
+export function sessionContextQueryKey(sessionId: string) {
+  return ['session', sessionId, 'context'] as const
+}
+
+/** 获取会话上下文预览（黑板、规划侧消息窗口、token 粗估）。 */
+export function getSessionContext(
+  sessionId: string,
+): Promise<SessionContextResponse> {
+  return get<SessionContextResponse>(
+    `/api/v1/sessions/${encodeURIComponent(sessionId)}/context`,
+  )
+}
+
 /** 更新会话元数据。 */
 export function patchSession(
   sessionId: string,
@@ -49,6 +64,9 @@ export function patchSession(
     body,
   )
 }
+
+/** 单页上限与后端 `GET .../messages` 的 `limit` 上界一致。 */
+export const SESSION_MESSAGES_PAGE_SIZE_MAX = 500
 
 /** 获取会话消息列表（可选分页）。 */
 export function getSessionMessages(
@@ -62,6 +80,22 @@ export function getSessionMessages(
     `/api/v1/sessions/${encodeURIComponent(sessionId)}/messages`,
     query,
   )
+}
+
+/** 分页拉取该会话下全部消息（按创建/ id 升序合并），供对话区与上下文用量与整会话一致。 */
+export async function fetchAllSessionMessages(
+  sessionId: string,
+): Promise<MessagesListResponse> {
+  const limit = SESSION_MESSAGES_PAGE_SIZE_MAX
+  const messages: Message[] = []
+  let offset = 0
+  for (;;) {
+    const page = await getSessionMessages(sessionId, { limit, offset })
+    messages.push(...page.messages)
+    if (page.messages.length < limit) break
+    offset += limit
+  }
+  return { messages }
 }
 
 /** 追加一条会话消息。 */

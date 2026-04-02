@@ -55,6 +55,9 @@ function isTerminalTaskStatus(status: string): boolean {
 
 const MESSAGE_REFETCH_TIMEOUT_MS = 12_000
 
+/** SSE 存活时的兜底轮询：用于在流未及时结束时发现终态；过小会刷屏式 GET /tasks/{id} */
+const TASK_STATUS_POLL_WHILE_STREAMING_MS = 3000
+
 export function usePendingComposerTaskSync() {
   const queryClient = useQueryClient()
   const pendingTaskId = useComposerTaskStore((s) => s.pendingTaskId)
@@ -127,7 +130,7 @@ export function usePendingComposerTaskSync() {
               /* 单次轮询失败忽略 */
             }
           })()
-        }, 400)
+        }, TASK_STATUS_POLL_WHILE_STREAMING_MS)
 
         try {
           await consumeTaskEventStream(streamUrl, ac.signal, (e) => {

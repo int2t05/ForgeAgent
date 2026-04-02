@@ -4,6 +4,7 @@
 
 | 文档 | 说明 |
 |------|------|
+| [`architecture/OVERVIEW.md`](architecture/OVERVIEW.md) | **五大板块**总览：目录结构、前端、后端、Agent、数据与 API（浓缩索引） |
 | [`architecture/TECH_DESIGN.md`](architecture/TECH_DESIGN.md) | 技术栈、数据模型、API 方向、环境与部署要点 |
 | [`architecture/ARCH.md`](architecture/ARCH.md) | 前后端目录与模块职责（与当前 `app/core`、`app/shared`、`app/modules`、`frontend/src` 分层结构对齐） |
 | [`conversation-flow.md`](conversation-flow.md) | 对话、SSE、流式与业务流程说明 |
