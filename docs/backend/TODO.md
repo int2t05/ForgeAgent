@@ -1,99 +1,48 @@
 # ForgeAgent TODO 清单
 
-> 对标最新 LangGraph 特性，结合项目当前 Phase 0-8 路线图
+> 与当前仓库实现对齐；路径均以 `backend/app/` 为根。P0/P1 为建议优先级。
 
 ---
 
-## 一、Agent 核心（高优先级）
+## 一、Agent 核心
 
-### 1. [TODO] 工具真实执行 (Executor 调用工具)
+### 1. [DONE] 工具真实执行（Actor 按步调用）
 
-**现状**: `executor_node` 仅写入 `step_start` 事件，未调用任何工具。
-**目标**: 将 plan_steps 转化为可执行工具调用。
+**现状**: `modules/execution/nodes.py` 中 `actor_node` 对计划步骤解析 `tool` / `args`，调用 `tool_registry.execute`，写入 `tool_call` / `tool_result` / `step_end`；支持 `max_tool_failure_attempts` 重试。
 
-```python
-# 伪代码
-async def executor_node(state: AgentState) -> dict:
-    plan_steps = state.get("plan_steps", [])
-    results = []
-    for step in plan_steps:
-        tool_name = step.get("tool")  # 需扩展 plan_steps schema
-        args = step.get("args", {})
-        result = await tool_registry.execute(tool_name, args)
-        results.append(result)
-        await event_repository.append_event(db, task_id, "execution", "step_end", {...})
-    return {"step_results": results, "outcome": "success"}
-```
+**后续可选**: 更丰富的工具参数校验、与 LangChain `bind_tools` 的计划一体生成。
 
-**涉及文件**:
-- `app/agent/nodes.py` — 重写 `executor_node`
-- `app/tools/registry.py` — 新增 `execute(name, args)` 方法
-- `app/modules/tools/builtin_lc.py` — 内置工具以 `langchain-community` / 可选 `langchain-tavily` 为准
+**涉及文件**: `app/modules/execution/nodes.py`、`app/modules/tools/registry.py`
 
 ---
 
-### 2. [TODO] Session Memory 注入 LLM（多轮对话）
+### 2. [DONE] Session Memory 注入 Planner
 
-**现状**: `planner_node` 仅接收当前 `user_message`，无历史上下文。
-**目标**: 将会话消息历史作为 ChatMessages 传给 LLM。
+**现状**: `modules/planning/nodes.py` 使用 `SessionLLMContextManager`（`memory/session_context.py`）加载最近 `session_memory_max_messages` 条消息；黑板尾部要点以 `HumanMessage` 附加后再 `plan_steps_with_llm`。
 
-```python
-# 伪代码
-async def planner_node(state: AgentState) -> dict:
-    session_id = state["session_id"]
-    # 拉取历史消息（最近的 N 轮）
-    history = await message_repository.get_recent(db, session_id, limit=20)
-    messages = [SystemMessage(system_prompt)] + history + [HumanMessage(state["user_message"])]
-    response = await llm.ainvoke(messages)
-    plan = parse_plan(response)
-    return {"plan_steps": plan}
-```
+**后续可选**: 摘要压缩、向量检索长期记忆（超出 MVP）。
 
-**涉及文件**:
-- `app/agent/nodes.py` — `planner_node` 扩展 history 注入
-- `app/repositories/message_repository.py` — 新增 `get_recent(session_id, limit)`
+**涉及文件**: `app/modules/planning/nodes.py`、`app/modules/memory/session_context.py`、`app/repositories/message_repository.py`
 
 ---
 
-### 3. [TODO] LangGraph Checkpoint 持久化（断点续执）
+### 3. [DONE] LangGraph Checkpoint 持久化
 
-**现状**: AgentState 全程内存，进程崩溃任务丢失。
-**目标**: 使用 SQLite/Postgres checkpointer 持久化图状态。
+**现状**: `app/main.py` lifespan 调用 `open_langgraph_checkpointer(settings)`，默认 `AsyncSqliteSaver` 写入 `LANGGRAPH_CHECKPOINT_SQLITE_PATH`（与 ORM 库分离）；`init_compiled_agent_graph(checkpointer)`；`task_service` 以 `thread_id = task_id` 执行 `astream`。关闭时 `close_langgraph_checkpointer` + `shutdown_compiled_agent_graph`。
 
-```python
-# 伪代码（app/agent/graph.py）
-from langgraph.checkpoint.sqlite import SqliteSaver
+**后续可选**: 生产默认 Postgres saver；与取消/中断联动的 `adelete_thread` 策略统一文档化。
 
-checkpointer = SqliteSaver.from_conn_string(settings.database_url)
-graph = builder.compile(checkpointer=checkpointer)
-
-# 每次 avoke 时传入 config
-config = {"configurable": {"thread_id": task_id}}
-result = await graph.ainvoke(initial, config=config)
-```
-
-**涉及文件**:
-- `app/agent/graph.py` — 注入 checkpointer
-- `app/config.py` — 新增 `checkpointer_type` 配置项
+**涉及文件**: `app/modules/memory/checkpointer.py`、`app/modules/workflow/graph.py`、`app/main.py`
 
 ---
 
-### 4. [TODO] Tool 参数Schema绑定（LangChain Tool）
+### 4. [TODO] Tool 参数 Schema 与规划一体（LangChain Tools）
 
-**现状**: 工具仅为元数据，无参数类型定义。
-**目标**: 使用 `@tool` 装饰器或 `BaseTool` 定义真实工具。
+**现状**: 计划步骤为 JSON 结构，工具执行走注册表；部分工具为内置 LangChain 封装。
 
-```python
-# 伪代码：优先使用 langchain-community 等官方集成
-from langchain_community.tools import DuckDuckGoSearchRun
+**目标**: 规划阶段可选 `llm.bind_tools` 或结构化输出，减少「计划与工具 shape 漂移」。
 
-search = DuckDuckGoSearchRun()
-llm_with_tools = llm.bind_tools([search])
-```
-
-**涉及文件**:
-- `app/modules/tools/builtin_lc.py` — LangChain `BaseTool` 列表与 `list_tools`
-- `app/agent/llm_client.py` — `plan_steps_with_llm` 使用绑定工具
+**涉及文件**: `app/modules/planning/llm.py`、`app/modules/tools/*`
 
 ---
 
@@ -101,49 +50,21 @@ llm_with_tools = llm.bind_tools([search])
 
 ### 5. [TODO] MCP 真实 Transport（stdio / SSE）
 
-**现状**: `tools_from_mcp_settings` 仅支持 mock 元数据。
-**目标**: 实现真实 MCP Client stdio 调用。
+**现状**: `mcp_sources.py` 仍可能以 mock / 元数据为主（以代码为准）。
 
-```python
-# 伪代码
-async def tools_from_mcp_stdio(server_config: dict) -> list[ToolItem]:
-    # 1. 启动子进程: mcp run <command>
-    # 2. 通过 stdio 收发 JSON-RPC
-    # 3. 解析 tools/list 响应
-    # 4. 返回 ToolItem + 真实可执行句柄
-    proc = await asyncio.create_subprocess_exec(
-        cmd, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE
-    )
-    # 发送 initialize + tools/list
-    ...
-```
+**目标**: 真实 MCP Client stdio 或 HTTP，与 `tool_registry.execute` 路由一致。
 
-**涉及文件**:
-- `app/tools/mcp_sources.py` — 新增 stdio 实现
-- `app/tools/registry.py` — 工具执行时路由到 MCP transport
+**涉及文件**: `app/modules/tools/mcp_sources.py`、`app/modules/tools/registry.py`
 
 ---
 
 ### 6. [TODO] Skill 工具执行框架
 
-**现状**: `tools_from_skill_paths` 仅解析 manifest.json 元数据。
-**目标**: 实现 Skill 真实调用协议（参考 FastAPI Skill）。
+**现状**: Skills 多从 manifest 解析元数据。
 
-```python
-# 伪代码
-# manifest.json 扩展
-{
-  "name": "fastapi",
-  "tools": [{"name": "create_endpoint", "description": "...", "parameters": {...}}],
-  "entry": "main.py"  # 可执行入口
-}
+**目标**: 可执行 Skill 协议（入口、权限、超时）。
 
-# Skill 执行
-async def execute_skill_tool(skill_name: str, tool_name: str, args: dict):
-    # 1. 加载 skill entry point
-    # 2. 调用 skill 内部工具函数
-    # 3. 返回标准化结果
-```
+**涉及文件**: `app/modules/tools/skill_sources.py`
 
 ---
 
@@ -151,146 +72,87 @@ async def execute_skill_tool(skill_name: str, tool_name: str, args: dict):
 
 ### 7. [TODO] Human-in-the-Loop 中断 / 审批
 
-**现状**: 无。
-**目标**: 敏感操作触发 `interrupt`，等待人工确认。
+**现状**: 无 `interrupt()` 流程。
 
-```python
-# 伪代码
-from langgraph.types import interrupt, Command
+**目标**: 敏感步骤暂停等待人工 `Command(resume=…)`。
 
-async def executor_node(state: AgentState) -> dict:
-    for step in plan_steps:
-        if step.get("requires_approval"):
-            # 写入待审批事件
-            await event_repository.append_event(...)
-            # 中断图执行
-            interrupt({
-                "action": "approve_step",
-                "step": step,
-                "message": f"确认执行 {step['title']}？"
-            })
-
-# 恢复时
-asyncio.create_task(graph.ainvoke(Command(resume={"approved": True}), config=config))
-```
+**涉及文件**: `app/modules/workflow/graph.py`、`app/modules/execution/nodes.py`、`app/api/v1/tasks.py`（扩展）
 
 ---
 
-### 8. [TODO] LangGraph Streaming（节点级流式输出）
+### 8. [DONE] LangGraph Streaming（节点级落库）
 
-**现状**: 仅通过 SSE 轮询 task_events，无 LangGraph 原生流。
-**目标**: 使用 `graph.astream` 配合 `stream_mode="updates"`。
+**现状**: `task_service._run_agent_graph_to_completion` 使用 `stream_mode="updates"`，每节点完成后压缩增量写入 `task_events`（`module=workflow`，`kind=node_update`）。SSE 仍从表内轮询增量推送。
 
-```python
-# 伪代码
-async def run_agent_task_streaming(task_id: str, ...):
-    config = {"configurable": {"thread_id": task_id}}
-    async for chunk in graph.astream(initial, config, stream_mode=["updates", "messages"]):
-        if chunk["type"] == "updates":
-            # 实时推送节点增量
-            await publish_sse_event(task_id, chunk)
-```
-
-**涉及文件**:
-- `app/services/task_service.py` — 重写为流式执行
+**后续可选**: 合并写库频率、补充 `stream_mode` 其它通道。
 
 ---
 
 ## 四、观测与质量
 
-### 9. [TODO] Task 取消机制 (`cancelled` 状态)
+### 9. [TODO] Task 取消机制（`cancelled` 与图中断对齐）
 
-**现状**: `cancelled` 在 `_VALID_TASK_STATUS` 中定义但无实际链路。
-**目标**: 支持 `DELETE /tasks/{task_id}` 或 `POST /tasks/{task_id}/cancel`。
+**现状**: `cancelled` 在状态枚举中定义；需确认 LangGraph 运行中与 PATCH 取消的协同（若尚未完全贯通，此项保持 TODO）。
 
-```python
-# 伪代码
-async def cancel_task(task_id: str):
-    # 1. 更新状态为 cancelled
-    # 2. 通过 checkpointer 的 checkpoint 机制通知图中断
-    # 3. 写 task_events(kind=task_cancelled)
-```
+**目标**: `PATCH /tasks/{id}` 取消后图中止（或协作式轮询停止），并写 `task_events` 说明。
+
+**涉及文件**: `app/services/task_service.py`、`app/api/v1/tasks.py`
 
 ---
 
-### 10. [TODO] LangSmith 可观测性集成
+### 10. [TODO] LangSmith / 外部 Tracing
 
 **现状**: 无。
-**目标**: 接入 LangSmith tracing。
 
-```python
-# 伪代码
-from langsmith import traceable
-
-@traceable
-async def planner_node(state: AgentState):
-    ...
-```
+**目标**: 可选接入 LangSmith 或 OpenTelemetry。
 
 ---
 
 ### 11. [TODO] REST API 自动化测试（可选）
 
-**现状**: 仓库当前以手工验收与联调为主；无 `backend/tests/` 套件。
-**目标**: 若恢复 pytest，覆盖会话创建/消息/任务 CRUD 等与 **`GET /openapi.json`**（及 `TECH_DESIGN.md` 数据模型）一致的契约。
+**现状**: 以手工验收与 OpenAPI 联调为主。
+
+**目标**: pytest 覆盖会话 / 任务 / 事件契约。
 
 ---
 
 ## 五、架构增强
 
-### 12. [TODO] 多 Agent 编排（子图嵌套）
+### 12. [TODO] 多 Agent 编排（子图）
 
-**现状**: 单图 Planner → Executor。
-**目标**: 支持子图作为节点（如专门的处理 Agent）。
+**现状**: 单图 Plan-Act-Learn。
 
-```python
-# 伪代码
-builder.add_node("research_agent", research_subgraph)
-builder.add_node("coding_agent", coding_subgraph)
-```
+**目标**: 子图作为节点（超出 MVP 时在 feature flag 或文档中单独里程碑）。
 
 ---
 
-### 13. [TODO] Settings 密钥管理（加密存储）
+### 13. [TODO] Settings 密钥加密存储
 
-**现状**: `PUT /settings` 拒绝含敏感词的 key，但 settings_kv 明文存储。
-**目标**: 对 `api_key` 类值加密后再入库。
+**现状**: `PUT /settings` 拒绝敏感 key 片段；`settings_kv` 明文存非密钥配置。
 
-```python
-# 伪代码
-from cryptography.fernet import Fernet
-
-def encrypt_value(value: str) -> str:
-    return fernet.encrypt(value.encode()).decode()
-
-def decrypt_value(value: str) -> str:
-    return fernet.decrypt(value.encode()).decode()
-```
+**目标**: 若未来允许服务端存密钥，需加密 at rest。
 
 ---
 
 ### 14. [TODO] WebSocket 替代 SSE（可选）
 
-**现状**: SSE 轮询方式。
-**目标**: 提供 WebSocket 通道降低延迟（可选）。
+**现状**: SSE + DB 轮询增量。
+
+**目标**: 可选 WebSocket 降低延迟。
 
 ---
 
 ## 六、优先级汇总
 
-| 优先级 | TODO | 对应 LangGraph 特性 |
-|--------|------|--------------------|
-| P0 | 1. 工具真实执行 | Tool Calling |
-| P0 | 2. Session Memory | Message History |
-| P0 | 3. Checkpoint 持久化 | Checkpointing |
-| P1 | 4. Tool Schema 绑定 | LangChain Tools |
-| P1 | 5. MCP 真实 Transport | MCP Integration |
-| P1 | 7. Human-in-the-Loop | `interrupt()` |
-| P2 | 6. Skill 执行框架 | Skill Protocol |
-| P2 | 8. Streaming | `astream` |
-| P2 | 9. Task 取消 | Cancellation |
-| P3 | 10. LangSmith | Tracing |
-| P3 | 11. Phase2 测试完善 | QA |
-| P3 | 12. 多 Agent | Subgraphs |
-| P4 | 13. 密钥加密 | Security |
-| P4 | 14. WebSocket | Transport |
+| 优先级 | TODO |
+|--------|------|
+| P0 | 9. 任务取消与运行中协同（若仍缺口） |
+| P1 | 4. 工具 Schema / 规划一体 |
+| P1 | 5. MCP 真实 Transport |
+| P1 | 7. Human-in-the-Loop |
+| P2 | 6. Skill 执行框架 |
+| P2 | 11. 自动化测试 |
+| P3 | 10. LangSmith |
+| P3 | 12. 多 Agent |
+| P4 | 13. 密钥加密 |
+| P4 | 14. WebSocket |

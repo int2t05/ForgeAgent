@@ -46,6 +46,8 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 | [`docs/conversation-flow.md`](docs/conversation-flow.md) | 对话、SSE、流式等业务流程 |
 | [`docs/backend/TODO.md`](docs/backend/TODO.md) | 后端迭代 TODO |
 | [`docs/backend/业务流程文档.md`](docs/backend/业务流程文档.md) | 业务流程与伪代码 |
+| [`docs/performance-optimization.md`](docs/performance-optimization.md) | 性能优化笔记 |
+| [`docs/llm-context-prompt-optimization.md`](docs/llm-context-prompt-optimization.md) | LLM 上下文与提示词优化 |
 
 接口字段与路径以运行后端 **`/openapi.json`** 为准（`TECH_DESIGN.md` 第 4 节为概要表）。
 

@@ -4,7 +4,7 @@
 
 export type TaskStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled'
 
-export type EventModule = 'planning' | 'memory' | 'tool' | 'execution'
+export type EventModule = 'planning' | 'memory' | 'tool' | 'execution' | 'workflow'
 
 export type EventKind =
   | 'framework_selected'

@@ -11,6 +11,10 @@ from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
 from app.core.exceptions import AppHTTPException
 from app.shared.payload import payload_json_to_dict
+from app.modules.memory.session_blackboard import (
+    flush_blackboard_from_graph_checkpoint,
+    load_blackboard_seed,
+)
 from app.modules.planning.nodes import initial_force_replan_budget
 from app.modules.workflow.graph import get_compiled_agent_graph
 from app.models.task import Task
@@ -33,6 +37,62 @@ from app.schemas.task import (
 logger = logging.getLogger(__name__)
 
 _VALID_TASK_STATUS = frozenset({"pending", "running", "success", "failed", "cancelled"})
+
+_GRAPH_DELTA_STR_CAP = 2000
+_LIST_KEYS_FOR_DELTA = frozenset({"plan_steps", "actor_tool_trace", "blackboard_notes"})
+
+
+def _compact_graph_delta(delta: dict) -> dict:
+    """将节点写入 LangGraph 的状态增量压缩为可落库 JSON，避免 plan/轨迹整块重复占满 payload。"""
+    compact: dict = {}
+    for key, val in delta.items():
+        if key in _LIST_KEYS_FOR_DELTA and isinstance(val, list):
+            compact[key] = {"count": len(val)}
+        elif isinstance(val, str) and len(val) > _GRAPH_DELTA_STR_CAP:
+            compact[key] = val[:_GRAPH_DELTA_STR_CAP] + "…"
+        else:
+            try:
+                json.dumps(val, ensure_ascii=False)
+                compact[key] = val
+            except (TypeError, ValueError):
+                compact[key] = str(val)[:_GRAPH_DELTA_STR_CAP]
+    return compact
+
+
+async def _persist_langgraph_stream_updates(task_id: str, update: dict) -> None:
+    """将 ``stream_mode='updates'`` 的单次产出（节点名 → 状态增量）对齐为 task_events，供 SSE 增量读取。"""
+    async with AsyncSessionLocal() as db:
+        async with db.begin():
+            for node_name, delta in update.items():
+                if not isinstance(delta, dict):
+                    delta = {"_value": delta}
+                payload = {"node": node_name, "delta": _compact_graph_delta(delta)}
+                await event_repository.append_event(
+                    db,
+                    task_id,
+                    "workflow",
+                    "node_update",
+                    json.dumps(payload, ensure_ascii=False, default=str),
+                )
+
+
+async def _run_agent_graph_to_completion(
+    graph,
+    config: dict,
+    *,
+    task_id: str,
+    stream_input: dict | None,
+) -> dict:
+    """执行编译图至终止： LangGraph ``astream(..., stream_mode='updates')`` ，节点完成即落库 ``node_update``，终态取自 checkpointer。"""
+    async for update in graph.astream(
+        stream_input,
+        config,
+        stream_mode="updates",
+    ):
+        if isinstance(update, dict):
+            await _persist_langgraph_stream_updates(task_id, update)
+    snap = await graph.aget_state(config)
+    return dict(snap.values) if snap.values else {}
 
 
 async def _apply_reuse_user_message(
@@ -144,7 +204,8 @@ async def run_agent_task(
     settings = get_settings()
     graph = get_compiled_agent_graph()
     config = _agent_graph_config(task_id)
-    # 1. 构造初始状态（任务与会话 id、用户输入、重规划预算等）
+    seed_notes = await load_blackboard_seed(session_id)
+    # 1. 构造初始状态（任务与会话 id、用户输入、重规划预算与会话级黑板）
     initial = {
         "task_id": task_id,
         "session_id": session_id,
@@ -153,16 +214,19 @@ async def run_agent_task(
         "max_replan_attempts": settings.max_replan_attempts,
         "replan_requested": False,
         "force_replan_budget": initial_force_replan_budget(user_message),
+        "blackboard_notes": list(seed_notes),
+        "actor_tool_trace": [],
     }
     try:
-        # 2. 读取 checkpoint：无状态则冷启动；有下一 super-step 则断点续跑；已结束则直接采用快照
+        # 2. checkpoint：已完成则不再跑图；否则 astream(updates) 节点级落库并由 checkpointer 合并终态
         snap = await graph.aget_state(config)
-        if not snap.values:
-            result = await graph.ainvoke(initial, config)
-        elif snap.next:  # 从 snap.next 记录的断点位置恢复
-            result = await graph.ainvoke(None, config)
-        else:
+        if snap.values and not snap.next:
             result = dict(snap.values)
+        else:
+            stream_input = initial if not snap.values else None
+            result = await _run_agent_graph_to_completion(
+                graph, config, task_id=task_id, stream_input=stream_input
+            )
         outcome = result.get("outcome")
         # 3. 若任务未被取消则按 outcome 收敛任务状态与摘要
         async with AsyncSessionLocal() as db:
@@ -212,6 +276,10 @@ async def run_agent_task(
             logger.exception(
                 "could not persist failure for task %s: %s", task_id, inner
             )
+    finally:
+        await flush_blackboard_from_graph_checkpoint(
+            graph, config, session_id=session_id
+        )
 
 
 async def list_tasks_page(

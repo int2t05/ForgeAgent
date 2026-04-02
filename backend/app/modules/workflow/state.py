@@ -1,16 +1,17 @@
-"""LangGraph 运行时状态（规划 / 执行 / 重规划 共享）。"""
+"""LangGraph ``AgentState``：各节点通过合并返回值更新同一 TypedDict。
+
+黑板条目跨回合保留在会话侧；Planner 再次运行时可消费 Learner 写入的摘要。
+"""
 
 from typing import Any, Literal, NotRequired, TypedDict
 
 
 class AgentState(TypedDict, total=False):
-    """描述单次任务在 Agent 图内的可合并状态（入口注入与节点回写字段的并集）。"""
+    """单次任务运行时各节点可读写字段的类型并集（入口注入 + 节点回写）。"""
 
     task_id: str
     session_id: str
     user_message: str
-    cognitive_mode: NotRequired[Literal["plan_execute", "react"]]
-    framework_rationale: NotRequired[str]
 
     replan_count: int
     max_replan_attempts: int
@@ -18,6 +19,9 @@ class AgentState(TypedDict, total=False):
 
     plan_steps: list[dict[str, Any]]
     current_step_index: int
+
+    blackboard_notes: NotRequired[list[str]]
+    actor_tool_trace: NotRequired[list[dict[str, Any]]]
 
     replan_requested: bool
     outcome: NotRequired[Literal["success", "failed"]]

@@ -38,7 +38,7 @@ _register_sqlite_pragma(engine)
 
 
 def _migrate_sqlite_schema_sync(connection) -> None:
-    """SQLite 轻量迁移：补齐 tasks 缺失列（source_user_message_id、owns_source_user_message）。"""
+    """SQLite 轻量迁移：补齐 tasks / sessions 缺失列。"""
     if connection.dialect.name != "sqlite":
         return
     rows = connection.execute(text("PRAGMA table_info(tasks)")).fetchall()
@@ -52,13 +52,16 @@ def _migrate_sqlite_schema_sync(connection) -> None:
         )
     rows2 = connection.execute(text("PRAGMA table_info(tasks)")).fetchall()
     col_names2 = {r[1] for r in rows2}
-    if "owns_source_user_message" in col_names2:
-        return
-    connection.execute(
-        text(
-            "ALTER TABLE tasks ADD COLUMN owns_source_user_message INTEGER NOT NULL DEFAULT 0"
+    if "owns_source_user_message" not in col_names2:
+        connection.execute(
+            text(
+                "ALTER TABLE tasks ADD COLUMN owns_source_user_message INTEGER NOT NULL DEFAULT 0"
+            )
         )
-    )
+    sess_cols = connection.execute(text("PRAGMA table_info(sessions)")).fetchall()
+    sess_names = {r[1] for r in sess_cols}
+    if "blackboard_notes_json" not in sess_names:
+        connection.execute(text("ALTER TABLE sessions ADD COLUMN blackboard_notes_json TEXT"))
 
 
 AsyncSessionLocal = async_sessionmaker(

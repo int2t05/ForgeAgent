@@ -1,6 +1,6 @@
 # ForgeAgent 初始化与启动
 
-本文档说明仓库脚手架的**安装命令**、**`frontend/package.json` 脚本摘要**，以及如何**分别启动**前端与后端（当前为骨架，无业务逻辑）。人类入口总览见 [`README.md`](README.md)。
+本文档说明仓库脚手架的**安装命令**、**`frontend/package.json` 脚本摘要**，以及如何**分别启动**前端与后端。人类入口总览见 [`README.md`](README.md)；架构与数据模型见 [`docs/README.md`](docs/README.md)。
 
 ---
 
@@ -42,6 +42,8 @@ pip install -e .
 copy .env.example .env
 ```
 
+模板中与 Agent 相关的项包括：`DATABASE_URL`、`LANGGRAPH_CHECKPOINT_SQLITE_PATH`（与业务库分离的检查点 SQLite）、`SESSION_MEMORY_MAX_MESSAGES`、`SESSION_BLACKBOARD_MAX_NOTES`、`LLM_CONTEXT_WINDOW_TOKENS` 等，说明见根目录 [`.env.example`](.env.example) 与 [`backend/app/core/config.py`](backend/app/core/config.py)。
+
 ---
 
 ## 2. `package.json`
@@ -79,7 +81,7 @@ cd backend
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Git Bash（已激活 `.venv`）同上，模块路径与 [`README.md`](README.md)、[`docs/guides/DEVELOP_ORDER.md`](docs/guides/DEVELOP_ORDER.md) 一致：
+Git Bash（已激活 `.venv`）同上，工作目录与模块路径与 [`README.md`](README.md) 一致：
 
 ```bash
 source .venv/Scripts/activate
@@ -104,5 +106,5 @@ npm run build
 
 - `frontend/`：React + Vite + TypeScript + Tailwind + ESLint + Prettier；**所有** `npm` 命令在此目录执行
 - `backend/`：Python 3.11+、FastAPI、可编辑安装 `pip install -e .`
-- `docs/`：按主题分子目录（`product/`、`architecture/`、`api/`、`guides/`、`backend/`），见 [`README.md`](README.md) 文档索引
+- `docs/`：主题分目录（`architecture/`、`backend/` 等），索引见 [`docs/README.md`](docs/README.md)
 - 仓库根目录：`README.md`、`AGENTS.md`、`.env.example`、**无** `package.json`

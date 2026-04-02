@@ -21,17 +21,19 @@ ForgeAgent 是一个基于 LangGraph 的 AI Agent 对话系统，支持流式输
 | **Task** | 任务实例，关联 Session，是 Agent 执行的基本单位 |
 | **TaskEvent** | 任务事件，记录 Agent 执行过程中的每个步骤 |
 
-### TaskEvent 类型
+### TaskEvent（`task_events` 行）
 
-| 事件类型 | 说明 |
-|----------|------|
-| `thinking` | Agent 思考过程 |
-| `plan` | 执行计划 |
-| `replan` | 重规划原因和结果 |
-| `llm_stream_delta` | LLM 流式输出增量 |
-| `tool_call` | 工具调用 |
-| `tool_result` | 工具执行结果 |
-| `status_change` | 任务状态变更 |
+每条事件含 **`module`**（`planning` / `memory` / `tool` / `execution` / `workflow`）与 **`kind`**（字符串），payload 为 JSON。常见 **kind** 包括：
+
+| kind | 说明 |
+|------|------|
+| `plan_created` | 规划产出步骤列表 |
+| `replan` | 重规划记账（含 `plan_version` 等） |
+| `step_start` / `step_end` | 执行步骤起止 |
+| `tool_call` / `tool_result` | 工具调用与结果（多轮重试可多条 `tool_result`） |
+| `llm_stream_delta` | 流式片段（payload 含 `phase`：`thinking` / `action` / `answer` 等） |
+| `error` | 错误简述 |
+| `node_update` | LangGraph 节点完成后的状态增量摘要（`module=workflow`） |
 
 ---
 
@@ -53,19 +55,19 @@ ForgeAgent 是一个基于 LangGraph 的 AI Agent 对话系统，支持流式输
  │                      │                       │───────────────────────>│
  │                      │                       │                       │
  │                      │  POST /tasks          │
- │                      │  {session_id, msg_id} │                       │
+ │                      │  {session_id, user_message, reuse_user_message_id?} │
  │                      │─────────────────────>│                       │
  │                      │                       │                       │
  │                      │                       │  创建 Task            │
  │                      │                       │  写入 task_events     │
  │                      │                       │──────────────────────>│
  │                      │                       │                       │
- │                      │                       │                       │  LangGraph 执行
- │                      │                       │                       │  ├─ thinking
- │                      │                       │                       │  ├─ plan
- │                      │                       │                       │  ├─ replan（如需）
- │                      │                       │                       │  ├─ tool_call
- │                      │                       │                       │  └─ llm_stream_delta
+ │                      │                       │                       │  LangGraph：planner → actor → learner
+ │                      │                       │                       │  ├─ plan_created / replan
+ │                      │                       │                       │  ├─ step_* / tool_call / tool_result
+ │                      │                       │                       │  ├─ llm_stream_delta
+ │                      │                       │                       │  ├─ node_update（workflow）
+ │                      │                       │                       │  └─ 条件回 planner 或结束
  │                      │                       │                       │
  │                      │                       │  TaskEvent 持久化      │
  │                      │                       │<───────────────────────│
@@ -90,114 +92,31 @@ ForgeAgent 是一个基于 LangGraph 的 AI Agent 对话系统，支持流式输
 
 ---
 
-### 阶段一：用户发送消息
+### 阶段一：用户发送消息（可选：先落库再起任务）
 
-**前端 (ChatPage.tsx):**
+常见路径：先 `POST /api/v1/sessions/{id}/messages` 写入用户消息，再 **`POST /api/v1/tasks`** 携带同一段 `user_message`（或由服务在单事务内写入消息，见 OpenAPI）。也支持 **`reuse_user_message_id`**：复用已有用户消息、截断后续对话并重跑 Agent。
 
-```typescript
-const handleSend = async (content: string) => {
-  // 1. 保存用户消息到服务器
-  await createMessage(sessionId, { role: 'user', content })
-
-  // 2. 创建任务并触发 Agent 执行
-  const task = await createTask(sessionId, {
-    message_id: userMessageId,
-    top_k: 5,
-  })
-
-  // 3. 开始消费 SSE 实时事件
-  await consumeTaskEvents(task.id)
-}
-```
-
-**后端 (sessions.py POST):**
-
-```python
-@router.post("/{session_id}/messages")
-async def add_message(session_id: int, data: MessageCreate, db: AsyncSession):
-    # 保存用户消息，返回消息 ID
-    message = await message_repository.add_message(db, session_id, **data)
-    return message
-```
+**前端**：`TaskCreateBody` 为 `{ session_id, user_message, reuse_user_message_id? }`（见 `frontend/src/types/task.ts`）。
 
 ---
 
 ### 阶段二：创建任务并触发执行
 
-**前端 (tasks.ts):**
-
-```typescript
-export const createTask = async (sessionId: number, data: TaskCreate) => {
-  const res = await api.post(`/tasks`, { session_id: sessionId, ...data })
-  return res.data
-}
-```
-
-**后端 (tasks.py POST):**
-
-```python
-@router.post("")
-async def create_task(data: TaskCreate, db: AsyncSession):
-    task = await task_service.create_and_start(db, data)
-    return task
-```
-
-**后端 (task_service.py):**
-
-```python
-async def create_and_start(db, data: TaskCreate):
-    # 1. 查找关联的用户消息
-    user_message = await message_repository.get(db, data.message_id)
-
-    # 2. 收集对话历史（最近 N 条）
-    history = await message_repository.list_messages(db, session_id, limit=10)
-
-    # 3. 创建 Task 记录
-    task = await task_repository.create(db, session_id, user_message.content)
-
-    # 4. 异步启动 LangGraph 执行
-    asyncio.create_task(run_agent(db, task.id, user_message, history))
-
-    return task
-```
+**API**：`POST /api/v1/tasks` → `task_service.create_and_start`：创建 `tasks` 行、写用户消息（若适用）、`asyncio.create_task` 后台执行编译图；响应 **`task_id`** 与 **`events_stream_path`**（相对路径）。
 
 ---
 
-### 阶段三：Agent 执行（LangGraph）
+### 阶段三：Agent 执行（LangGraph Plan-Act-Learn）
 
-**执行流程 (task_service.py):**
+**图结构**：`planner` → `actor` → `learner`；`learner` 后若 `replan_requested` 且未失败则回到 `planner`（受 `max_replan_attempts` 约束）。
 
-```python
-async def run_agent(db, task_id, user_message, history):
-    # 1. 初始化 LangGraph
-    graph = build_agent_graph()
-
-    # 2. 构造初始状态
-    initial = {
-        "task_id": task_id,
-        "user_message": user_message.content,
-        "history": format_history(history),  # 格式化为 [user, assistant, user, ...]
-        "events": [],                         # 收集所有事件
-        "plan": None,
-    }
-
-    # 3. 执行图
-    result = await graph.ainvoke(initial)
-
-    # 4. 更新 Task 状态
-    task.status = "success" if result.get("outcome") == "success" else "failed"
-    task.summary = result.get("summary")
-```
-
-**Agent 节点 (nodes.py):**
+**运行时**：`get_compiled_agent_graph().astream(..., stream_mode="updates")`；每次节点完成由服务层写入 **`node_update`**；Planner 侧在需要时写入 **`replan`** 并递增 `plan_version`。
 
 | 节点 | 说明 |
 |------|------|
-| `thinking_node` | 分析用户请求，提取关键信息 |
-| `plan_node` | 生成执行计划 |
-| `replan_node` | 评估计划，如需调整则重新规划 |
-| `execute_node` | 执行计划中的步骤 |
-| `final_node` | 生成最终回复 |
+| `planner` | 会话历史 + 黑板要点 → 计划步骤；重规划时先 bump 版本 |
+| `actor` | 逐步工具调用与流式总结（`llm_stream_delta`） |
+| `learner` | 反思、更新黑板（会话持久化）、设置是否再规划 |
 
 ---
 
@@ -225,40 +144,14 @@ async def iter_task_event_sse(task_id, after_seq=0):
         await asyncio.sleep(0.15)  # 轮询间隔
 ```
 
-**前端消费 (usePendingComposerTask.ts):**
-
-```typescript
-// 1. 初始批量拉取历史事件
-const historical = await getTaskEvents(taskId, 0, 200)
-
-// 2. 建立 SSE 连接
-const stream = new EventSource(buildStreamUrl(taskId, lastSeq))
-stream.onmessage = (e) => {
-  const event = JSON.parse(e.data)
-  eventStore.apply(event)  // 合并到本地状态
-}
-```
+**前端**：任务详情页等通过 **`useTaskTimeline`**（或等价 Hook）先 `GET …/events`，再 `GET …/events/stream`（SSE），按 **`seq`** 去重合并；_chat 首屏流式展示依赖折叠 `llm_stream_delta` 等工具函数。
 
 ---
 
-### 阶段五：对话记忆持久化
+### 阶段五：对话记忆与黑板
 
-**任务完成后写入会话消息 (task_service.py):**
-
-```python
-async def create_and_start(db, task_id, user_message, history):
-    # ... Agent 执行 ...
-    result = await graph.ainvoke(initial)
-
-    # 将助手回复写入消息表（对话记忆）
-    if result.get("outcome") == "success":
-        await message_repository.add_message(
-            db,
-            session_id=session_id,
-            role="assistant",
-            content=result.get("summary"),
-        )
-```
+- **`messages` 表**：用户与助手轮次持久化；Planner 通过 `SessionLLMContextManager` 读取最近消息。
+- **`sessions.blackboard_notes_json`**：Learner 跨任务写入的要点；任务过程中从 checkpoint / 状态合并，结束后可 flush 回会话行。
 
 ---
 
@@ -269,9 +162,9 @@ async def create_and_start(db, task_id, user_message, history):
 ```
 ┌─────────────────────────────────────────────┐
 │         TanStack Query (服务端状态)          │
-│   - useSession()      会话列表/详情          │
-│   - useMessages()    消息列表（持久化）      │
-│   - useTask()        任务详情               │
+│   - useSession()       当前会话             │
+│   - 会话消息 / 任务相关 Query               │
+│   - useTaskDetail()    任务详情             │
 └─────────────────────────────────────────────┘
                      │
                      ▼
@@ -359,10 +252,11 @@ const streamed = useMemo(
 
 ```sql
 sessions
-├── id           主键
-├── title        会话标题
-├── created_at   创建时间
-└── updated_at   更新时间
+├── id                         TEXT PK
+├── title                      TEXT NULL
+├── blackboard_notes_json      TEXT NULL  -- Learner 会话级黑板
+├── created_at                  DATETIME
+└── （无 ORM 级 updated_at 时以实际迁移为准）
 ```
 
 ### Message（消息）
@@ -394,12 +288,13 @@ tasks
 
 ```sql
 task_events
-├── id           主键
-├── task_id      外键 → tasks.id
-├── seq          序号（保证顺序）
-├── event_type   事件类型
-├── data         事件数据 (JSON)
-└── created_at   创建时间
+├── id             INTEGER PK
+├── task_id        FK → tasks.id
+├── seq            INTEGER  -- 任务内单调
+├── ts             DATETIME
+├── module         TEXT     -- planning | memory | tool | execution | workflow
+├── kind           TEXT     -- plan_created, replan, step_*, tool_*, llm_stream_delta, node_update, error, ...
+└── payload_json   TEXT NULL
 ```
 
 ---
@@ -414,13 +309,12 @@ task_events
    - 先规划再执行，支持条件重规划
    - 状态机驱动，事件化记录执行过程
 
-3. **对话记忆与任务追踪分离**
-   - `messages` 表：持久化对话历史（用于上下文）
-   - `task_events` 表：记录执行细节（用于调试/展示）
+3. **对话记忆、黑板与任务追踪分离**
+   - `messages`：轮次对话；`sessions.blackboard_notes_json`：Learner 结构化要点
+   - `task_events`：可观测时间线（含 `node_update` 图级增量）
 
 4. **流式输出分阶段展示**
-   - `thinking` 事件 → 展示 AI 思考过程
-   - `llm_stream_delta` 事件 → 实时渲染回复内容
+   - `llm_stream_delta` 的 `phase` 字段区分 thinking / answer 等，由前端折叠渲染
 
 5. **前端状态分层管理**
    - TanStack Query：服务端状态同步

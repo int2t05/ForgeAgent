@@ -77,19 +77,20 @@ MVP 使用 SQLite，以下为逻辑模型（表名可 snake_case）。
 | task_id      | TEXT     | 外键 → tasks.id                                                   | 是   |
 | seq          | INTEGER  | 同一任务内顺序号                                                  | 是   |
 | ts           | DATETIME | 事件时间                                                          | 是   |
-| module       | TEXT     | `planning` / `memory` / `tool` / `execution`（与 PRD 四模块对齐） | 是   |
-| kind         | TEXT     | 如 `plan_created`, `step_start`, `tool_call`, `error`, `replan`   | 是   |
+| module       | TEXT     | `planning` / `memory` / `tool` / `execution` / `workflow`（图级节点更新） | 是   |
+| kind         | TEXT     | 如 `plan_created`, `node_update`, `step_start`, `tool_call`, `error`, `replan` | 是   |
 | payload_json | TEXT     | JSON：步骤索引、工具名、输入输出摘要、错误栈摘要等                | 否   |
 
 索引建议：`task_id + seq`；列表页按 `created_at` 查 `tasks`。
 
 ### 3.3 `sessions`（会话）
 
-| 字段名     | 类型        | 说明         | 必填 |
-| ---------- | ----------- | ------------ | ---- |
-| id         | TEXT (UUID) | 主键         | 是   |
-| title      | TEXT        | 可选展示标题 | 否   |
-| created_at | DATETIME    | 是           | 是   |
+| 字段名                 | 类型        | 说明                                                                 | 必填 |
+| ---------------------- | ----------- | -------------------------------------------------------------------- | ---- |
+| id                     | TEXT (UUID) | 主键                                                                 | 是   |
+| title                  | TEXT        | 可选展示标题                                                         | 否   |
+| blackboard_notes_json  | TEXT        | 可选：Learner 写入的会话级「黑板」要点（JSON 列表等），跨任务持久化 | 否   |
+| created_at             | DATETIME    | 创建时间                                                             | 是   |
 
 ### 3.4 `messages`（会话内消息，记忆）
 
@@ -129,9 +130,9 @@ MVP 使用 SQLite，以下为逻辑模型（表名可 snake_case）。
 
 ### 4.1 任务
 
-| 接口名称       | 方法   | 请求参数                                                   | 返回格式                                                                                                     |
-| -------------- | ------ | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| 创建并启动任务 | `POST` | Body: `{ "session_id": "uuid", "user_message": "string" }` | `{ "task_id": "uuid", "stream_url": "/api/v1/tasks/{id}/events" }`                                           |
+| 接口名称       | 方法   | 请求参数                                                                                                                                | 返回格式                                                                                                     |
+| -------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| 创建并启动任务 | `POST` | Body: `{ "session_id": "uuid", "user_message": "string", "reuse_user_message_id?": number }`（复用已有用户消息重跑时可选）               | `{ "task_id": "uuid", "events_stream_path": "/api/v1/tasks/{id}/events/stream" }`（字段名以 OpenAPI 为准） |
 | 任务列表       | `GET`  | Query: `limit`, `offset`, `status?`                        | `{ "items": [ { "id", "status", "summary", "created_at", ... } ], "total": n }`                              |
 | 任务详情       | `GET`  | Path: `task_id`                                            | `{ "id", "session_id", "status", "summary", "plan_version", "plan": { "steps": [...] }, "created_at", ... }` |
 | 任务事件历史   | `GET`  | Path: `task_id`；Query: `after_seq?`                       | `{ "events": [ { "seq", "ts", "module", "kind", "payload" } ] }`                                             |
@@ -172,10 +173,11 @@ MVP 使用 SQLite，以下为逻辑模型（表名可 snake_case）。
 
 ## 5. 关键技术点
 
-### 5.1 Plan-and-Execute 与重规划边界
+### 5.1 Plan-Act-Learn（Planner → Actor → Learner）与重规划边界
 
-- **难点**：在「失败 / 信息不足」时触发重规划，需避免无限循环并保留计划版本可追溯。
-- **方案**：LangGraph 中用条件边返回 `planner`；配置 `max_replan_attempts` 与超时；每次重规划 `plan_version++` 并写 `task_events`（`kind=replan`）。
+- **主循环**：单次任务在 LangGraph 中为 **`planner` → `actor` → `learner`**。`planner` 结合会话最近消息（`messages`）与会话黑板要点（`sessions.blackboard_notes_json` / 状态中的 `blackboard_notes`）生成计划；`actor` 按步调用统一工具注册表（`tool_registry.execute`），流式写入总结类事件；`learner` 可做反思并更新黑板、决定是否 **`replan_requested`**。条件边从 `learner` 回到 `planner` 或结束。
+- **检查点**：进程启动时在独立 SQLite（或可选 Postgres）上挂载 **LangGraph AsyncSqliteSaver（等）**，`thread_id` 与 `task_id` 对齐，支持崩溃后状态恢复（与业务 ORM 库文件分离）。
+- **重规划**：在「Learner 请求纠错 / 强制测试预算」等路径上触发回 `planner`；配置 `max_replan_attempts`；在 `planner` 入口 bump `plan_version` 并写 `task_events`（`module=planning`，`kind=replan`）。
 
 ### 5.2 MCP 与 Skills 统一注册表
 
@@ -218,15 +220,24 @@ MVP 使用 SQLite，以下为逻辑模型（表名可 snake_case）。
 | `sqlite3` CLI          | 本地调试库文件           |
 | Docker Desktop         | 可选：compose 一键起后端 |
 
-### 6.4 环境变量清单（后端 `apps/api` 示例）
+### 6.4 环境变量清单（后端，以 `backend/app/core/config.py` 与根目录 `.env.example` 为准）
 
-| 变量名                         | 说明                                                                          |
-| ------------------------------ | ----------------------------------------------------------------------------- |
-| `DATABASE_URL`                 | 默认 `sqlite+aiosqlite:///./data/forgeagent.db`                               |
-| `LLM_API_KEY` / 具体厂商变量名 | 按所选模型提供商二选一或统一封装                                              |
-| `MCP`\_\*                      | 各 MCP Server 所需（若不用环境变量则可仅存非敏感连接信息在 DB，密钥仍走 env） |
-| `CORS_ORIGINS`                 | 前端源，如 `http://localhost:5173`, `https://*.vercel.app`                    |
-| `LOG_LEVEL`                    | `INFO` / `DEBUG`                                                              |
+| 变量名                                  | 说明                                                                          |
+| --------------------------------------- | ----------------------------------------------------------------------------- |
+| `DATABASE_URL`                          | 默认 `sqlite+aiosqlite:///./forgeagent.db`（相对进程 CWD）                     |
+| `LANGGRAPH_CHECKPOINT_SQLITE_PATH`      | LangGraph 检查点专用 SQLite 路径（与上行业务库分离）                           |
+| `LANGGRAPH_CHECKPOINT_POSTGRES_URI`     | 可选：Postgres 存检查点（需安装可选依赖）                                    |
+| `MAX_REPLAN_ATTEMPTS`                   | 重规划次数上限                                                                |
+| `SESSION_MEMORY_MAX_MESSAGES`           | 注入 Planner 的会话消息条数上限                                              |
+| `SESSION_BLACKBOARD_MAX_NOTES`          | 会话黑板要点条数上限                                                         |
+| `MAX_TOOL_FAILURE_ATTEMPTS`             | 每步工具失败重试次数                                                         |
+| `OPENAI_API_KEY` / `OPENAI_API_BASE` / `OPENAI_MODEL` | OpenAI 兼容 LLM（留空可走确定性/降级路径）                         |
+| `OPENAI_RETRY_MAX_ATTEMPTS` 等          | 应用层对 429/529 等的退避重试                                                |
+| `LLM_CONTEXT_WINDOW_TOKENS` / `LLM_RESERVED_COMPLETION_TOKENS` | 上下文预算（裁剪历史）                                  |
+| `AGENT_WORKSPACE_ROOT`、`TAVILY_API_KEY`、REPL/Shell 相关 | 内置工具能力开关与超时                                        |
+| `MCP`\_\*（若使用）                     | 各 MCP Server 所需；非敏感连接信息也可在 `settings_kv`                        |
+| `CORS_ORIGINS`                          | 前端源，逗号分隔                                                               |
+| `LOG_LEVEL`                             | `INFO` / `DEBUG`（若配置）                                                    |
 
 前端（Vite）示例：
 

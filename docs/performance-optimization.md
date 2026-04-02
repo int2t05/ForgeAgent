@@ -12,7 +12,7 @@
 | P0 | 频繁创建 DB 连接 | 每个任务 13+ 次连接创建 |
 | P0 | SSE 轮询每次新建连接 | 30 秒任务产生 200+ 连接 |
 | P0 | 每次 SSE 事件触发全组件重渲染 | UI 卡顿 |
-| P1 | framework_router 阻塞启动 | 200-500ms 不必要延迟 |
+| P1 | 启动期同步工作 | 寿命周期内 `init_db`、工具 `refresh`、打开 checkpointer；若变慢需 profiling（旧版「framework_router」已移除） |
 | P1 | 重复查询相同数据 | 网络请求浪费 |
 | P2 | useQueries 瀑布流 | N 个任务 = N 次并行查询 |
 | P2 | 每次 SSE 事件扫描全量事件 | O(n) 复杂度 |

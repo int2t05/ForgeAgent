@@ -6,7 +6,7 @@
 - Tavily：https://docs.langchain.com/oss/python/integrations/tools/tavily_search（推荐 ``langchain-tavily``）
 - 文件读写列举：``langchain_community.tools.file_management``（根目录由 ``Settings.resolved_agent_workspace_path`` 约束）
 - Python 交互执行：``langchain_experimental.tools.PythonREPLTool``（可经 ``AGENT_ENABLE_PYTHON_REPL`` 关闭）
-- Shell：自建 ``StructuredTool``（与文件工具共享工作区根 + 子进程超时；不再使用无超时的 BashProcess）
+- Shell：自建 ``StructuredTool``（与文件工具共享工作区根 + 子进程超时；Windows 默认 ``cmd.exe /c``，Unix 常见 ``/bin/sh``）
 
 另保留 ``list_tools``：查询本进程统一工具注册表元数据，属产品内建能力，无社区替代品。
 
@@ -16,10 +16,10 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import logging
 import os
 import platform
+import re
 import subprocess
 from pathlib import Path
 from typing import Any, Literal
@@ -32,6 +32,73 @@ from app.schemas.tools import ToolItem
 
 logger = logging.getLogger(__name__)
 
+# shell 工具单次脚本长度上限（字符），防止异常大 payload
+_MAX_SHELL_SCRIPT_CHARS = 262_144
+
+# Windows：在 cmd 会话开头切到 UTF-8 代码页，减轻中文与路径乱码（失败时仍执行后续命令）
+_WIN_CMD_UTF8 = "chcp 65001 >nul & "
+
+
+def _strip_powershell_clixml(text: str) -> str:
+    """去掉 PowerShell 写入的 CLIXML 进度/序列化块，避免淹没真实输出。"""
+    if not text or ("CLIXML" not in text and "<Objs" not in text):
+        return text
+    cur = text
+    pat_header = re.compile(r"(?s)#<\s*CLIXML\s*\r?\n.*?</Objs>\s*")
+    pat_ns = re.compile(
+        r'(?s)<Objs\b[^>]*xmlns="http://schemas\.microsoft\.com/powershell/2004/04"[^>]*>'
+        r".*?</Objs>\s*"
+    )
+    prev = None
+    while prev != cur:
+        prev = cur
+        cur = pat_header.sub("", cur)
+        cur = pat_ns.sub("", cur)
+    return cur.strip()
+
+
+def _windows_shell_unsupported(script: str) -> str | None:
+    """在 Windows（cmd）上拦截典型 Bash/Unix 习惯用法，返回 cmd 等价说明。"""
+    s = script.strip()
+    if not s:
+        return None
+    low = s.lower()
+
+    if re.search(r"(?:^|[;&|]|\n)\s*xargs\b", low):
+        return (
+            "Error: 当前由 Windows **cmd.exe** 执行，没有 xargs，也不要写 `find … | xargs …`。\n"
+            "递归在文件内容里搜索（类似 grep -r）可用：\n"
+            "  findstr /S /M /I \"关键词\" *.py\n"
+            "只看某目录树下路径可配合通配：\n"
+            "  dir /S /B backend\\app\\*.py\n"
+            "（更复杂场景可用 python -c 或仓库内文件工具。）"
+        )
+
+    if re.search(r"\bfind\s+.+\s+-type\b", low):
+        return (
+            "Error: `find -type` 是 Unix find 语法，cmd 不支持。\n"
+            "列举某目录下全部文件路径（示例）：\n"
+            "  dir /S /B <目录>\\*.*\n"
+            "只要某种扩展名：\n"
+            "  dir /S /B backend\\app\\*.py"
+        )
+
+    if re.search(r"\bfind\s+.+\s+-name\b", low):
+        return (
+            "Error: `find -name` 是 Unix 语法，请改用 cmd 通配符：\n"
+            "  dir /S /B <路径\\*.py>\n"
+            "示例：dir /S /B backend\\app\\*.py"
+        )
+
+    if "/dev/null" in low or re.search(r"2>\s*/dev/null", low):
+        return (
+            "Error: `/dev/null` 与 `2>/dev/null` 是 Unix 重定向；在 **cmd** 里丢弃标准错误请用：\n"
+            "  2>nul\n"
+            "示例：some_command 2>nul"
+        )
+
+    return None
+
 
 def _wall_timeout_sec(
     raw: float, *, default: float = 120.0, floor: float | None = None
@@ -42,22 +109,10 @@ def _wall_timeout_sec(
     return v
 
 
-def _windows_powershell_argv(script: str) -> list[str]:
-    """将脚本交给 powershell.exe，UTF-16 LE + Base64 避免 -Command 引号转义问题。"""
-    enc = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
-    return [
-        "powershell.exe",
-        "-NoProfile",
-        "-NonInteractive",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-EncodedCommand",
-        enc,
-    ]
-
-
 def _subprocess_shell_sync(script: str, cwd: str, timeout_sec: float) -> str:
-    """Windows 专用：同步经 PowerShell 执行（不用 shell=True，以免落回 cmd.exe / COMSPEC）。"""
+    """Windows 专用：经 cmd.exe /c 执行（非交互、合并 stderr 到 stdout）。"""
+    cmd_line = _WIN_CMD_UTF8 + script.lstrip()
+    argv = ["cmd.exe", "/d", "/s", "/c", cmd_line]
     run_kw: dict[str, Any] = {
         "cwd": cwd,
         "stdout": subprocess.PIPE,
@@ -68,7 +123,7 @@ def _subprocess_shell_sync(script: str, cwd: str, timeout_sec: float) -> str:
     if hasattr(subprocess, "CREATE_NO_WINDOW"):
         run_kw["creationflags"] = subprocess.CREATE_NO_WINDOW
     try:
-        completed = subprocess.run(_windows_powershell_argv(script), **run_kw)
+        completed = subprocess.run(argv, **run_kw)
     except subprocess.TimeoutExpired:
         return (
             f"Error: shell 已超时（>{int(timeout_sec)}s）并已终止子进程。"
@@ -77,6 +132,7 @@ def _subprocess_shell_sync(script: str, cwd: str, timeout_sec: float) -> str:
         )
     raw = completed.stdout or b""
     text = raw.decode(errors="replace").strip()
+    text = _strip_powershell_clixml(text)
     code = completed.returncode if completed.returncode is not None else -1
     if code != 0:
         prefix = f"exit {code}"
@@ -311,19 +367,31 @@ def _shell_tool() -> BaseTool | None:
             lines = [str(c).strip() for c in raw_cmds if str(c).strip()]
         if not lines:
             return "Error: empty commands"
-        joiner = "; " if platform.system() == "Windows" else " ; "
+        joiner = " & " if platform.system() == "Windows" else " ; "
         script = joiner.join(lines)
+        if len(script) > _MAX_SHELL_SCRIPT_CHARS:
+            return (
+                f"Error: 合并后的命令过长（>{_MAX_SHELL_SCRIPT_CHARS} 字符），请缩短、拆成多次 shell 调用，"
+                "或将长脚本写入工作区文件后再执行短命令。"
+            )
+        if platform.system() == "Windows":
+            blocked = _windows_shell_unsupported(script)
+            if blocked:
+                return blocked
         cwd = str(get_settings().resolved_agent_workspace_path())
         return await _subprocess_shell_output(script, cwd=cwd, timeout_sec=timeout_sec)
 
     return StructuredTool.from_function(
         name="shell",
         description=(
-            "在本机 shell 中执行命令（非持久会话）。"
-            f"工作目录固定为 Agent 工作区根（与 read_file 等一致，默认 monorepo 根），超时 {int(timeout_sec)}s；"
-            "Windows 下经 PowerShell 执行，多条命令在列表中会以内联分号串联；查看当前目录可用 Get-Location、pwd（别名）或 cd。"
-            "脚本若在 backend/ 下请用相对工作区根的路径（例如 backend/calculator.py 或 python backend/calculator.py），不要依赖 uvicorn 启动目录。"
-            "风险高，仅用于受信环境。"
+            "在本机 shell 执行命令（非持久会话）。"
+            f"工作目录固定为 Agent 工作区根（与 read_file 等一致），超时 {int(timeout_sec)}s；"
+            f"单次合并命令长度上限约 {_MAX_SHELL_SCRIPT_CHARS // 1024}KiB。"
+            "**Windows 默认使用 cmd.exe**：`commands` 数组里多条命令会用 ` & ` 连成一行依次执行；"
+            "请写 **cmd** 语法（如 `dir /S /B`、`findstr /S /I`、`2>nul`），不要写 bash 的 `find … | xargs`、"
+            "`2>/dev/null`、`find -name/-type`；工具会拦截并返回 cmd 等价示例。"
+            "Linux/macOS 使用 `/bin/sh` 类 shell，条目间用 ` ; ` 连接。"
+            "跨平台复杂检索优先 python -c 或文件工具；高危能力，仅用于受信环境。"
         ),
         coroutine=_run_shell_forge,
         args_schema=ShellInput,

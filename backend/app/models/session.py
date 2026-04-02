@@ -1,6 +1,5 @@
 """会话表 sessions（记忆：会话级上下文）。"""
 
-
 from datetime import datetime
 
 from sqlalchemy import Text, func
@@ -17,13 +16,14 @@ class Session(Base):
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    blackboard_notes_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime,
         server_default=func.now(),
         nullable=False,
     )
 
-    messages: Mapped[list["Message"]] = relationship( # type: ignore
+    messages: Mapped[list["Message"]] = relationship(  # type: ignore
         "Message",
         back_populates="session",
         cascade="all, delete-orphan",

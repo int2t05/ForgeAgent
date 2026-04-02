@@ -1,14 +1,13 @@
-"""规划域：基于 LLM 的任务步骤生成；步骤 JSON 解析见 ``app.shared.llm_json_parse``。
+"""规划 LLM：由 ``BaseMessage`` 序列生成抽象 ``plan_steps``（目标级描述，不含工具名）。
 
-无可用密钥或解析失败时回退内置默认步骤；工具目录来自统一注册表。
+输出经 JSON 解析与规范化；无密钥或非法结构时回退内置双步计划。工具目录仅在执行侧注入。
 """
 
 from __future__ import annotations
 
-import json
 import logging
 from collections.abc import Sequence
-from typing import Any, cast
+from typing import Any
 
 from langchain_core.messages import BaseMessage, SystemMessage
 
@@ -16,23 +15,38 @@ from app.core.config import Settings, get_settings
 from app.core.llm_openai import build_chat_model, is_llm_configured
 from app.core.llm_retry import ainvoke_with_retry
 from app.modules.prompts.planning import build_planner_system_prompt
-from app.schemas.tools import ToolItem
 from app.shared.llm_json_parse import parse_llm_json_object
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_STEPS: list[dict[str, Any]] = [
-    {"id": "1", "title": "理解用户输入与上下文"},
-    {"id": "2", "title": "按步执行并汇总结果"},
+    {
+        "id": "1",
+        "title": "理解用户输入与上下文",
+        "description": "澄清目标、约束与已知事实",
+    },
+    {
+        "id": "2",
+        "title": "执行并汇总",
+        "description": "按计划逐步达成子目标并在最后整合结论",
+    },
 ]
 
 
-def _normalize_steps(
-    data: dict[str, Any],
-    *,
-    allowed_tool_names: frozenset[str],
-) -> list[dict[str, Any]] | None:
-    """校验步骤列表；可选 ``tool``、``args``；``tool`` 须在 ``allowed_tool_names`` 内。"""
+_FORBIDDEN_PLAN_KEYS = frozenset(
+    {
+        "tool",
+        "args",
+        "tool_name",
+        "function",
+        "function_call",
+        "action",
+    }
+)
+
+
+def _normalize_steps(data: dict[str, Any]) -> list[dict[str, Any]] | None:
+    """将模型根对象中的 ``steps`` 转为可入库行集；剔除禁止的工具相关键。"""
     steps = data.get("steps")
     if not isinstance(steps, list) or len(steps) < 1:
         return None
@@ -40,30 +54,21 @@ def _normalize_steps(
     for i, item in enumerate(steps):
         if not isinstance(item, dict):
             return None
+        leaked = _FORBIDDEN_PLAN_KEYS.intersection(item.keys())
+        if leaked:
+            logger.warning(
+                "planner step contained forbidden keys %s; stripped from normalized plan",
+                sorted(leaked),
+            )
         sid = str(item.get("id") or str(i + 1))
         title = item.get("title")
         if not isinstance(title, str) or not title.strip():
             return None
         row: dict[str, Any] = {"id": sid, "title": title.strip()}
-        raw_tool = item.get("tool")
-        if isinstance(raw_tool, str) and raw_tool.strip():
-            tname = raw_tool.strip()
-            if tname not in allowed_tool_names:
-                logger.warning("planner step references unknown tool %r", tname)
-                return None
-            row["tool"] = tname
-            args: dict[str, Any] = {}
-            raw_args = item.get("args")
-            if isinstance(raw_args, dict):
-                args = cast(dict[str, Any], raw_args)
-            elif isinstance(raw_args, str) and raw_args.strip():
-                try:
-                    parsed = json.loads(raw_args.strip())
-                except json.JSONDecodeError:
-                    parsed = None
-                if isinstance(parsed, dict):
-                    args = cast(dict[str, Any], parsed)
-            row["args"] = args
+        for meta_key in ("goal", "description", "expected_output"):
+            mv = item.get(meta_key)
+            if isinstance(mv, str) and mv.strip():
+                row[meta_key] = mv.strip()
         out.append(row)
     return out
 
@@ -72,20 +77,15 @@ async def plan_steps_with_llm(
     chat_messages: Sequence[BaseMessage],
     settings: Settings | None = None,
 ) -> list[dict[str, Any]]:
-    """依据会话消息生成计划步骤列表；解析失败或非法时回退默认步骤。"""
-    # 1. 延迟导入工具注册表，避免配置加载阶段循环依赖
-    from app.modules.tools.registry import tool_registry
-
+    """异步请求规划模型并返回规范化步骤列表；失败路径返回内置默认。"""
     s = settings or get_settings()
-    # 2. 无 API 配置时返回内置默认计划
+    # 1. LLM 未配置：直接内置计划
     if not is_llm_configured(s):
         return list(_DEFAULT_STEPS)
 
-    tools = tool_registry.list_tools_public().tools
-    allowed_tool_names = frozenset(t.name for t in tools)
     chat = build_chat_model(s)
-    sys = build_planner_system_prompt(tools)
-    # 3. 调用规划模型，解析 JSON 并校验步骤与工具名
+    sys = build_planner_system_prompt()
+    # 2. 调用模型、解析 JSON、规范化；任一步失败则内置计划
     try:
         msg = await ainvoke_with_retry(
             chat, [SystemMessage(content=sys), *list(chat_messages)], s
@@ -96,7 +96,7 @@ async def plan_steps_with_llm(
         if data is None:
             logger.warning("planner LLM output not valid JSON, using default steps")
             return list(_DEFAULT_STEPS)
-        normalized = _normalize_steps(data, allowed_tool_names=allowed_tool_names)
+        normalized = _normalize_steps(data)
         if not normalized:
             logger.warning("planner LLM steps invalid, using default steps")
             return list(_DEFAULT_STEPS)

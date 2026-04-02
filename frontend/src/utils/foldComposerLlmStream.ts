@@ -3,6 +3,27 @@ import { foldLlmStreamDeltasSorted } from '@/utils/foldLlmStreamDeltas'
 import { splitThinkingFromMessage } from '@/utils/parseMessageThinking'
 import { peelLeadingThinkBlockFromBuffer } from '@/utils/streamThinkAnswer'
 
+/**
+ * 最后一轮「规划边界」序号：之后的执行/流式事件才属于当前计划周期。
+ * 避免重规划后仍以全局最后一个 step_start 切片，把上一轮已输出的 answer 误切掉或与新步混淆。
+ */
+export function planCycleAnchorSeq(sorted: TaskEvent[]): number {
+  let a = 0
+  for (const e of sorted) {
+    if (e.kind === 'replan' || e.kind === 'plan_created') {
+      if (e.seq > a) a = e.seq
+    }
+  }
+  return a
+}
+
+/** 只保留当前规划周期内事件（供对话区流式与轮次折叠）。 */
+export function sliceTaskEventsForActivePlanCycle(sorted: TaskEvent[]): TaskEvent[] {
+  const anchor = planCycleAnchorSeq(sorted)
+  if (anchor === 0) return sorted
+  return sorted.filter((e) => e.seq > anchor)
+}
+
 /** 单轮 Action 折叠块 */
 export interface ComposerActionBlock {
   id: string
@@ -151,12 +172,13 @@ function foldComposerLlmStreamSorted(sorted: TaskEvent[]): {
   action: string
   answer: string
 } {
-  const folded = foldLlmStreamDeltasSorted(sorted, { onlySinceLastStepStart: true })
+  const scoped = sliceTaskEventsForActivePlanCycle(sorted)
+  const folded = foldLlmStreamDeltasSorted(scoped, { onlySinceLastStepStart: true })
   const merged = mergeAnswerThinkIntoDisplayThinking(folded.thinking, folded.answer)
-  const stepFall = lastCommittedThoughtFromStepStartsSorted(sorted)
+  const stepFall = lastCommittedThoughtFromStepStartsSorted(scoped)
   const thinking = merged.thinking || stepFall
   const streamAction = folded.action
-  const fromTool = lastToolCallActionSinceLastStepSorted(sorted)
+  const fromTool = lastToolCallActionSinceLastStepSorted(scoped)
   const action = streamAction || fromTool
   return {
     thinking,
@@ -181,14 +203,15 @@ function buildComposerRoundSegmentsSorted(
   sorted: TaskEvent[],
   busy: boolean,
 ): ComposerRoundSegment[] {
-  const stepStarts = sorted.filter((e) => e.kind === 'step_start')
+  const scoped = sliceTaskEventsForActivePlanCycle(sorted)
+  const stepStarts = scoped.filter((e) => e.kind === 'step_start')
   const maxSeq = Number.MAX_SAFE_INTEGER
 
   if (stepStarts.length === 0) {
-    const stream = foldLlmStreamDeltasInSeqRange(sorted, 0, maxSeq)
+    const stream = foldLlmStreamDeltasInSeqRange(scoped, 0, maxSeq)
     const merged = mergeAnswerThinkIntoDisplayThinking(stream.thinking, stream.answer)
     const thought = merged.thinking.trim()
-    const tools = sorted.filter((e) => e.kind === 'tool_call')
+    const tools = scoped.filter((e) => e.kind === 'tool_call')
     const lastTool = tools[tools.length - 1]
     let action: ComposerActionBlock | null = lastTool ? toolEventToBlock(lastTool) : null
     if (!action && stream.action.trim()) {
@@ -206,13 +229,13 @@ function buildComposerRoundSegmentsSorted(
   for (let i = 0; i < stepStarts.length; i++) {
     const ss = stepStarts[i]!
     const nextSeq = stepStarts[i + 1]?.seq ?? maxSeq
-    const stream = foldLlmStreamDeltasInSeqRange(sorted, ss.seq, nextSeq)
+    const stream = foldLlmStreamDeltasInSeqRange(scoped, ss.seq, nextSeq)
     const merged = mergeAnswerThinkIntoDisplayThinking(stream.thinking, stream.answer)
     const rawThought =
       typeof ss.payload?.thought === 'string' ? ss.payload.thought.trim() : ''
     const thought = mergeThoughtDisplayParts(rawThought, merged.thinking).trim()
 
-    const toolsInRange = sorted.filter(
+    const toolsInRange = scoped.filter(
       (e) => e.kind === 'tool_call' && e.seq > ss.seq && e.seq <= nextSeq,
     )
     const lastTool = toolsInRange[toolsInRange.length - 1]

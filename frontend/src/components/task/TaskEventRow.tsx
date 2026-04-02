@@ -11,6 +11,7 @@ const MODULE_LABEL: Record<string, string> = {
   memory: '记忆',
   tool: '工具',
   execution: '执行',
+  workflow: '工作流',
 }
 
 const KIND_LABEL: Record<string, string> = {
@@ -23,6 +24,9 @@ const KIND_LABEL: Record<string, string> = {
   error: '错误',
   replan: '重规划',
   llm_stream_delta: '流式输出',
+  blackboard_update: '黑板更新',
+  node_update: '节点状态更新',
+  reflection: 'Learner 反思',
 }
 
 function moduleLabel(m: string): string {
