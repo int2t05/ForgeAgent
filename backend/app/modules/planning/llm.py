@@ -1,10 +1,12 @@
-"""基于 LLM 的计划步骤生成与 JSON 解析（无密钥时回退默认步骤）。"""
+"""规划域：基于 LLM 的任务步骤生成；步骤 JSON 解析见 ``app.shared.llm_json_parse``。
+
+无可用密钥或解析失败时回退内置默认步骤；工具目录来自统一注册表。
+"""
 
 from __future__ import annotations
 
 import json
 import logging
-import re
 from collections.abc import Sequence
 from typing import Any, cast
 
@@ -12,7 +14,10 @@ from langchain_core.messages import BaseMessage, SystemMessage
 
 from app.core.config import Settings, get_settings
 from app.core.llm_openai import build_chat_model, is_llm_configured
+from app.core.llm_retry import ainvoke_with_retry
+from app.modules.prompts.planning import build_planner_system_prompt
 from app.schemas.tools import ToolItem
+from app.shared.llm_json_parse import parse_llm_json_object
 
 logger = logging.getLogger(__name__)
 
@@ -20,89 +25,6 @@ _DEFAULT_STEPS: list[dict[str, Any]] = [
     {"id": "1", "title": "理解用户输入与上下文"},
     {"id": "2", "title": "按步执行并汇总结果"},
 ]
-
-
-def _tools_catalog_for_prompt(tools: Sequence[ToolItem]) -> str:
-    """将注册表工具转为 LLM 可读目录（与 GET /tools 一致，便于扩展新工具无需改提示词模板）。"""
-    catalog: list[dict[str, Any]] = []
-    for t in tools:
-        entry: dict[str, Any] = {
-            "name": t.name,
-            "description": t.description,
-            "source": t.source,
-        }
-        if t.read_only is not None:
-            entry["read_only"] = t.read_only
-        if t.parameters:
-            entry["parameters"] = t.parameters
-        catalog.append(entry)
-    return json.dumps(catalog, ensure_ascii=False, indent=2)
-
-
-def build_planner_system_prompt(tools: Sequence[ToolItem]) -> str:
-    """生成规划阶段使用的 System 提示串（JSON 步骤契约与动态工具目录）。"""
-    catalog_block = _tools_catalog_for_prompt(tools)
-    if tools:
-        names_line = "、".join(t.name for t in tools)
-        tool_rules = (
-            "若某步需要调用工具：字段 \"tool\" 必须是【已注册工具】中某一个 \"name\"（精确匹配，区分大小写）；"
-            "\"args\" 为 JSON 对象，键与取值须符合该工具的 \"parameters\"（JSON Schema），勿臆造字段名。"
-        )
-    else:
-        names_line = "（当前无已注册工具）"
-        tool_rules = "当前无可用工具：所有步骤均不得包含 \"tool\" 与 \"args\"。"
-
-    return (
-        "你是任务规划助手。根据用户与助手的前文对话及当前诉求，只输出一个 JSON 对象，"
-        "不要 markdown 代码块、不要代码围栏、不要额外说明文字。\n\n"
-        "【输出 JSON 形状】\n"
-        '{"steps":[{"id":"步骤编号字符串","title":"步骤简述（简短中文）",'
-        '"tool":"可选；仅当本步要调用工具时填写","args":{}}]}\n'
-        "说明：分析与纯推理步骤可省略 \"tool\" 与 \"args\"；需要工具时必须同时给出二者。\n\n"
-        "【步骤与工具约束】\n"
-        f"- 至少 1 个步骤。\n"
-        f"- {tool_rules}\n"
-        f"- 当前允许的 tool 名称：{names_line}\n\n"
-        "【已注册工具】（name、description、parameters 为入参 JSON Schema，可能为空）\n"
-        f"{catalog_block}"
-    )
-
-
-def _strip_markdown_json_fence(text: str) -> str:
-    """去掉 Markdown 中的 JSON 围栏。"""
-    t = text.strip()
-    if not t.startswith("```"):
-        return t
-    t = re.sub(r"^```(?:json)?\s*", "", t, count=1, flags=re.IGNORECASE)
-    t = re.sub(r"\s*```\s*$", "", t)
-    return t.strip()
-
-
-def parse_llm_json_object(text: str) -> dict[str, Any] | None:
-    """从模型输出文本中解析单个 JSON 对象，失败时返回 None。"""
-    return _extract_json_object(text)
-
-
-def _extract_json_object(text: str) -> dict[str, Any] | None:
-    """从模型输出中尽量解析出 JSON 对象。"""
-    raw = _strip_markdown_json_fence(text)
-    s = raw.strip()
-    dec = json.JSONDecoder()
-    try:
-        data = dec.raw_decode(s)[0]
-        return data if isinstance(data, dict) else None
-    except json.JSONDecodeError:
-        pass
-    for i, ch in enumerate(s):
-        if ch != "{":
-            continue
-        try:
-            obj, _end = dec.raw_decode(s, i)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(obj, dict):
-            return obj
-    return None
 
 
 def _normalize_steps(
@@ -150,12 +72,12 @@ async def plan_steps_with_llm(
     chat_messages: Sequence[BaseMessage],
     settings: Settings | None = None,
 ) -> list[dict[str, Any]]:
-    """根据会话消息生成计划步骤；无可用 LLM 或解析失败时回退内置默认步骤。"""
-    # 延迟导入，避免仅加载配置时依赖工具注册表
+    """依据会话消息生成计划步骤列表；解析失败或非法时回退默认步骤。"""
+    # 1. 延迟导入工具注册表，避免配置加载阶段循环依赖
     from app.modules.tools.registry import tool_registry
 
     s = settings or get_settings()
-    # 1. 无 API 配置时直接使用内置默认计划
+    # 2. 无 API 配置时返回内置默认计划
     if not is_llm_configured(s):
         return list(_DEFAULT_STEPS)
 
@@ -163,12 +85,14 @@ async def plan_steps_with_llm(
     allowed_tool_names = frozenset(t.name for t in tools)
     chat = build_chat_model(s)
     sys = build_planner_system_prompt(tools)
-    # 2. 调用模型并解析 JSON；无效则回退默认步骤
+    # 3. 调用规划模型，解析 JSON 并校验步骤与工具名
     try:
-        msg = await chat.ainvoke([SystemMessage(content=sys), *list(chat_messages)])
+        msg = await ainvoke_with_retry(
+            chat, [SystemMessage(content=sys), *list(chat_messages)], s
+        )
         content = getattr(msg, "content", None)
         text = content if isinstance(content, str) else str(content or "")
-        data = _extract_json_object(text)
+        data = parse_llm_json_object(text)
         if data is None:
             logger.warning("planner LLM output not valid JSON, using default steps")
             return list(_DEFAULT_STEPS)

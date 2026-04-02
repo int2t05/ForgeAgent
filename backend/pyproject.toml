@@ -13,6 +13,10 @@ dependencies = [
   "langgraph-checkpoint-sqlite>=3.0.0,<4",
   "langchain-core>=1.2.0,<2",
   "langchain-openai>=0.3.0,<1",
+  "langchain-community>=0.4.0,<0.5",
+  "langchain-experimental>=0.3.0,<0.5",
+  "langchain-tavily>=0.2.0,<0.4",
+  "ddgs>=8.0.0",
 ]
 
 [build-system]
@@ -23,7 +27,7 @@ build-backend = "hatchling.build"
 packages = ["app"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.3"]
+dev = ["pytest>=8.3", "pytest-asyncio>=0.24"]
 checkpoint-postgres = [
   "langgraph-checkpoint-postgres>=3.0.0,<4",
   "psycopg[binary]>=3.2.0,<4",

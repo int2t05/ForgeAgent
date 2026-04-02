@@ -129,11 +129,11 @@ export function TaskDetailPage() {
         <Header
           title="任务详情"
           actions={
-            <div className="flex flex-wrap items-center justify-end gap-3">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               {canCancel && (
                 <button
                   type="button"
-                  className="fa-btn-secondary border-amber-200 text-amber-800 hover:bg-amber-50"
+                  className="fa-btn-secondary"
                   disabled={cancelMutation.isPending}
                   onClick={() => setConfirmCancel(true)}
                 >
@@ -142,7 +142,7 @@ export function TaskDetailPage() {
               )}
               <button
                 type="button"
-                className="fa-btn-text-danger"
+                className="fa-btn-secondary border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300"
                 disabled={blockDelete}
                 title={blockDelete ? '进行中的任务无法删除' : undefined}
                 onClick={() => setConfirmDelete(true)}
@@ -151,7 +151,7 @@ export function TaskDetailPage() {
               </button>
               <Link
                 to="/tasks"
-                className="text-base text-neutral-500 transition-colors hover:text-neutral-800"
+                className="fa-btn-secondary inline-flex items-center justify-center no-underline"
               >
                 ← 返回列表
               </Link>

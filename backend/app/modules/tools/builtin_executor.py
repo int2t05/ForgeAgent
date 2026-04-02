@@ -1,4 +1,4 @@
-"""内置工具真实执行（与 ``builtin_lc.BUILTIN_LC_TOOLS`` 名称一一对应）。"""
+"""内置工具真实执行（与 ``builtin_lc.builtin_lc_tools_by_name`` 名称一一对应）。"""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Any
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, ValidationError
 
-from app.modules.tools.builtin_lc import BUILTIN_LC_TOOLS_BY_NAME
+from app.modules.tools.builtin_lc import builtin_lc_tools_by_name
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ def _tool_validation_error_message(exc: ValidationError) -> str:
 
 async def execute_builtin(name: str, args: dict[str, Any]) -> dict[str, Any]:
     """通过 LangChain ``BaseTool.ainvoke`` 执行内置工具，返回注册表约定的 ok/data/error 结构。"""
-    tool = BUILTIN_LC_TOOLS_BY_NAME.get(name)
+    tool = builtin_lc_tools_by_name().get(name)
     if tool is None:
         return {"ok": False, "error": f"未实现的内置工具: {name}"}
     payload = dict(args) if args else {}

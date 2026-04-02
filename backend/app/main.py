@@ -22,7 +22,7 @@ from app.modules.workflow.graph import (
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """应用进程启动与关闭时的资源初始化与释放。"""
+    """FastAPI lifespan：启动时初始化 DB、工具快照与编译图；关闭时逆序释放。"""
     # 1. 启动时建表（阶段1）；后续可换 Alembic
     await init_db()
     # 2. 按 settings_kv 刷新工具注册表（内置 + MCP mock + Skills）

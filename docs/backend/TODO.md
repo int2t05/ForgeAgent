@@ -28,7 +28,7 @@ async def executor_node(state: AgentState) -> dict:
 **涉及文件**:
 - `app/agent/nodes.py` — 重写 `executor_node`
 - `app/tools/registry.py` — 新增 `execute(name, args)` 方法
-- `app/tools/builtin.py` — 实现 `echo` / `mock_search` 真实逻辑
+- `app/modules/tools/builtin_lc.py` — 内置工具以 `langchain-community` / 可选 `langchain-tavily` 为准
 
 ---
 
@@ -84,25 +84,15 @@ result = await graph.ainvoke(initial, config=config)
 **目标**: 使用 `@tool` 装饰器或 `BaseTool` 定义真实工具。
 
 ```python
-# 伪代码
-from langchain_core.tools import tool
+# 伪代码：优先使用 langchain-community 等官方集成
+from langchain_community.tools import DuckDuckGoSearchRun
 
-@tool
-def echo(text: str) -> str:
-    """回显输入文本"""
-    return text
-
-@tool
-def mock_search(query: str, top_k: int = 5) -> list[str]:
-    """搜索返回占位结果"""
-    return [f"结果{i} for {query}" for i in range(top_k)]
-
-# 绑定到 LLM
-llm_with_tools = llm.bind_tools([echo, mock_search])
+search = DuckDuckGoSearchRun()
+llm_with_tools = llm.bind_tools([search])
 ```
 
 **涉及文件**:
-- `app/tools/builtin.py` — 重写为 LangChain `BaseTool`
+- `app/modules/tools/builtin_lc.py` — LangChain `BaseTool` 列表与 `list_tools`
 - `app/agent/llm_client.py` — `plan_steps_with_llm` 使用绑定工具
 
 ---

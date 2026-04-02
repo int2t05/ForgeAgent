@@ -1,13 +1,15 @@
 /**
- * 设置页：MCP 配置 + Skills 路径（非密钥字段）。
+ * 设置页：MCP / Skills 配置（含保存）在上，工具注册表（只读快照）在下。
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Header } from '@/layouts/Header'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ErrorAlert } from '@/components/ui/ErrorAlert'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { MessageDialog } from '@/components/ui/MessageDialog'
 import { McpServersEditor } from '@/components/settings/McpServersEditor'
+import { ToolsRegistrySection } from '@/components/settings/ToolsRegistrySection'
 import { useSettings } from '@/hooks/useSettings'
 import {
   parseMcpListFromApi,
@@ -100,30 +102,27 @@ export function SettingsPage() {
     resetError,
   } = useSettings()
   const [confirmReset, setConfirmReset] = useState(false)
-  const [notice, setNotice] = useState<string | null>(null)
-  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [feedbackTitle, setFeedbackTitle] = useState('')
+  const [feedbackDescription, setFeedbackDescription] = useState<string | undefined>(
+    undefined,
+  )
 
-  function showNotice(message: string, ms = 4500) {
-    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current)
-    setNotice(message)
-    noticeTimerRef.current = setTimeout(() => {
-      setNotice(null)
-      noticeTimerRef.current = null
-    }, ms)
+  function showFeedback(title: string, description?: string) {
+    setFeedbackTitle(title)
+    setFeedbackDescription(description)
+    setFeedbackOpen(true)
   }
-
-  useEffect(() => {
-    return () => {
-      if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current)
-    }
-  }, [])
 
   const updateSettings: typeof commitSettings = (body, options) => {
     commitSettings(body, {
       ...options,
       onSuccess: (data, variables, onMutateResult, context) => {
         options?.onSuccess?.(data, variables, onMutateResult, context)
-        showNotice('已保存')
+        showFeedback(
+          '配置已保存',
+          'MCP 与 Skills 已写入服务端，下方工具注册表会自动更新；也可手动点「刷新列表」。',
+        )
       },
     })
   }
@@ -133,7 +132,7 @@ export function SettingsPage() {
       ...options,
       onSuccess: (data, variables, onMutateResult, context) => {
         options?.onSuccess?.(data, variables, onMutateResult, context)
-        showNotice('已重置')
+        showFeedback('已重置', 'MCP 与 Skills 列表已清空。')
       },
     })
   }
@@ -159,6 +158,13 @@ export function SettingsPage() {
         }
       />
 
+      <MessageDialog
+        open={feedbackOpen}
+        title={feedbackTitle}
+        description={feedbackDescription}
+        onClose={() => setFeedbackOpen(false)}
+      />
+
       <div className="shrink-0">
       <Header
         title="设置"
@@ -177,29 +183,6 @@ export function SettingsPage() {
 
       <div className="fa-reveal min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="mx-auto w-full max-w-3xl px-6 py-6 pb-10">
-        {notice && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-emerald-200/90 bg-emerald-50/90 px-3 py-2 text-base text-emerald-900"
-          >
-            <p className="leading-snug">{notice}</p>
-            <button
-              type="button"
-              className="shrink-0 text-emerald-600 transition-colors hover:text-emerald-800"
-              aria-label="关闭提示"
-              onClick={() => {
-                if (noticeTimerRef.current) {
-                  clearTimeout(noticeTimerRef.current)
-                  noticeTimerRef.current = null
-                }
-                setNotice(null)
-              }}
-            >
-              ✕
-            </button>
-          </div>
-        )}
         {isLoading && <LoadingSpinner />}
         {error && <ErrorAlert message="加载设置失败" />}
 
@@ -222,6 +205,10 @@ export function SettingsPage() {
             updateError={updateError}
           />
         )}
+
+        <div className="mt-10 border-t border-neutral-200/90 pt-10">
+          <ToolsRegistrySection />
+        </div>
         </div>
       </div>
     </div>

@@ -13,19 +13,24 @@ from langgraph.graph import END, START, StateGraph
 
 from app.modules.execution.nodes import executor_node, route_after_executor
 from app.modules.execution.react_agent import react_executor_node
-from app.modules.planning.framework_router import framework_router_node, route_after_framework
+from app.modules.planning.framework_router import (
+    framework_router_node,
+    route_after_framework,
+)
 from app.modules.planning.nodes import planner_node, replan_record_node
 from app.modules.workflow.state import AgentState
 
 
 def build_agent_graph() -> StateGraph:
-    """返回已挂接全部节点与边、尚未 compile 的 StateGraph。"""
+    """组装 LangGraph 状态图（仅定义节点与边，未 compile）。"""
+    # 1. 注册节点：认知路由、规划、计划执行、ReAct、重规划记录
     builder = StateGraph(AgentState)
     builder.add_node("framework_router", framework_router_node)
     builder.add_node("planner", planner_node)
     builder.add_node("executor", executor_node)
     builder.add_node("react_executor", react_executor_node)
     builder.add_node("replan_record", replan_record_node)
+    # 2. START → 框架路由；按认知模式进入 planner 或 react_executor
     builder.add_edge(START, "framework_router")
     builder.add_conditional_edges(
         "framework_router",
@@ -34,6 +39,7 @@ def build_agent_graph() -> StateGraph:
     )
     builder.add_edge("planner", "executor")
     builder.add_edge("react_executor", END)
+    # 3. 执行结束或进入重规划；重规划后回到 planner
     builder.add_conditional_edges(
         "executor",
         route_after_executor,

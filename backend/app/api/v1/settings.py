@@ -32,7 +32,6 @@ async def put_settings(
     """更新非敏感配置；拒绝体中出现疑似密钥字段名。"""
     # 1. 递归校验键名不含 api_key 等片段
     # 2. upsert 写入 settings_kv
-    # 3. 返回 { ok: true }
     result = await settings_service.update_settings(db, body)
     # 3. MCP / Skills 变更后立即刷新注册表，使 GET /tools 与 DB 一致
     await tool_registry.refresh(db)

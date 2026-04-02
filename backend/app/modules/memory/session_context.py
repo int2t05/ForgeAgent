@@ -24,8 +24,8 @@ def session_messages_to_chat_messages(rows: Sequence[Message]) -> list[BaseMessa
     out: list[BaseMessage] = []
     for row in rows:
         role = (row.role or "").strip().lower()
-        # 规划节点单独注入 SystemMessage；会话内 system 易与供应商「单 system」约束冲突，改为Human侧说明
-        # LLM 调用只能有一个 system prompt，多个 system 会冲突，所以把会话内的 system 内容包装成用户提示）
+        # 1. 规划/ReAct 节点已注入 SystemMessage，与供应商「单 system」习惯对齐
+        # 2. 会话里若存 system 角色，改写为 HumanMessage 前缀，避免多条 SystemMessage
         if role == "system":
             out.append(
                 HumanMessage(
@@ -39,10 +39,7 @@ def session_messages_to_chat_messages(rows: Sequence[Message]) -> list[BaseMessa
 
 
 class SessionLLMContextManager:
-    """统一管理「从 DB 拉取最近窗口 + 转为 LLM 消息列表」；窗口大小由配置上限控制。
-
-    与 LangChain 推荐用法一致：向 ``BaseChatModel.ainvoke`` 传入 ``list[BaseMessage]``。
-    """
+    """在配置的消息条数上限内，从 DB 加载会话窗口并转为 LangChain ``BaseMessage`` 列表。"""
 
     def __init__(self, max_messages: int) -> None:
         if max_messages < 1:

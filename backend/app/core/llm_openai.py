@@ -1,4 +1,8 @@
-"""OpenAI 兼容 Chat 客户端构造与密钥探测（规划、执行模块复用）。"""
+"""OpenAI 兼容 Chat 客户端。
+
+提供密钥探测与基于进程配置的 ChatOpenAI 构造，供规划、路由、ReAct、流式总结等模块复用；
+输入长度由 ``app.core.llm_retry`` 内统一预算裁剪。
+"""
 
 from __future__ import annotations
 
@@ -10,14 +14,14 @@ from app.core.config import Settings, get_settings
 
 
 def is_llm_configured(settings: Settings | None = None) -> bool:
-    """是否配置了可用的 OpenAI 兼容密钥（非空字符串）。"""
+    """判断是否存在非空的 OpenAI 兼容 API Key 配置。"""
     s = settings or get_settings()
     key = (s.openai_api_key or "").strip()
     return bool(key)
 
 
 def build_chat_model(settings: Settings) -> ChatOpenAI:
-    """根据 Settings 构造 ChatOpenAI（base_url、超时与重试可选）。"""
+    """按 Settings 构造带 base_url、超时与 SDK 重试的 ChatOpenAI 实例。"""
     kwargs: dict[str, Any] = {
         "model": settings.openai_model,
         "api_key": settings.openai_api_key,

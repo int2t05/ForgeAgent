@@ -10,6 +10,8 @@ export interface ToolInfo {
   description: string
   source: ToolSource
   read_only?: boolean
+  /** OpenAPI/JSON Schema 风格入参（与后端 LangChain args_schema 对齐）。 */
+  parameters?: Record<string, unknown> | null
 }
 
 /** GET /tools 响应。 */

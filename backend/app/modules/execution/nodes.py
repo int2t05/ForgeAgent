@@ -80,7 +80,7 @@ def _step_tool_and_args(step: dict) -> tuple[str | None, dict]:
 
 
 async def executor_node(state: AgentState) -> dict:
-    """LangGraph 执行节点：按计划（或强制重规划预演）落库执行事件，并流式生成汇总答复。"""
+    """LangGraph 计划执行节点：逐步落库步骤与工具事件，必要时流式生成总结答复。"""
     # 1. 解析任务、计划步骤、重规划与强制预演预算
     task_id = state["task_id"]  # type: ignore
     plan_steps = state.get("plan_steps") or []
@@ -108,6 +108,8 @@ async def executor_node(state: AgentState) -> dict:
                     )
     else:
         # 3. 正常执行：逐步写入步骤与工具事件并累计 tool_trace
+        settings_exec = get_settings()
+        max_tool_tries = max(1, int(settings_exec.max_tool_failure_attempts or 3))
         for step in plan_steps:
             sid = step.get("id")
             title = step.get("title")
@@ -164,32 +166,57 @@ async def executor_node(state: AgentState) -> dict:
                                 "step_id": sid,
                                 "tool": tool_name,
                                 "args": tool_args,
+                                "max_attempts": max_tool_tries,
                             },
                             ensure_ascii=False,
                         ),
                     )
-            # 经注册表执行工具并依据结果决定是否提前失败退出
-            exec_out = await tool_registry.execute(tool_name, tool_args)
-            ok = bool(exec_out.get("ok"))
+
+            attempt_rows: list[dict] = []
+            final_ok = False
+            last_exec: dict = {"ok": False, "data": None, "error": None}
+            for attempt in range(1, max_tool_tries + 1):
+                exec_out = await tool_registry.execute(tool_name, tool_args)
+                last_exec = {
+                    "ok": bool(exec_out.get("ok")),
+                    "data": exec_out.get("data"),
+                    "error": exec_out.get("error"),
+                }
+                ok = last_exec["ok"]
+                attempt_rows.append(
+                    {
+                        "attempt": attempt,
+                        "ok": ok,
+                        "data": exec_out.get("data"),
+                        "error": exec_out.get("error"),
+                    }
+                )
+                async with AsyncSessionLocal() as db:
+                    async with db.begin():
+                        await event_repository.append_event(
+                            db,
+                            task_id,
+                            "tool",
+                            "tool_result",
+                            json.dumps(
+                                {
+                                    "step_id": sid,
+                                    "tool": tool_name,
+                                    "attempt": attempt,
+                                    "max_attempts": max_tool_tries,
+                                    "ok": ok,
+                                    "result": exec_out.get("data"),
+                                    "error": exec_out.get("error"),
+                                },
+                                ensure_ascii=False,
+                            ),
+                        )
+                if ok:
+                    final_ok = True
+                    break
 
             async with AsyncSessionLocal() as db:
                 async with db.begin():
-                    await event_repository.append_event(
-                        db,
-                        task_id,
-                        "tool",
-                        "tool_result",
-                        json.dumps(
-                            {
-                                "step_id": sid,
-                                "tool": tool_name,
-                                "ok": ok,
-                                "result": exec_out.get("data"),
-                                "error": exec_out.get("error"),
-                            },
-                            ensure_ascii=False,
-                        ),
-                    )
                     await event_repository.append_event(
                         db,
                         task_id,
@@ -198,7 +225,8 @@ async def executor_node(state: AgentState) -> dict:
                         json.dumps(
                             {
                                 "step_id": sid,
-                                "status": "failed" if not ok else "ok",
+                                "status": "ok" if final_ok else "failed",
+                                "attempts": len(attempt_rows),
                             },
                             ensure_ascii=False,
                         ),
@@ -210,29 +238,12 @@ async def executor_node(state: AgentState) -> dict:
                     "title": title,
                     "tool": tool_name,
                     "args": tool_args,
-                    "ok": ok,
-                    "data": exec_out.get("data"),
-                    "error": exec_out.get("error"),
+                    "ok": final_ok,
+                    "data": last_exec.get("data"),
+                    "error": last_exec.get("error"),
+                    "attempts": attempt_rows,
                 }
             )
-
-            if not ok:
-                err = str(exec_out.get("error") or "工具执行失败")
-                async with AsyncSessionLocal() as db:
-                    async with db.begin():
-                        await event_repository.append_event(
-                            db,
-                            task_id,
-                            "execution",
-                            "error",
-                            json.dumps({"message": err}, ensure_ascii=False),
-                        )
-                return {
-                    "outcome": "failed",
-                    "error_message": err,
-                    "summary": None,
-                    "replan_requested": False,
-                }
 
     # 4. 仅预演 step_start：返回重规划请求或超次失败，不进入总结 LLM
     if budget > 0:
