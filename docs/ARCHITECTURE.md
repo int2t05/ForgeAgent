@@ -10,13 +10,13 @@
 
 ### 技术栈
 
-| 层级 | 技术选型 |
-|------|----------|
-| **前端** | React 18 + TypeScript + Vite + Tailwind CSS + TanStack Query + React Router |
-| **后端** | Python 3.11+ + FastAPI + SQLAlchemy 2.0 (async) |
-| **Agent 运行时** | LangGraph（主）+ LangChain（模型/工具/MCP 适配） |
-| **数据库** | SQLite（AsyncEngine）+ 独立 LangGraph Checkpoint DB |
-| **API 风格** | REST + SSE（Server-Sent Events） |
+| 层级             | 技术选型                                                                    |
+| ---------------- | --------------------------------------------------------------------------- |
+| **前端**         | React 18 + TypeScript + Vite + Tailwind CSS + TanStack Query + React Router |
+| **后端**         | Python 3.11+ + FastAPI + SQLAlchemy 2.0 (async)                             |
+| **Agent 运行时** | LangGraph（主）+ LangChain（模型/工具/MCP 适配）                            |
+| **数据库**       | SQLite（AsyncEngine）+ 独立 LangGraph Checkpoint DB                         |
+| **API 风格**     | REST + SSE（Server-Sent Events）                                            |
 
 ---
 
@@ -80,7 +80,7 @@ ForgeAgent/
 │   ├── backend/                    # 后端相关文档
 │   └── ...
 │
-├── skills/                        # Skill 工具定义
+├── skills/                        # 可选：各目录 SKILL.md（Planner skill_imports 上下文，非 HTTP 工具）
 └── M-prompts/                     # 提示词模板
 ```
 
@@ -123,73 +123,73 @@ ForgeAgent/
 
 #### 执行引擎 (`modules/execution/`)
 
-| 文件 | 功能 |
-|------|------|
-| `step_react_loop.py` | **ReAct 循环执行核心** - Agent 主循环 |
-| `step_executor.py` | 单步 step_start/ReAct/step_end，与 Actor 编排解耦 |
-| `nodes.py` | Actor 节点定义（编排；单步执行委托 `step_executor`） |
-| `tool_runner.py` | 工具运行器 |
-| `llm_reply.py` | LLM 回复处理 |
-| `stream_split.py` | 流式输出分割 |
+| 文件                 | 功能                                                 |
+| -------------------- | ---------------------------------------------------- |
+| `step_react_loop.py` | **ReAct 循环执行核心** - Agent 主循环                |
+| `step_executor.py`   | 单步 step_start/ReAct/step_end，与 Actor 编排解耦    |
+| `nodes.py`           | Actor 节点定义（编排；单步执行委托 `step_executor`） |
+| `tool_runner.py`     | 工具运行器                                           |
+| `llm_reply.py`       | LLM 回复处理                                         |
+| `stream_split.py`    | 流式输出分割                                         |
 
 #### 工作流管理 (`modules/workflow/`)
 
-| 文件 | 功能 |
-|------|------|
+| 文件       | 功能                                                                       |
+| ---------- | -------------------------------------------------------------------------- |
 | `graph.py` | 图结构定义；`build_agent_graph` 可注入 planner/actor/learner，默认惰性加载 |
-| `state.py` | 状态管理（TypedDict） |
+| `state.py` | 状态管理（TypedDict）                                                      |
 
 #### 规划模块 (`modules/planning/`)
 
-| 文件 | 功能 |
-|------|------|
-| `llm.py` | 规划用 LLM 接口 |
-| `nodes.py` | 规划节点定义 |
+| 文件       | 功能            |
+| ---------- | --------------- |
+| `llm.py`   | 规划用 LLM 接口 |
+| `nodes.py` | 规划节点定义    |
 
 #### 记忆系统 (`modules/memory/`)
 
-| 文件 | 功能 |
-|------|------|
-| `session_blackboard.py` | 会话黑板（共享数据） |
-| `session_context.py` | 会话上下文管理 |
-| `conversation_summary.py` | 超长会话 LLM 摘要压缩 |
-| `llm_context_budget.py` | LLM 消息 token 估算与预算截断 |
-| `token_counter.py` | tiktoken 本地计数 |
-| `tool_observation_compact.py` | Observation/轨迹 JSON 压缩 |
-| `checkpointer.py` | 状态检查点 |
-| `learner_node.py` | 学习者节点 |
+| 文件                          | 功能                          |
+| ----------------------------- | ----------------------------- |
+| `session_blackboard.py`       | 会话黑板（共享数据）          |
+| `session_context.py`          | 会话上下文管理                |
+| `conversation_summary.py`     | 超长会话 LLM 摘要压缩         |
+| `llm_context_budget.py`       | LLM 消息 token 估算与预算截断 |
+| `token_counter.py`            | tiktoken 本地计数             |
+| `tool_observation_compact.py` | Observation/轨迹 JSON 压缩    |
+| `checkpointer.py`             | 状态检查点                    |
+| `learner_node.py`             | 学习者节点                    |
 
 #### 工具系统 (`modules/tools/`)
 
-| 文件 | 功能 |
-|------|------|
-| `registry.py` | 工具注册表 |
-| `builtin.py` | 内置工具定义 |
+| 文件                  | 功能           |
+| --------------------- | -------------- |
+| `registry.py`         | 工具注册表     |
+| `builtin.py`          | 内置工具定义   |
 | `builtin_executor.py` | 内置工具执行器 |
-| `mcp_sources.py` | MCP 工具源 |
-| `skill_sources.py` | Skill 工具源 |
+| `mcp_sources.py`      | MCP 工具源     |
+| `skill_sources.py`    | Skill 目录：`SKILL.md` 拼接、规划器 `skill_imports` 路径解析 |
 
 #### 提示词管理 (`modules/prompts/`)
 
-| 文件 | 功能 |
-|------|------|
-| `step_react.py` | ReAct 模式提示词 |
-| `planning.py` | 规划提示词 |
-| `assistant_reply.py` | 助手回复提示词 |
+| 文件                    | 功能             |
+| ----------------------- | ---------------- |
+| `step_react.py`         | ReAct 模式提示词 |
+| `planning.py`           | 规划提示词       |
+| `assistant_reply.py`    | 助手回复提示词   |
 | `learner_reflection.py` | 学习者反思提示词 |
-| `catalog.py` | 提示词目录 |
+| `catalog.py`            | 提示词目录       |
 
 ### 3.3 数据模型
 
 #### 数据库表
 
-| 表名 | 说明 | 关键字段 |
-|------|------|----------|
-| `sessions` | 会话 | id(UUID), title, blackboard_notes_json, created_at |
-| `messages` | 会话消息 | id(自增), session_id(FK), role, content, created_at |
-| `tasks` | 任务 | id(UUID), session_id(FK), status, summary, plan_version, error_message |
-| `task_events` | 任务事件流 | id(自增), task_id(FK), seq, ts, module, kind, payload_json |
-| `settings_kv` | 键值配置 | key(PK), value_json, updated_at |
+| 表名          | 说明       | 关键字段                                                               |
+| ------------- | ---------- | ---------------------------------------------------------------------- |
+| `sessions`    | 会话       | id(UUID), title, blackboard_notes_json, created_at                     |
+| `messages`    | 会话消息   | id(自增), session_id(FK), role, content, created_at                    |
+| `tasks`       | 任务       | id(UUID), session_id(FK), status, summary, plan_version, error_message |
+| `task_events` | 任务事件流 | id(自增), task_id(FK), seq, ts, module, kind, payload_json             |
+| `settings_kv` | 键值配置   | key(PK), value_json, updated_at                                        |
 
 #### LangGraph Checkpoints
 
@@ -271,36 +271,37 @@ ForgeAgent/
 
 ### 5.1 API 端点
 
-| 路由 | 方法 | 说明 |
-|------|------|------|
-| `/health` | GET | 健康检查 |
-| `/api/v1/sessions` | POST | 创建会话 |
-| `/api/v1/sessions` | GET | 列表会话 |
-| `/api/v1/sessions/{id}` | GET | 获取会话详情 |
-| `/api/v1/sessions/{id}/context` | GET | 会话上下文预览（黑板、规划消息窗口、token 粗估） |
-| `/api/v1/sessions/{id}/messages` | GET | 获取会话消息 |
-| `/api/v1/tasks` | POST | 创建任务 |
-| `/api/v1/tasks` | GET | 列表任务 |
-| `/api/v1/tasks/{id}` | GET | 获取任务详情 |
-| `/api/v1/tasks/{id}` | PATCH | 更新任务（取消等） |
-| `/api/v1/tasks/{id}/events` | GET | 获取任务事件 |
-| `/api/v1/tasks/{id}/events/stream` | GET | SSE 事件流 |
-| `/api/v1/tools` | GET | 获取工具列表 |
-| `/api/v1/settings` | GET/PUT/PATCH/DELETE | 设置管理 |
+| 路由                               | 方法                 | 说明                                             |
+| ---------------------------------- | -------------------- | ------------------------------------------------ |
+| `/health`                          | GET                  | 健康检查                                         |
+| `/api/v1/sessions`                 | POST                 | 创建会话                                         |
+| `/api/v1/sessions`                 | GET                  | 列表会话                                         |
+| `/api/v1/sessions/{id}`            | GET                  | 获取会话详情                                     |
+| `/api/v1/sessions/{id}/context`    | GET                  | 会话上下文预览（黑板、规划消息窗口、token 粗估） |
+| `/api/v1/sessions/{id}/messages`   | GET                  | 获取会话消息                                     |
+| `/api/v1/tasks`                    | POST                 | 创建任务                                         |
+| `/api/v1/tasks`                    | GET                  | 列表任务                                         |
+| `/api/v1/tasks/{id}`               | GET                  | 获取任务详情                                     |
+| `/api/v1/tasks/{id}`               | PATCH                | 更新任务（取消等）                               |
+| `/api/v1/tasks/{id}/events`        | GET                  | 获取任务事件                                     |
+| `/api/v1/tasks/{id}/events/stream` | GET                  | SSE 事件流                                       |
+| `/api/v1/tools`                    | GET                  | 获取工具列表                                     |
+| `/api/v1/settings`                 | GET/PUT/PATCH/DELETE | 设置管理                                         |
+| `/api/v1/settings/skills/validate` | POST                 | 校验 Skills 目录与 `SKILL.md` 存在性（不必先保存） |
 
 ### 5.2 SSE 事件类型
 
-| kind | 说明 | payload 摘要 |
-|------|------|--------------|
-| `node_update` | LangGraph 节点更新 | module, node_name, state_snapshot |
-| `plan_created` | 计划创建 | plan_version, steps[] |
-| `tool_call` | 工具调用 | tool_name, arguments |
-| `tool_result` | 工具结果 | tool_name, result |
-| `step_start` | 步骤开始 | step_index, step |
-| `step_end` | 步骤结束 | step_index, summary |
-| `message` | 助手消息 | content, is_final |
-| `error` | 错误 | error_message |
-| `task_complete` | 任务完成 | status, final_summary |
+| kind            | 说明               | payload 摘要                      |
+| --------------- | ------------------ | --------------------------------- |
+| `node_update`   | LangGraph 节点更新 | module, node_name, state_snapshot |
+| `plan_created`  | 计划创建           | plan_version, steps[]             |
+| `tool_call`     | 工具调用           | tool_name, arguments              |
+| `tool_result`   | 工具结果           | tool_name, result                 |
+| `step_start`    | 步骤开始           | step_index, step                  |
+| `step_end`      | 步骤结束           | step_index, summary               |
+| `message`       | 助手消息           | content, is_final                 |
+| `error`         | 错误               | error_message                     |
+| `task_complete` | 任务完成           | status, final_summary             |
 
 ---
 
@@ -350,11 +351,11 @@ frontend/src/
 
 ### 7.1 工具来源
 
-| 来源 | 说明 | 状态 |
-|------|------|------|
+| 来源        | 说明                         | 状态      |
+| ----------- | ---------------------------- | --------- |
 | **Builtin** | 内置工具（搜索、文件操作等） | ✅ 已实现 |
-| **MCP** | Model Context Protocol 工具 | 🔄 进行中 |
-| **Skill** | Skill 定义的工具 | 🔄 进行中 |
+| **MCP**     | Model Context Protocol 工具  | 🔄 进行中 |
+| **Skill 目录** | `SKILL.md` 由 Planner `skill_imports` 注入执行上下文（非注册工具、无 HTTP） | ✅ 已实现 |
 
 ### 7.2 内置工具
 
@@ -371,22 +372,22 @@ frontend/src/
 
 ### 8.1 环境变量
 
-| 变量 | 说明 |
-|------|------|
-| `DATABASE_URL` | SQLite 数据库路径 |
-| `LLM_API_KEY` | LLM API 密钥 |
-| `LLM_BASE_URL` | LLM API Base URL |
-| `LLM_MODEL` | LLM 模型名称 |
-| `CORS_ORIGINS` | CORS 允许的源 |
-| `LOG_LEVEL` | 日志级别 |
+| 变量                               | 说明                   |
+| ---------------------------------- | ---------------------- |
+| `DATABASE_URL`                     | SQLite 数据库路径      |
+| `LLM_API_KEY`                      | LLM API 密钥           |
+| `LLM_BASE_URL`                     | LLM API Base URL       |
+| `LLM_MODEL`                        | LLM 模型名称           |
+| `CORS_ORIGINS`                     | CORS 允许的源          |
+| `LOG_LEVEL`                        | 日志级别               |
 | `LANGGRAPH_CHECKPOINT_SQLITE_PATH` | LangGraph 检查点数据库 |
 
 ### 8.2 核心设置项
 
-| Key | 说明 |
-|-----|------|
-| `mcp` | MCP 服务器配置 |
-| `skills_paths` | Skill 工具路径列表 |
+| Key            | 说明               |
+| -------------- | ------------------ |
+| `mcp`          | MCP 服务器配置     |
+| `skills_paths` | Skill 目录白名单（Planner / `SKILL.md` 上下文） |
 
 ---
 
@@ -401,28 +402,28 @@ frontend/src/
 
 ### 9.2 进行中 / 待完成
 
-| 优先级 | TODO |
-|--------|------|
-| P0 | 任务取消与运行中协同 |
-| P1 | 工具 Schema / 规划一体 |
-| P1 | MCP 真实 Transport |
-| P1 | Human-in-the-Loop |
-| P2 | Skill 执行框架 |
-| P2 | 自动化测试 |
-| P3 | LangSmith / Tracing |
-| P3 | 多 Agent 编排 |
-| P4 | Settings 密钥加密 |
-| P4 | WebSocket 替代 SSE |
+| 优先级 | TODO                   |
+| ------ | ---------------------- |
+| P0     | 任务取消与运行中协同   |
+| P1     | 工具 Schema / 规划一体 |
+| P1     | MCP 真实 Transport     |
+| P1     | Human-in-the-Loop      |
+| ~~P2~~ | ~~Skill HTTP 工具~~（已移除；保留 `SKILL.md` 上下文导入） |
+| P2     | 自动化测试             |
+| P3     | LangSmith / Tracing    |
+| P3     | 多 Agent 编排          |
+| P4     | Settings 密钥加密      |
+| P4     | WebSocket 替代 SSE     |
 
 ---
 
 ## 十、相关文档
 
-| 文档 | 说明 |
-|------|------|
-| [`docs/README.md`](README.md) | 文档索引 |
-| [`docs/architecture/TECH_DESIGN.md`](architecture/TECH_DESIGN.md) | 技术设计细节 |
-| [`docs/architecture/ARCH.md`](architecture/ARCH.md) | 目录与模块职责 |
-| [`docs/backend/业务流程文档.md`](backend/业务流程文档.md) | 业务流程与伪代码 |
-| [`docs/backend/TODO.md`](backend/TODO.md) | 后端迭代 TODO |
-| [`START.md`](../START.md) | 快速开始 |
+| 文档                                                              | 说明             |
+| ----------------------------------------------------------------- | ---------------- |
+| [`docs/README.md`](README.md)                                     | 文档索引         |
+| [`docs/architecture/TECH_DESIGN.md`](architecture/TECH_DESIGN.md) | 技术设计细节     |
+| [`docs/architecture/ARCH.md`](architecture/ARCH.md)               | 目录与模块职责   |
+| [`docs/backend/业务流程文档.md`](backend/业务流程文档.md)         | 业务流程与伪代码 |
+| [`docs/backend/TODO.md`](backend/TODO.md)                         | 后端迭代 TODO    |
+| [`START.md`](../START.md)                                         | 快速开始         |

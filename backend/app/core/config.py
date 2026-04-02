@@ -60,6 +60,8 @@ class Settings(BaseSettings):
     session_blackboard_max_notes: int = 64
     max_tool_failure_attempts: int = 3
     max_react_rounds_per_step: int = 20
+    #: 单步 ReAct 里，JSON 解析失败时最多允许的调用轮数（含首轮）
+    react_parse_max_attempts: int = 2
     react_max_tokens_per_step: int = 8000
     #: 单条 Observation（JSON）写入 LLM 前的最大字符数，防止工具大返回占满上下文
     react_tool_observation_max_json_chars: int = 12000
@@ -129,6 +131,11 @@ class Settings(BaseSettings):
     @field_validator("learner_parse_max_attempts")
     @classmethod
     def _min_learner_parse_attempts(cls, v: int) -> int:
+        return max(1, int(v))
+
+    @field_validator("react_parse_max_attempts")
+    @classmethod
+    def _min_react_parse_attempts(cls, v: int) -> int:
         return max(1, int(v))
 
     @model_validator(mode="after")

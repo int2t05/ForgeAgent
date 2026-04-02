@@ -82,13 +82,10 @@ def _walk_no_secret_keys(obj: Any, *, _parent_key: str | None = None) -> None:
 
 
 def _normalize_mcp_for_storage(mcp_items: list[Any]) -> list[Any]:
-    """入库前归一化 MCP 列表：enabled=false 视为删除，不写入 settings_kv。"""
+    """入库前归一化 MCP 列表：``enabled=false`` 视为删除，不写入 settings_kv。"""
     out: list[Any] = []
     for item in mcp_items:
-        if not isinstance(item, dict):
-            out.append(item)
-            continue
-        if item.get("enabled") is False:
+        if isinstance(item, dict) and item.get("enabled") is False:
             continue
         out.append(item)
     return out
@@ -96,11 +93,9 @@ def _normalize_mcp_for_storage(mcp_items: list[Any]) -> list[Any]:
 
 async def get_settings_public(db: AsyncSession) -> SettingsPublic:
     """读取 settings_kv 中与 GET /settings 对应的结构化字段。"""
-    # 1. 读行
     mcp_row = await settings_repository.get_value(db, _SETTINGS_KEY_MCP)
     skills_row = await settings_repository.get_value(db, _SETTINGS_KEY_SKILLS)
     ws_row = await settings_repository.get_value(db, _SETTINGS_KEY_WORKSPACE)
-    # 2. 解析
     mcp = _json_list_from_row(mcp_row.value_json if mcp_row else None)
     skills_raw = _json_list_from_row(skills_row.value_json if skills_row else None)
     skills_paths = [str(x) for x in skills_raw]
@@ -118,10 +113,8 @@ async def update_settings(
     db: AsyncSession, body: SettingsUpdate
 ) -> SettingsUpdateResponse:
     """校验请求体并写回 settings_kv（MCP、Skills、工作区根）。"""
-    # 1. 禁止可疑键名
     _walk_no_secret_keys(body.model_dump())
     normalized_mcp = _normalize_mcp_for_storage(body.mcp)
-    # 2. 分项 upsert
     await settings_repository.upsert_value(
         db, _SETTINGS_KEY_MCP, json.dumps(normalized_mcp, ensure_ascii=False)
     )
@@ -147,10 +140,11 @@ async def patch_settings(
     new_paths = (
         body.skills_paths if body.skills_paths is not None else current.skills_paths
     )
-    if body.agent_workspace_root is not None:
-        new_ws = body.agent_workspace_root.strip() or None
-    else:
-        new_ws = current.agent_workspace_root
+    new_ws = (
+        body.agent_workspace_root.strip() or None
+        if body.agent_workspace_root is not None
+        else current.agent_workspace_root
+    )
     merged = SettingsUpdate(
         mcp=new_mcp,
         skills_paths=new_paths,

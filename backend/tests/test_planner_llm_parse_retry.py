@@ -2,13 +2,36 @@
 
 from __future__ import annotations
 
+import tempfile
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 from app.core.config import Settings
+from app.modules.planning import llm as planner_llm
 from app.modules.planning.llm import plan_steps_with_llm
+
+
+def test_normalize_steps_resolves_skill_imports_to_configured_paths() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        sk = Path(tmp) / "my_skill"
+        sk.mkdir()
+        root = str(sk)
+        data = {
+            "steps": [
+                {
+                    "id": "1",
+                    "title": "一步",
+                    "skill_imports": ["my_skill"],
+                },
+            ],
+        }
+        out = planner_llm._normalize_steps(data, configured_skill_paths=[root, "/nope"])
+        assert out == [
+            {"id": "1", "title": "一步", "skill_imports": [root]},
+        ]
 
 
 @pytest.mark.asyncio
@@ -51,7 +74,7 @@ async def test_plan_steps_retries_after_invalid_json_then_succeeds() -> None:
     # 第二轮应带上首轮助手输出 + 纠偏用户消息
     second_call_messages = invoke.await_args_list[1].args[1]
     assert second_call_messages[-2] is bad
-    assert "无法解析" in (second_call_messages[-1].content or "")
+    assert "could not be parsed" in (second_call_messages[-1].content or "")
 
 
 @pytest.mark.asyncio

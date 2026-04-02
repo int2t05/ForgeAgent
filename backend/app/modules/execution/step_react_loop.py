@@ -27,7 +27,7 @@ from app.modules.memory.tool_observation_compact import compact_json_for_prompt
 from app.modules.prompts.step_react import build_step_react_system_prompt
 from app.repositories import event_repository
 from app.schemas.tools import ToolItem
-from app.shared.langchain_content import lc_message_text
+from app.shared.langchain_content import message_content_text
 from app.shared.react_llm_output import (
     extract_tool_invocations,
     parse_react_round_json,
@@ -36,6 +36,19 @@ from app.shared.react_llm_output import (
 )
 
 logger = logging.getLogger(__name__)
+
+_REACT_PARSE_RETRY_USER_HINT = (
+    "Your last reply could not be parsed as required ReAct JSON. "
+    "Reply with exactly one JSON object containing either "
+    "`final_answer` or executable `action`/`actions` fields. "
+    "Do not output markdown fences or extra text."
+)
+
+_SKILL_IMPORT_HUMAN_PREFIX = (
+    "## Imported skill context (planner-selected, this step only)\n\n"
+    "Content read from SKILL.md under the chosen directories. "
+    "This is not the tool catalogue.\n\n"
+)
 
 
 async def run_step_react_loop(
@@ -49,16 +62,17 @@ async def run_step_react_loop(
     settings: Settings | None = None,
     max_tool_tries: int,
     max_rounds: int,
+    skill_import_text: str = "",
 ) -> tuple[bool, list[dict[str, Any]], str | None]:
     """在单步轮次上限内运行 ReAct；每轮先执行模型给出的工具列表（可多个），再读 Observation 直至产出终答。"""
     s = settings or get_settings()
-    # 1. 无可执行工具或模型未配置
+    # 无可执行工具或模型未配置
     if not tools or not is_llm_configured(s):
         return False, [], None
 
     obs_cap = int(s.react_tool_observation_max_json_chars)
 
-    # 2. 首轮消息（系统提示 + 用户任务 / 步骤 / 历史轨迹摘要）
+    # 首轮消息（系统提示 + 用户任务 / 步骤 / 历史轨迹摘要）
     chat = build_chat_model(s)
     sys_text = build_step_react_system_prompt(tools)
     trace_snippet = compact_json_for_prompt(
@@ -71,10 +85,11 @@ async def run_step_react_loop(
         f"Prior steps trace summary: {trace_snippet}\n"
         "Respond with JSON for this round: thought, then either batched actions, a single action, or final_answer."
     )
-    messages: list[BaseMessage] = [
-        SystemMessage(content=sys_text),
-        HumanMessage(content=initial),
-    ]
+    messages: list[BaseMessage] = [SystemMessage(content=sys_text)]
+    skill_ctx = (skill_import_text or "").strip()
+    if skill_ctx:
+        messages.append(HumanMessage(content=_SKILL_IMPORT_HUMAN_PREFIX + skill_ctx))
+    messages.append(HumanMessage(content=initial))
 
     call_results: list[dict[str, Any]] = []
     step_final: str | None = None
@@ -83,8 +98,10 @@ async def run_step_react_loop(
     round_num = 0
     token_budget = int(s.react_max_tokens_per_step)
     total_tokens_used = 0
+    react_parse_failures = 0
+    max_parse_attempts = max(1, int(s.react_parse_max_attempts))
 
-    # 3. 步内循环：模型轮次 → 若有一批工具则顺序执行并回注 Observation → 否则收终答
+    # 步内循环：模型轮次 → 若有一批工具则顺序执行并回注 Observation → 否则收终答
     while True:
         if round_num >= rounds:
             logger.warning(
@@ -101,7 +118,7 @@ async def run_step_react_loop(
             logger.exception("step react LLM invoke failed task=%s step=%s", task_id, step_id)
             break
 
-        text = lc_message_text(msg)
+        text = message_content_text(msg)
         total_tokens_used += estimate_react_output_tokens(text)
         if token_budget > 0 and total_tokens_used > token_budget:
             logger.warning(
@@ -116,7 +133,17 @@ async def run_step_react_loop(
         messages.append(AIMessage(content=text))
         data = parse_react_round_json(text)
         if not data:
-            logger.warning("step react parse failed task=%s step=%s", task_id, step_id)
+            react_parse_failures += 1
+            logger.warning(
+                "step react parse failed task=%s step=%s (attempt %s/%s)",
+                task_id,
+                step_id,
+                react_parse_failures,
+                max_parse_attempts,
+            )
+            if react_parse_failures < max_parse_attempts:
+                messages.append(HumanMessage(content=_REACT_PARSE_RETRY_USER_HINT))
+                continue
             break
 
         invocations = extract_tool_invocations(data)

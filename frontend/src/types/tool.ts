@@ -2,7 +2,7 @@
  * 工具注册表类型定义（只读；与后端 Schema 对齐）。
  */
 
-export type ToolSource = 'builtin' | 'mcp' | 'skill'
+export type ToolSource = 'builtin' | 'mcp'
 
 /** 统一工具描述。 */
 export interface ToolInfo {

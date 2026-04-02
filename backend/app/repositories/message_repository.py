@@ -20,7 +20,7 @@ async def add_message(
     role: str,
     content: str,
 ) -> Message:
-    """在指定会话下插入一条消息并返回持久化后的 ORM 对象。"""
+    """在指定会话下插入一条消息并返回持久化后的 Message 行。"""
     row = Message(session_id=session_id, role=role, content=content)
     session.add(row)
     await session.flush()

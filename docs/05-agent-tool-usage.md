@@ -6,7 +6,7 @@
 ToolItem (Schema)
        ↑
        | (list_tools_public)
-ToolRegistry  ──> builtin_tools + mcp_tools + skill_tools
+ToolRegistry  ──> builtin_tools + mcp_tools
        |
        | (execute)
        v
@@ -14,6 +14,7 @@ builtin_executor.py  ──> LangChain BaseTool.ainvoke
      |
 mcp_client.py  ──> MCP ClientSession.call_tool
 ```
+（Settings「Skills 路径」仅用于 Planner 选择后在执行步注入各目录 `SKILL.md` 文本，不注册工具、不发起 HTTP。）
 
 ---
 
@@ -27,7 +28,7 @@ mcp_client.py  ──> MCP ClientSession.call_tool
 class ToolItem(BaseModel):
     name: str                           # 工具唯一名称
     description: str                    # 工具描述
-    source: Literal["builtin", "mcp", "skill"]  # 来源
+    source: Literal["builtin", "mcp"]  # 来源
     read_only: bool | None = None
     parameters: dict[str, Any] | None = None  # JSON Schema
     mcp_server_name: str | None = None
@@ -42,7 +43,7 @@ class ToolRegistry:
         self._tools: list[ToolItem] = tools
         self._by_name: dict[str, ToolItem] = {t.name: t for t in tools}
 
-    # 合并规则：同名工具先声明者优先（内置 > MCP > Skill）
+    # 合并规则：同名工具先声明者优先（内置 > MCP）
     def _merge(self, parts):
         seen = set()
         merged = []
@@ -59,8 +60,7 @@ class ToolRegistry:
         settings = await get_settings_public(db)
         builtins = list_builtin_tools()
         mcp_part = await tools_from_mcp_settings(settings.mcp)
-        skill_part = tools_from_skill_paths(settings.skills_paths)
-        merged = self._merge((builtins, mcp_part, skill_part))
+        merged = self._merge((builtins, mcp_part))
         self._tools = merged
         self._by_name = {t.name: t for t in merged}
 ```
@@ -141,16 +141,16 @@ def _tool_timeout_sec(name: str, settings: Settings) -> float:
 
 ## 四、内置工具清单
 
-| 工具 | 来源 | 说明 |
-|------|------|------|
-| `tavily_search` | LangChain Community | 网页搜索 |
-| `duckduckgo_search` | LangChain Community | 网页搜索 |
-| `read_file` | LangChain Community | 文件读取 |
-| `write_file` | LangChain Community | 文件写入 |
-| `list_directory` | LangChain Community | 目录列表 |
-| `python_repl` | LangChain Experimental | Python 执行 |
-| `shell` | 自建 | 系统 Shell |
-| `list_tools` | 自建 | 工具列表查询 |
+| 工具                | 来源                   | 说明         |
+| ------------------- | ---------------------- | ------------ |
+| `tavily_search`     | LangChain Community    | 网页搜索     |
+| `duckduckgo_search` | LangChain Community    | 网页搜索     |
+| `read_file`         | LangChain Community    | 文件读取     |
+| `write_file`        | LangChain Community    | 文件写入     |
+| `list_directory`    | LangChain Community    | 目录列表     |
+| `python_repl`       | LangChain Experimental | Python 执行  |
+| `shell`             | 自建                   | 系统 Shell   |
+| `list_tools`        | 自建                   | 工具列表查询 |
 
 ---
 
@@ -218,11 +218,11 @@ jitter ∈ [0.5, 1.0)
 
 ### 6.1 三种状态
 
-| 状态 | 说明 |
-|------|------|
-| `CLOSED` | 正常，允许调用 |
-| `OPEN` | 熔断中，拒绝调用，超时后进入 `HALF_OPEN` |
-| `HALF_OPEN` | 探测态，允许一个请求，失败则再开 |
+| 状态        | 说明                                     |
+| ----------- | ---------------------------------------- |
+| `CLOSED`    | 正常，允许调用                           |
+| `OPEN`      | 熔断中，拒绝调用，超时后进入 `HALF_OPEN` |
+| `HALF_OPEN` | 探测态，允许一个请求，失败则再开         |
 
 ### 6.2 配置
 
@@ -308,16 +308,23 @@ run_single_tool_with_retry()
 
 ---
 
-## 九、关键配置
+## 九、Skill 目录与 `SKILL.md`（非工具）
 
-| 配置项 | 默认值 | 说明 |
-|--------|--------|------|
-| `tool_default_timeout_sec` | 30 | 默认工具超时 |
-| `shell_tool_timeout_sec` | 60 | Shell 工具超时 |
-| `python_repl_timeout_sec` | 30 | Python 执行超时 |
-| `tool_search_timeout_sec` | 10 | 搜索工具超时 |
-| `tool_file_timeout_sec` | 5 | 文件操作超时 |
-| `tool_retry_base_delay_sec` | 0.05 | 重试基础延迟 |
-| `tool_retry_max_delay_sec` | 10 | 重试最大延迟 |
-| `circuit_breaker_tool_failure_threshold` | 10 | 熔断失败阈值 |
-| `circuit_breaker_tool_recovery_sec` | 60 | 熔断恢复超时 |
+- 在设置中配置 `skills_paths` 后，Planner 提示词会列出可选目录；规划 JSON 中每步可含 `skill_imports`（目录名或路径）。
+- Actor 执行该步时，`skill_sources.skill_import_context_from_paths` 读取对应目录下 `SKILL.md`，作为额外 **HumanMessage** 注入 ReAct，**不**经过 `tool_registry.execute`，也**不**发起任何 Skill HTTP。
+
+---
+
+## 十、关键配置
+
+| 配置项                                   | 默认值 | 说明            |
+| ---------------------------------------- | ------ | --------------- |
+| `tool_default_timeout_sec`               | 30     | 默认工具超时    |
+| `shell_tool_timeout_sec`                 | 60     | Shell 工具超时  |
+| `python_repl_timeout_sec`                | 30     | Python 执行超时 |
+| `tool_search_timeout_sec`                | 10     | 搜索工具超时    |
+| `tool_file_timeout_sec`                  | 5      | 文件操作超时    |
+| `tool_retry_base_delay_sec`              | 0.05   | 重试基础延迟    |
+| `tool_retry_max_delay_sec`               | 10     | 重试最大延迟    |
+| `circuit_breaker_tool_failure_threshold` | 10     | 熔断失败阈值    |
+| `circuit_breaker_tool_recovery_sec`      | 60     | 熔断恢复超时    |

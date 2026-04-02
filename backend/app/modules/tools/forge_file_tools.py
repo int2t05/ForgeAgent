@@ -44,7 +44,6 @@ class ForgeReadFileInput(BaseModel):
 
     @model_validator(mode="after")
     def _line_range_ok(self) -> ForgeReadFileInput:
-        # 1. 仅允许「两参数都省略」或「只给其一」或「两者都给」，且顺序合法
         s, e = self.start_line, self.end_line
         if s is not None and e is not None and e < s:
             raise ValueError("end_line 不得小于 start_line")
@@ -159,8 +158,6 @@ class ForgeWriteFileInput(BaseModel):
 
     @model_validator(mode="after")
     def _replace_vs_append(self) -> ForgeWriteFileInput:
-        # 1. 区间替换与 append 互斥
-        # 2. 行区间必须成对
         has_s = self.start_line is not None
         has_e = self.end_line is not None
         if has_s ^ has_e:
@@ -187,8 +184,6 @@ def _write_file_sync(
 
     try:
         if replace_lines:
-            # 1. 区间替换要求文件已存在
-            assert args.start_line is not None and args.end_line is not None
             if not write_path.exists():
                 return (
                     f"Error: 按行替换要求文件已存在: {args.file_path}"
@@ -212,7 +207,7 @@ def _write_file_sync(
                 f"at {args.file_path}."
             )
 
-        # 1. 覆盖或追加
+        # 覆盖或追加
         write_path.parent.mkdir(parents=True, exist_ok=True)
         mode = "a" if args.append else "w"
         with write_path.open(mode, encoding="utf-8") as f:

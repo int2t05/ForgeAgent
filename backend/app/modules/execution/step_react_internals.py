@@ -10,7 +10,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from app.core.config import Settings
 from app.core.llm_retry import ainvoke_with_retry
 from app.modules.memory.tool_observation_compact import observation_json_for_llm
-from app.shared.langchain_content import lc_message_text
+from app.shared.langchain_content import message_content_text
 from app.shared.react_llm_output import (
     extract_tool_invocations,
     parse_react_round_json,
@@ -98,7 +98,7 @@ async def try_react_closing_final_answer(
             step_id,
         )
         return None, None, total_tokens_used
-    text = lc_message_text(msg)
+    text = message_content_text(msg)
     used = total_tokens_used + estimate_react_output_tokens(text)
     messages.append(AIMessage(content=text))
     data = parse_react_round_json(text)

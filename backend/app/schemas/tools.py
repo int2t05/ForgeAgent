@@ -10,7 +10,7 @@ class ToolItem(BaseModel):
 
     name: str
     description: str
-    source: Literal["builtin", "mcp", "skill"]
+    source: Literal["builtin", "mcp"]
     read_only: bool | None = None
     parameters: dict[str, Any] | None = Field(
         default=None,

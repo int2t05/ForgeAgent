@@ -71,7 +71,7 @@ class _StreamDeltaBatcher:
 
 
 def _executable_tools_for_selection() -> list[ToolItem]:
-    """当前注册表中可执行的 ``ToolItem`` 列表（内置 + 已连接 MCP）。"""
+    """当前注册表中可执行的 ToolItem（内置 + 已连接 MCP）。"""
     return [
         t for t in tool_registry.list_tools_public().tools
         if t.source in ("builtin", "mcp")
@@ -79,7 +79,7 @@ def _executable_tools_for_selection() -> list[ToolItem]:
 
 
 async def actor_node(state: AgentState) -> dict:
-    """按计划逐步 ReAct 执行，并生成面向用户的 ``summary`` 与 ``actor_tool_trace``。"""
+    """按计划逐步 ReAct 执行，生成面向用户的 summary 与 actor_tool_trace。"""
     task_id = state["task_id"]  # type: ignore
     plan_steps = state.get("plan_steps") or []
     tool_trace: list[dict] = []

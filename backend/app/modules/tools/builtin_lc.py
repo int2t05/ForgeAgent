@@ -433,7 +433,7 @@ def _parameters_json_schema(tool: BaseTool) -> dict[str, Any] | None:
 def langchain_tool_to_tool_item(
     tool: BaseTool,
     *,
-    source: Literal["builtin", "mcp", "skill"] = "builtin",
+    source: Literal["builtin", "mcp"] = "builtin",
 ) -> ToolItem:
     """将已注册的 ``BaseTool`` 转为对外 ``ToolItem``（含 ``parameters`` schema）。"""
     desc = (tool.description or "").strip()

@@ -1,7 +1,9 @@
 """LLM 提示词与注入工具目录文本（按域分子模块）。
 
 - catalog：工具列表 JSON 块
-- planning / assistant_reply / step_react：各节点 System 提示
+- planning：Planner / Skill Selector system prompt
+- step_react：单步 ReAct system prompt
+- assistant_reply：执行后流式总结 system prompt
 """
 
 from app.modules.prompts.assistant_reply import ASSISTANT_EXECUTOR_SUMMARY_SYSTEM

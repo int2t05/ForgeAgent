@@ -32,3 +32,31 @@ class SettingsUpdateResponse(BaseModel):
     """PUT /settings 响应。"""
 
     ok: bool = True
+
+
+class SkillPathsValidateBody(BaseModel):
+    """POST /settings/skills/validate 请求体（可与已保存设置不一致，用于保存前检查）。"""
+
+    paths: list[str] = Field(default_factory=list)
+
+
+class SkillPathCheckItem(BaseModel):
+    """单条 Skill 目录校验结果。"""
+
+    input_path: str
+    resolved_path: str = ""
+    is_directory: bool = False
+    has_skill_md: bool = False
+    skill_md_filename: str | None = None
+    ok: bool = False
+    message: str = ""
+
+
+class SkillPathsValidateResponse(BaseModel):
+    """POST /settings/skills/validate 响应。"""
+
+    items: list[SkillPathCheckItem] = Field(default_factory=list)
+    all_ok: bool = Field(
+        False,
+        description="items 非空且全部 ok；无有效路径时为 False",
+    )

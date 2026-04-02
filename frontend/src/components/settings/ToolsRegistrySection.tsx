@@ -14,14 +14,12 @@ import { ErrorAlert } from '@/components/ui/ErrorAlert'
 const SOURCE_LABEL: Record<ToolSource, string> = {
   builtin: '内置',
   mcp: 'MCP',
-  skill: 'Skill',
 }
 
 const SOURCE_FILTER: Array<{ value: ToolSource | 'all'; label: string }> = [
   { value: 'all', label: '全部' },
   { value: 'builtin', label: '内置' },
   { value: 'mcp', label: 'MCP' },
-  { value: 'skill', label: 'Skill' },
 ]
 
 /** 来源标签样式：中性底纹，强调色仅用于筛选项选中态与主按钮。 */
@@ -92,18 +90,13 @@ export function ToolsRegistrySection() {
   }
 
   const tools = data?.tools ?? []
-  const filtered = useMemo(() => {
-    if (filter === 'all') return tools
-    return tools.filter((t) => t.source === filter)
-  }, [tools, filter])
-
   const sorted = useMemo(() => {
-    return [...filtered].sort((a, b) => {
+    const base = filter === 'all' ? tools : tools.filter((t) => t.source === filter)
+    return [...base].sort((a, b) => {
       const bySource = a.source.localeCompare(b.source)
-      if (bySource !== 0) return bySource
-      return a.name.localeCompare(b.name)
+      return bySource !== 0 ? bySource : a.name.localeCompare(b.name)
     })
-  }, [filtered])
+  }, [tools, filter])
 
   const mcpGroups = useMemo<McpToolGroup[]>(() => {
     const grouped = new Map<string, ToolInfo[]>()
@@ -140,8 +133,8 @@ export function ToolsRegistrySection() {
         <div>
           <h2 className="text-base font-semibold text-neutral-800">工具注册表</h2>
           <p className="mt-1 text-sm text-neutral-500">
-            与规划、执行阶段可用工具一致（只读）。保存 MCP 或 Skills 后会自动刷新；修改服务端环境变量（如
-            TAVILY_API_KEY）后须点「刷新列表」向服务端重建注册表（仅 GET 不会重读环境变量）。
+            与执行阶段可用工具一致（只读）。保存 MCP / Skills 路径后会刷新；改环境变量（如 TAVILY_API_KEY）后请点「刷新列表」。Skills
+            路径仅供规划步导入 SKILL.md，不出现在此列表。
           </p>
         </div>
         <button
@@ -192,7 +185,7 @@ export function ToolsRegistrySection() {
 
       {onlyBuiltin && (filter === 'all' || filter === 'builtin') && (
         <p className="mb-3 text-sm text-neutral-500">
-          当前仅有内置工具，「全部」与「内置」列表相同。需要 MCP / Skill 来源时请在上方配置并保存。
+          当前仅有内置工具，「全部」与「内置」列表相同。需要 MCP 来源时请在上方配置并保存。
         </p>
       )}
 
@@ -211,11 +204,9 @@ export function ToolsRegistrySection() {
 
       {!isLoading && !error && sorted.length === 0 && (
         <p className="rounded-lg border border-dashed border-neutral-200 bg-neutral-50/50 px-4 py-8 text-center text-base text-neutral-600">
-          {filter === 'mcp' &&
-            '暂无 MCP 来源工具（请到页面上方添加 MCP 并保存，再点「刷新列表」）。'}
-          {filter === 'skill' &&
-            '暂无 Skill 来源工具（请到页面上方填写 Skills 路径并保存，再点「刷新列表」）。'}
-          {filter !== 'mcp' && filter !== 'skill' && '当前筛选下暂无工具。'}
+          {filter === 'mcp'
+            ? '暂无 MCP 来源工具（请到页面上方添加 MCP 并保存，再点「刷新列表」）。'
+            : '当前筛选下暂无工具。'}
         </p>
       )}
 

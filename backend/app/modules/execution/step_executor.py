@@ -11,9 +11,17 @@ from typing import Any
 from app.core.config import Settings
 from app.core.database import AsyncSessionLocal
 from app.modules.execution.step_react_loop import run_step_react_loop
+from app.modules.tools.skill_sources import skill_import_context_from_paths
 from app.repositories import event_repository
 from app.schemas.tools import ToolItem
 from app.shared.workspace_snapshot import build_workspace_snapshot
+
+
+def _step_skill_paths(step: dict[str, Any]) -> list[str]:
+    raw = step.get("skill_imports")
+    if not isinstance(raw, list):
+        return []
+    return [str(x) for x in raw if isinstance(x, str) and str(x).strip()]
 
 
 async def execute_plan_step_react(
@@ -30,8 +38,9 @@ async def execute_plan_step_react(
     """单步落库起止事件并跑完 ReAct，返回与 ``actor_tool_trace`` 元素同形的汇总字典。"""
     sid = step.get("id")
     title = step.get("title")
+    skill_ctx = skill_import_context_from_paths(_step_skill_paths(step))
 
-    # 1. 落库 step_start（短事务；ReAct 耗时不一定持有同一会话，以免占满连接池）
+    # 落库 step_start（短事务；ReAct 耗时不一定持有同一会话，以免占满连接池）
     async with AsyncSessionLocal() as db:
         async with db.begin():
             await event_repository.append_event(
@@ -45,7 +54,7 @@ async def execute_plan_step_react(
                 ),
             )
 
-    # 2. 执行 ReAct 循环（工具轮与终答）
+    # 执行 ReAct 循环（工具轮与终答）
     ok_loop, call_results, step_ans = await run_step_react_loop(
         task_id,
         sid,
@@ -56,15 +65,14 @@ async def execute_plan_step_react(
         settings=settings,
         max_tool_tries=max_tool_tries,
         max_rounds=max_react_rounds,
+        skill_import_text=skill_ctx,
     )
 
-    # 3. 汇总各工具调用的尝试次数
     total_attempts = sum(
         len(c.get("attempts") or [])
         for c in call_results
         if isinstance(c, dict)
     )
-    # 4. 选取末次失败调用的错误信息
     last_err: str | None = None
     for c in reversed(call_results):
         if isinstance(c, dict) and not c.get("ok"):
@@ -72,7 +80,7 @@ async def execute_plan_step_react(
             last_err = e if isinstance(e, str) else None
             break
 
-    # 5. 写入 step_end
+    # 写入 step_end
     async with AsyncSessionLocal() as db:
         async with db.begin():
             await event_repository.append_event(
@@ -90,7 +98,7 @@ async def execute_plan_step_react(
                 ),
             )
 
-    # 6. 返回本步轨迹条目
+    # 返回本步轨迹条目
     return {
         "step_id": sid,
         "title": title,

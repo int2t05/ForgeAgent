@@ -56,13 +56,11 @@
 
 ---
 
-### 6. [TODO] Skill 工具执行框架
+### 6. [DONE] Skill 目录与 `SKILL.md` 上下文（无 HTTP）
 
-**现状**: Skills 多从 manifest 解析元数据。
+**现状**: 已移除 Skill HTTP 工具调用。`skill_sources.py` 仅提供 `skill_import_context_from_paths` 与 `resolve_planner_skill_imports`；Planner 在 `skills_paths` 白名单下为每步可选 `skill_imports`；执行步将对应目录的 `SKILL.md` 注入 ReAct **HumanMessage**。`ToolRegistry` 只合并内置 + MCP。
 
-**目标**: 可执行 Skill 协议（入口、权限、超时）。
-
-**涉及文件**: `app/modules/tools/skill_sources.py`
+**涉及文件**: `app/modules/tools/skill_sources.py`、`app/modules/tools/registry.py`、`app/modules/planning/*`、`app/modules/execution/step_executor.py`
 
 ---
 
@@ -142,15 +140,15 @@
 
 ## 六、优先级汇总
 
-| 优先级 | TODO |
-|--------|------|
-| P0 | 9. 任务取消与运行中协同（若仍缺口） |
-| P1 | 4. 工具 Schema / 规划一体 |
-| ~~P1~~ | ~~5. MCP 真实 Transport~~ (DONE) |
-| P1 | 7. Human-in-the-Loop |
-| P2 | 6. Skill 执行框架 |
-| P2 | 11. 自动化测试 |
-| P3 | 10. LangSmith |
-| P3 | 12. 多 Agent |
-| P4 | 13. 密钥加密 |
-| P4 | 14. WebSocket |
+| 优先级 | TODO                                |
+| ------ | ----------------------------------- |
+| P0     | 9. 任务取消与运行中协同（若仍缺口） |
+| P1     | 4. 工具 Schema / 规划一体           |
+| ~~P1~~ | ~~5. MCP 真实 Transport~~ (DONE)    |
+| P1     | 7. Human-in-the-Loop                |
+| ~~P2~~ | ~~6. Skill 执行框架~~ (DONE)        |
+| P2     | 11. 自动化测试                      |
+| P3     | 10. LangSmith                       |
+| P3     | 12. 多 Agent                        |
+| P4     | 13. 密钥加密                        |
+| P4     | 14. WebSocket                       |

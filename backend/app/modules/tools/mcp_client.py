@@ -419,14 +419,14 @@ class McpClientManager:
         # 2. 中间版本：通过 httpx_client_factory 注入默认请求头。
         # 3. 旧版：通过 http_client 注入默认请求头。
         if supports_headers:
-            ctx = streamable_http_client(url, headers=headers)
+            ctx = streamable_http_client(url, headers=headers) # type: ignore
         elif "httpx_client_factory" in sig_params:
             if headers:
 
                 def _factory() -> httpx.AsyncClient:
                     return httpx.AsyncClient(headers=headers)
 
-                ctx = streamable_http_client(url, httpx_client_factory=_factory)
+                ctx = streamable_http_client(url, httpx_client_factory=_factory) # type: ignore
             else:
                 ctx = streamable_http_client(url)
         elif "http_client" in sig_params:

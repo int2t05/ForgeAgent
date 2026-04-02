@@ -10,13 +10,14 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { MessageDialog } from '@/components/ui/MessageDialog'
 import { McpServersEditor } from '@/components/settings/McpServersEditor'
 import { ToolsRegistrySection } from '@/components/settings/ToolsRegistrySection'
+import { validateSkillPaths } from '@/api/settings'
 import { useSettings } from '@/hooks/useSettings'
 import {
   parseMcpListFromApi,
   draftsToMcpPayload,
   type McpServerDraft,
 } from '@/types/mcp'
-import type { Settings } from '@/types/settings'
+import type { Settings, SkillPathsValidateResponse } from '@/types/settings'
 
 /** 设置表单内容（仅在 settings 加载完成后渲染）。 */
 function SettingsForm({
@@ -39,6 +40,31 @@ function SettingsForm({
   const [mcpServers, setMcpServers] = useState<McpServerDraft[]>(() =>
     parseMcpListFromApi(initialMcp),
   )
+  const [skillValidate, setSkillValidate] = useState<SkillPathsValidateResponse | null>(null)
+  const [skillValidateLoading, setSkillValidateLoading] = useState(false)
+  const [skillValidateError, setSkillValidateError] = useState<string | null>(null)
+
+  async function handleValidateSkills() {
+    const paths = skillsPaths
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean)
+    setSkillValidateError(null)
+    if (paths.length === 0) {
+      setSkillValidate({ items: [], all_ok: false })
+      return
+    }
+    setSkillValidateLoading(true)
+    try {
+      const res = await validateSkillPaths(paths)
+      setSkillValidate(res)
+    } catch (e) {
+      setSkillValidate(null)
+      setSkillValidateError(e instanceof Error ? e.message : '校验请求失败')
+    } finally {
+      setSkillValidateLoading(false)
+    }
+  }
 
   /** 保存设置。 */
   function handleSave(e: React.FormEvent) {
@@ -88,11 +114,67 @@ function SettingsForm({
         <h2 className="mb-3 text-base font-semibold text-neutral-800">Skills</h2>
         <textarea
           value={skillsPaths}
-          onChange={(e) => setSkillsPaths(e.target.value)}
+          onChange={(e) => {
+            setSkillsPaths(e.target.value)
+            setSkillValidate(null)
+            setSkillValidateError(null)
+          }}
           rows={3}
           className="fa-input resize-none font-mono"
-          placeholder="每行一个目录，例如 skills/"
+          placeholder="每行一个目录，例如 skills/example_skill"
         />
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className="fa-btn-secondary py-1.5 text-sm"
+            disabled={skillValidateLoading}
+            onClick={() => void handleValidateSkills()}
+          >
+            {skillValidateLoading ? '校验中…' : '校验路径'}
+          </button>
+          {skillValidate && (
+            <span
+              className={
+                skillValidate.items.length === 0
+                  ? 'text-sm text-neutral-500'
+                  : skillValidate.all_ok
+                    ? 'text-sm text-emerald-700'
+                    : 'text-sm text-amber-800'
+              }
+            >
+              {skillValidate.items.length === 0
+                ? '请先填写至少一行路径'
+                : skillValidate.all_ok
+                  ? '上述路径均可用于 Skill 导入'
+                  : '部分路径未就绪，请对照下方说明修正'}
+            </span>
+          )}
+        </div>
+        {skillValidateError && (
+          <p className="fa-text-caption mt-1 text-red-600">{skillValidateError}</p>
+        )}
+        {skillValidate && skillValidate.items.length > 0 && (
+          <ul className="mt-2 space-y-1.5 rounded-md border border-neutral-200 bg-neutral-50/90 p-3 text-xs text-neutral-800">
+            {skillValidate.items.map((it, idx) => (
+              <li
+                key={`${idx}:${it.input_path}:${it.resolved_path}`}
+                className={it.ok ? 'text-emerald-800' : 'text-red-800'}
+              >
+                <span className="select-none">{it.ok ? '✓' : '✗'}</span>{' '}
+                <code className="rounded bg-white/80 px-1">{it.input_path}</code>
+                <span className="text-neutral-700"> — {it.message}</span>
+                {it.resolved_path !== it.input_path && (
+                  <div className="mt-0.5 pl-4 font-mono text-[11px] text-neutral-500">
+                    → {it.resolved_path}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="fa-text-caption mt-1.5 text-neutral-500">
+          目录内需包含 SKILL.md 或 skill.md，规划器才会在 <code className="font-mono">skill_imports</code> 中引用。
+        </p>
       </section>
 
       <p className="fa-text-caption text-neutral-500">密钥请使用环境变量，勿在此填写。</p>

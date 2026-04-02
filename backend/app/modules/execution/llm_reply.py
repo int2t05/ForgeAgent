@@ -16,9 +16,9 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from app.core.config import Settings, get_settings
 from app.core.llm_openai import build_chat_model, is_llm_configured
 from app.core.llm_retry import astream_with_retry
-from app.modules.prompts.assistant_reply import ASSISTANT_EXECUTOR_SUMMARY_SYSTEM
 from app.modules.execution.stream_split import ThinkAnswerStream
-from app.shared.langchain_content import lc_message_text
+from app.modules.prompts.assistant_reply import ASSISTANT_EXECUTOR_SUMMARY_SYSTEM
+from app.shared.langchain_content import message_content_text
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ async def assistant_reply_stream_with_llm(
             [SystemMessage(content=sys_stream), HumanMessage(content=human_stream)],
             s,
         ):
-            text = lc_message_text(chunk)
+            text = message_content_text(chunk)
             if not text:
                 continue
             for phase, delta in splitter.feed(text):

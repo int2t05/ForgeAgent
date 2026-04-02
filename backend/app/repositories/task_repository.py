@@ -28,12 +28,10 @@ async def get_task_by_id(session: AsyncSession, task_id: str) -> Task | None:
 
 async def bump_plan_version(session: AsyncSession, task_id: str) -> int:
     """在同一事务内将任务的 plan_version 加一并返回新版本号。"""
-    # 1. 加载任务行
     row = await get_task_by_id(session, task_id)
     if row is None:
         msg = f"任务不存在: {task_id}"
         raise ValueError(msg)
-    # 2. 递增版本并刷盘，供重规划可观测与详情展示
     row.plan_version = int(row.plan_version) + 1
     session.add(row)
     await session.flush()
@@ -92,8 +90,6 @@ async def delete_tasks_for_branch_from_user_message(
     anchor_time: datetime,
 ) -> None:
     """删除某条用户消息锚点起的对话分支所关联的任务行（事件随 FK 级联删除）。"""
-    # 1. 主条件：任务的 source_user_message_id 不早于锚点消息 id
-    # 2. 兼容：source 为空时以任务 created_at 不早于锚点消息创建时间为准
     stmt = delete(Task).where(
         Task.session_id == session_id,
         or_(

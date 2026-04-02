@@ -21,3 +21,20 @@ export interface SettingsPatch {
   skills_paths?: string[]
   agent_workspace_root?: string | null
 }
+
+/** POST /settings/skills/validate 单条结果。 */
+export interface SkillPathCheckItem {
+  input_path: string
+  resolved_path: string
+  is_directory: boolean
+  has_skill_md: boolean
+  skill_md_filename: string | null
+  ok: boolean
+  message: string
+}
+
+/** POST /settings/skills/validate 响应。 */
+export interface SkillPathsValidateResponse {
+  items: SkillPathCheckItem[]
+  all_ok: boolean
+}

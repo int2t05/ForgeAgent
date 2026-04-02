@@ -27,21 +27,18 @@ logger = logging.getLogger(__name__)
 
 def _args_for_display(tool_name: str, tool_args: dict[str, Any]) -> dict[str, Any] | None:
     """生成落库展示用 args 副本；文件类工具的路径字段在可校验时改为绝对路径。"""
-    # 1. 仅文件工具需要路径展示增强
     if tool_name not in {"read_file", "write_file", "list_directory"}:
         return None
     settings = get_settings()
     root_path = settings.resolved_agent_workspace_path()
     out = dict(tool_args)
     try:
-        # 2. read / write：替换 file_path
         if tool_name in ("read_file", "write_file"):
             fp = tool_args.get("file_path")
             if isinstance(fp, str) and fp.strip():
                 p = get_validated_relative_path(root_path, fp)
                 out["file_path"] = str(p.resolve())
             return out
-        # 3. list_directory：替换 dir_path（缺省或「.」视为根）
         dp = tool_args.get("dir_path")
         if not isinstance(dp, str) or not dp.strip() or dp.strip() == ".":
             out["dir_path"] = str(root_path.resolve())
@@ -50,7 +47,6 @@ def _args_for_display(tool_name: str, tool_args: dict[str, Any]) -> dict[str, An
         out["dir_path"] = str(p.resolve())
         return out
     except FileValidationError:
-        # 4. 校验失败则保持原始入参，避免掩盖模型传入的非法路径
         return dict(tool_args)
 
 
@@ -85,7 +81,6 @@ async def run_single_tool_with_retry(
     react_thought: str | None = None,
 ) -> tuple[bool, dict[str, Any], list[dict[str, Any]]]:
     """带重试与熔断地执行命名工具，返回是否成功、末次执行结果及每次尝试列表。"""
-    # 1. 落库 tool_call（步、参数、重试上限等）
     async with AsyncSessionLocal() as db:
         async with db.begin():
             await event_repository.append_event(
@@ -105,7 +100,6 @@ async def run_single_tool_with_retry(
                 ),
             )
 
-    # 2. 初始化尝试记录、末次结果、熔断器与退避参数
     attempt_rows: list[dict[str, Any]] = []
     final_ok = False
     last_exec: dict[str, Any] = {"ok": False, "data": None, "error": None}
@@ -115,7 +109,7 @@ async def run_single_tool_with_retry(
     max_delay = max(base_delay, float(settings.tool_retry_max_delay_sec))
 
     for attempt in range(1, max_tool_tries + 1):
-        # 3. 熔断前置检查；开路则落库失败并结束循环
+        # 熔断前置检查；开路则落库失败并结束循环
         try:
             breaker.before_call()
         except CircuitOpenError as e:
@@ -150,7 +144,7 @@ async def run_single_tool_with_retry(
                     )
             break
 
-        # 4. 调用注册表执行工具
+        # 调用注册表执行工具
         exec_out = await tool_registry.execute(tool_name, tool_args)
         last_exec = {
             "ok": bool(exec_out.get("ok")),
@@ -158,7 +152,6 @@ async def run_single_tool_with_retry(
             "error": exec_out.get("error"),
         }
         ok = last_exec["ok"]
-        # 5. 追加尝试快照并落库 tool_result
         attempt_rows.append(
             {
                 "attempt": attempt,
@@ -187,13 +180,12 @@ async def run_single_tool_with_retry(
                         ensure_ascii=False,
                 ),
             )
-        # 6. 成功则标记熔断成功并结束重试循环
         if ok:
             breaker.record_success()
             final_ok = True
             break
 
-        # 7. 失败：记录熔断失败；仍有次数则退避等待
+        # 失败：记录熔断失败；仍有次数则退避等待
         breaker.record_failure()
         if attempt < max_tool_tries:
             exp = min(max_delay, base_delay * (2 ** (attempt - 1)))

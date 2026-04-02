@@ -66,13 +66,7 @@ async def execute_builtin(name: str, args: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _ainvoke_builtin(tool: BaseTool, payload: dict[str, Any]) -> Any:
-    """
-    将计划步骤中的 ``args`` 与 LangChain StructuredTool 对齐。
-
-    先按 ``args_schema`` 做 Pydantic 校验并 ``model_dump`` 为字段名（如 echo 的
-    ``message`` → ``text``），再 ``ainvoke``，避免 LC 将原始键原样传入协程导致
-    ``TypeError``。
-    """
+    """将计划步骤中的 args 与 LangChain StructuredTool 对齐（校验后 ainvoke）。"""
     schema_cls = getattr(tool, "args_schema", None)
     if isinstance(schema_cls, type) and issubclass(schema_cls, BaseModel):
         validated = schema_cls.model_validate(payload)  # 校验

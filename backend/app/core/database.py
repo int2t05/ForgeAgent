@@ -1,5 +1,6 @@
 """SQLite 异步连接与会话工厂。"""
 
+import asyncio
 from collections.abc import AsyncGenerator
 
 from sqlalchemy import event, text
@@ -16,6 +17,9 @@ _settings = get_settings()
 engine: AsyncEngine = create_async_engine(
     _settings.database_url,
     echo=False,
+    pool_pre_ping=True,
+    pool_size=1,
+    max_overflow=0,
 )
 
 
@@ -94,6 +98,12 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         try:
             yield session
             await session.commit()
+        except asyncio.CancelledError:
+            try:
+                await session.rollback()
+            except Exception:
+                pass
+            raise
         except Exception:
             await session.rollback()
             raise

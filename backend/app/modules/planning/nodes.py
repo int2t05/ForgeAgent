@@ -13,14 +13,26 @@ from langchain_core.messages import HumanMessage
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
 from app.modules.memory.session_context import SessionLLMContextManager
-from app.modules.planning.llm import plan_steps_with_llm
+from app.modules.planning.llm import plan_steps_with_llm, select_skills_for_planner
+from app.modules.tools.skill_sources import skill_import_context_from_paths
 from app.modules.workflow.state import AgentState
 from app.repositories import event_repository, task_repository
+from app.services.settings_service import get_settings_public
 
 logger = logging.getLogger(__name__)
 
+
 async def planner_node(state: AgentState) -> dict:
-    """产出并写回 ``plan_steps``，同步规划链上事件与重规划计数器。"""
+    """Planner LangGraph节点：加载会话上下文，通过LLM选择相关技能，生成计划步骤。
+    步骤：
+    1.如果请求重新计划，则保留重新计划事件和通气计划版本。
+    2.从数据库加载聊天记录（在同一事务中，以避免额外的连接）。
+    3.询问``select_skills_for_planner``哪些技能目录是相关的，然后注入它们的
+    SKILL.md 内容作为HumanMessage，以便计划者LLM可以引用它。
+    4.添加共享黑板笔记。
+    5.调用``plan_steps_with_llm``生成抽象步骤。
+    6.保持"plan_created"事件并重置"current_step_index"。
+    """
     task_id = state["task_id"]  # type: ignore
     user_message = state.get("user_message") or ""
     session_id = state.get("session_id") or ""
@@ -56,13 +68,36 @@ async def planner_node(state: AgentState) -> dict:
             fallback_user_content=user_message,
             settings=settings,
         )
+        configured_skills = (await get_settings_public(db)).skills_paths
+    # 1b. 先由 LLM 判断哪些 skill 相关，再把对应 SKILL.md 内容注入规划上下文
+    selected_skill_paths: list[str] = []
+    if configured_skills:
+        selected_skill_paths = await select_skills_for_planner(
+            chat_messages,
+            settings,
+            configured_skill_paths=configured_skills,
+        )
+        if selected_skill_paths:
+            ctx = skill_import_context_from_paths(selected_skill_paths).strip()
+            if ctx:
+                chat_messages = [
+                    *chat_messages,
+                    HumanMessage(
+                        content="【Skill 上下文（由 LLM 预选，步骤中可继续用 `skill_imports` 指向同目录）】\n\n"
+                        + ctx
+                    ),
+                ]
     notes = state.get("blackboard_notes") or []
     if notes:
         tail = notes[-10:]
         bb = "【共享黑板·来自 Learner 的要点】\n" + "\n".join(tail)
         chat_messages = [*chat_messages, HumanMessage(content=bb)]
     # 2. 组装黑板条后调用规划 LLM（释放上一条 DB 会话后再跑模型，避免长时间占连接）
-    steps = await plan_steps_with_llm(chat_messages, settings)
+    steps = await plan_steps_with_llm(
+        chat_messages,
+        settings,
+        configured_skill_paths=configured_skills,
+    )
 
     payload = json.dumps({"steps": steps}, ensure_ascii=False)
     # 3. 落库 ``plan_created`` 并复位 ``current_step_index``
