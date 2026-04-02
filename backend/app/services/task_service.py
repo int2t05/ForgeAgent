@@ -35,6 +35,8 @@ from app.schemas.task import (
 
 logger = logging.getLogger(__name__)
 
+_AGENT_BACKGROUND_TASKS: set[asyncio.Task[None]] = set()
+
 _VALID_TASK_STATUS = frozenset({"pending", "running", "success", "failed", "cancelled"})
 
 _GRAPH_DELTA_STR_CAP = 2000
@@ -56,6 +58,58 @@ def _compact_graph_delta(delta: dict) -> dict:
             except (TypeError, ValueError):
                 compact[key] = str(val)[:_GRAPH_DELTA_STR_CAP]
     return compact
+
+
+def _schedule_run_agent_task(task_id: str, session_id: str, content: str) -> None:
+    """Fire-and-forget Agent 运行协程，并登记任务供进程关闭前收敛。
+
+    须在 ``engine.dispose()``、checkpointer 关闭之前 ``await drain_agent_background_tasks()``，
+    否则会话收尾会与连接池释放竞态，触发 aiosqlite ``no active connection`` 及
+    “Task exception was never retrieved”（SQLAlchemy ``AsyncSession.__aexit__`` 内
+    ``create_task(close)+shield`` 与取消/销毁叠加时易出现）。
+    """
+    task = asyncio.create_task(run_agent_task(task_id, session_id, content))
+    _AGENT_BACKGROUND_TASKS.add(task)
+
+    def _on_done(t: asyncio.Task[None]) -> None:
+        _AGENT_BACKGROUND_TASKS.discard(t)
+        if t.cancelled():
+            return
+        exc = t.exception()
+        if exc is not None:
+            logger.error(
+                "run_agent_task failed for task %s",
+                task_id,
+                exc_info=exc,
+            )
+
+    task.add_done_callback(_on_done)
+
+
+async def drain_agent_background_tasks(*, timeout_sec: float = 120.0) -> None:
+    """在释放 DB / checkpointer 之前等待后台 Agent 任务结束（或超时后取消）。"""
+    pending = frozenset(_AGENT_BACKGROUND_TASKS)
+    if not pending:
+        return
+    logger.info(
+        "Waiting for %d background agent task(s) before shutdown (timeout=%ss)...",
+        len(pending),
+        timeout_sec,
+    )
+    _, still_running = await asyncio.wait(
+        pending,
+        timeout=timeout_sec,
+        return_when=asyncio.ALL_COMPLETED,
+    )
+    if still_running:
+        logger.warning(
+            "Shutdown: %d agent task(s) still running after %.1fs; cancelling",
+            len(still_running),
+            timeout_sec,
+        )
+        for t in still_running:
+            t.cancel()
+        await asyncio.gather(*still_running, return_exceptions=True)
 
 
 async def _persist_langgraph_stream_updates(
@@ -187,7 +241,7 @@ async def create_task_start_mock(
             )
             await task_repository.add_task(db, task_row)
     # 5. 与请求 DB 会话脱钩后调度后台图（避免会话冲突）
-    asyncio.create_task(run_agent_task(task_id, session_id, content))
+    _schedule_run_agent_task(task_id, session_id, content)
     return TaskCreateResponse(task_id=task_id, events_stream_path=stream_path)
 
 

@@ -18,6 +18,7 @@ from app.modules.workflow.graph import (
     init_compiled_agent_graph,
     shutdown_compiled_agent_graph,
 )
+from app.services.task_service import drain_agent_background_tasks
 
 
 @asynccontextmanager
@@ -34,7 +35,9 @@ async def lifespan(_app: FastAPI):
     checkpointer = await open_langgraph_checkpointer(settings)
     init_compiled_agent_graph(checkpointer)
     yield
-    # 4. 关闭 checkpoint 连接与图引用，再释放 ORM 池
+    # 4. 先收敛后台 Agent（否则会话 close 与引擎 dispose / 客户端断开取消叠加易触发 aiosqlite「no active connection」）
+    await drain_agent_background_tasks()
+    # 5. 关闭 checkpoint 连接与图引用，再释放 ORM 池
     await close_langgraph_checkpointer(get_checkpoint_guard_ref())
     shutdown_compiled_agent_graph()
     await close_db()

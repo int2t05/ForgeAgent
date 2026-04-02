@@ -46,11 +46,23 @@ class Settings(BaseSettings):
 
     # --- Agent：规划 / 记忆 / 步骤内工具重试 / ReAct 预算 ---
     max_replan_attempts: int = 3
+    #: 规划 LLM 输出 JSON 解析或步骤校验失败时，最多完整调用轮数（每轮一次 ainvoke；含首轮）
+    planner_parse_max_attempts: int = 3
+    #: Learner 反思 JSON 解析失败或 reflection 为空时，最多完整调用轮数（每轮一次 ainvoke；含首轮）
+    learner_parse_max_attempts: int = 3
     session_memory_max_messages: int = 32
+    #: 条数超过 ``session_summarize_when_over`` 时将更早消息摘要为一条，保留最近 ``session_summary_keep_recent`` 条
+    session_conversation_summary_enabled: bool = True
+    session_summarize_when_over: int = 20
+    session_summary_keep_recent: int = 10
+    session_summary_line_max_chars: int = 400
+    session_summary_max_answer_chars: int = 500
     session_blackboard_max_notes: int = 64
     max_tool_failure_attempts: int = 3
     max_react_rounds_per_step: int = 20
     react_max_tokens_per_step: int = 8000
+    #: 单条 Observation（JSON）写入 LLM 前的最大字符数，防止工具大返回占满上下文
+    react_tool_observation_max_json_chars: int = 12000
     tool_default_timeout_sec: float = 30.0
     tool_search_timeout_sec: float = 10.0
     tool_file_timeout_sec: float = 5.0
@@ -82,8 +94,12 @@ class Settings(BaseSettings):
     openai_retry_max_delay_sec: float = 60.0
 
     # --- LLM：上下文预算（裁剪与会话摘要侧）---
-    llm_context_window_tokens: int = 8192
-    llm_reserved_completion_tokens: int = 1024
+    #: 与网关模型总窗口对齐（如 MiniMax-M2.7 约 204_800；较小模型请在 .env 调低）
+    llm_context_window_tokens: int = 204_800
+    #: 单次请求为输出预留的 token，应从窗口中扣除后再算输入侧预算
+    llm_reserved_completion_tokens: int = 8192
+    # --- LLM：无 Chat 实例时用 tiktoken 精确计数（有实例则优先模型自带计数）---
+    llm_use_exact_token_count: bool = True
 
     @field_validator("cors_origins")
     @classmethod
@@ -100,6 +116,21 @@ class Settings(BaseSettings):
     def _min_reserved_completion(cls, v: int) -> int:
         return max(1, int(v))
 
+    @field_validator("react_tool_observation_max_json_chars")
+    @classmethod
+    def _min_react_observation_cap(cls, v: int) -> int:
+        return max(512, int(v))
+
+    @field_validator("planner_parse_max_attempts")
+    @classmethod
+    def _min_planner_parse_attempts(cls, v: int) -> int:
+        return max(1, int(v))
+
+    @field_validator("learner_parse_max_attempts")
+    @classmethod
+    def _min_learner_parse_attempts(cls, v: int) -> int:
+        return max(1, int(v))
+
     @model_validator(mode="after")
     def _ensure_llm_budget(self) -> "Settings":
         """预留输出不得大于等于总窗口，否则收束为窗口的一小部分。"""
@@ -109,9 +140,23 @@ class Settings(BaseSettings):
             object.__setattr__(self, "llm_reserved_completion_tokens", max(128, w // 4))
         return self
 
+    @model_validator(mode="after")
+    def _session_summary_bounds(self) -> "Settings":
+        """摘要保留条数与触发阈值收束为可用组合。"""
+        keep = max(1, int(self.session_summary_keep_recent))
+        object.__setattr__(self, "session_summary_keep_recent", keep)
+        thr = max(keep + 1, int(self.session_summarize_when_over))
+        object.__setattr__(self, "session_summarize_when_over", thr)
+        return self
+
     @property
     def llm_max_input_tokens(self) -> int:
-        """输入侧可用 token 上限（窗口减去预留输出）。"""
+        """应用层「输入截断/装历史」预算：窗口减去预留补全。
+
+        与模型/API 公布的总上下文 ``llm_context_window_tokens`` 区分：后者为单次请求
+        中 prompt 与生成共享的上限；本属性才是裁剪与装填历史时采用的上限（为回复预留
+        ``llm_reserved_completion_tokens``）。若修改 .env 中对应两项，本值随之变为 窗口−预留。
+        """
         w = int(self.llm_context_window_tokens)
         r = int(self.llm_reserved_completion_tokens)
         return max(256, w - r)

@@ -165,7 +165,7 @@
   }
 
   .fa-chat-messages {
-    @apply min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pt-3 pb-8 [-webkit-overflow-scrolling:touch] sm:px-5 sm:pt-4 sm:pb-10;
+    @apply min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pt-2 pb-8 [-webkit-overflow-scrolling:touch] sm:px-5 sm:pt-3 sm:pb-10;
     display: flex;
     flex-direction: column;
     gap: var(--fa-chat-thread-gap);

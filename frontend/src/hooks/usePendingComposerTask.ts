@@ -5,7 +5,7 @@
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { buildTaskEventsStreamUrl, consumeTaskEventStream } from '@/api/sse'
-import { getAllTaskEvents } from '@/api/tasks'
+import { getAllTaskEvents, getTask } from '@/api/tasks'
 import { useComposerTaskStore } from '@/store/composerTaskStore'
 import type { TaskEvent } from '@/types/task'
 
@@ -47,6 +47,14 @@ function maxSeqInMap(bySeq: Map<number, TaskEvent>): number {
   return m
 }
 
+const TERMINAL_TASK_STATUSES = new Set(['success', 'failed', 'cancelled'])
+
+function isTerminalTaskStatus(status: string): boolean {
+  return TERMINAL_TASK_STATUSES.has(status)
+}
+
+const MESSAGE_REFETCH_TIMEOUT_MS = 12_000
+
 export function usePendingComposerTaskSync() {
   const queryClient = useQueryClient()
   const pendingTaskId = useComposerTaskStore((s) => s.pendingTaskId)
@@ -64,6 +72,8 @@ export function usePendingComposerTaskSync() {
     const ac = new AbortController()
     let cancelled = false
     let rafId = 0
+    let abortedForTerminal = false
+    let pollTimer: ReturnType<typeof setInterval> | null = null
 
     async function run() {
       store.setSsePhase('loading')
@@ -104,19 +114,41 @@ export function usePendingComposerTaskSync() {
         useComposerTaskStore.getState().setSsePhase('streaming')
         const startAfter = maxSeqInMap(bySeq)
         const streamUrl = buildTaskEventsStreamUrl(taskId, startAfter)
-        await consumeTaskEventStream(streamUrl, ac.signal, (e) => {
-          if (cancelled) return
-          markLlmStreamIfDelta(e)
-          sortedLive = appendOrResortEvents(bySeq, sortedLive, e)
-          scheduleLive()
-          if (
-            e.kind === 'plan_created' ||
-            e.kind === 'replan' ||
-            e.kind === 'error'
-          ) {
-            void queryClient.invalidateQueries({ queryKey: ['task', taskId] })
+
+        pollTimer = setInterval(() => {
+          void (async () => {
+            try {
+              const t = await getTask(taskId)
+              if (cancelled || abortedForTerminal) return
+              if (!isTerminalTaskStatus(t.status)) return
+              abortedForTerminal = true
+              ac.abort()
+            } catch {
+              /* 单次轮询失败忽略 */
+            }
+          })()
+        }, 400)
+
+        try {
+          await consumeTaskEventStream(streamUrl, ac.signal, (e) => {
+            if (cancelled) return
+            markLlmStreamIfDelta(e)
+            sortedLive = appendOrResortEvents(bySeq, sortedLive, e)
+            scheduleLive()
+            if (
+              e.kind === 'plan_created' ||
+              e.kind === 'replan' ||
+              e.kind === 'error'
+            ) {
+              void queryClient.invalidateQueries({ queryKey: ['task', taskId] })
+            }
+          })
+        } finally {
+          if (pollTimer != null) {
+            clearInterval(pollTimer)
+            pollTimer = null
           }
-        })
+        }
 
         if (cancelled) return
 
@@ -124,9 +156,14 @@ export function usePendingComposerTaskSync() {
 
         await queryClient.invalidateQueries({ queryKey: ['task', taskId] })
         if (sessionId) {
-          await queryClient.refetchQueries({
-            queryKey: ['session', sessionId, 'messages'],
-          })
+          await Promise.race([
+            queryClient.refetchQueries({
+              queryKey: ['session', sessionId, 'messages'],
+            }),
+            new Promise<void>((resolveMessageRefetch) =>
+              setTimeout(resolveMessageRefetch, MESSAGE_REFETCH_TIMEOUT_MS),
+            ),
+          ])
         }
         await queryClient.invalidateQueries({ queryKey: ['tasks'] })
         if (!cancelled) {
@@ -134,7 +171,32 @@ export function usePendingComposerTaskSync() {
           useComposerTaskStore.getState().clearPending()
         }
       } catch (e) {
-        if (cancelled || isAbortError(e)) return
+        if (pollTimer != null) {
+          clearInterval(pollTimer)
+          pollTimer = null
+        }
+        if (cancelled) return
+        if (isAbortError(e) && abortedForTerminal) {
+          flushLive()
+          await queryClient.invalidateQueries({ queryKey: ['task', taskId] })
+          if (sessionId) {
+            await Promise.race([
+              queryClient.refetchQueries({
+                queryKey: ['session', sessionId, 'messages'],
+              }),
+              new Promise<void>((resolveMessageRefetch) =>
+                setTimeout(resolveMessageRefetch, MESSAGE_REFETCH_TIMEOUT_MS),
+              ),
+            ])
+          }
+          await queryClient.invalidateQueries({ queryKey: ['tasks'] })
+          if (!cancelled) {
+            useComposerTaskStore.getState().setSsePhase('idle')
+            useComposerTaskStore.getState().clearPending()
+          }
+          return
+        }
+        if (isAbortError(e)) return
         useComposerTaskStore.getState().setSsePhase('error')
         useComposerTaskStore.getState().setSseError(
           e instanceof Error ? e.message : '接收任务事件失败',
@@ -152,6 +214,10 @@ export function usePendingComposerTaskSync() {
     void run()
     return () => {
       cancelled = true
+      if (pollTimer != null) {
+        clearInterval(pollTimer)
+        pollTimer = null
+      }
       if (rafId) cancelAnimationFrame(rafId)
       ac.abort()
     }

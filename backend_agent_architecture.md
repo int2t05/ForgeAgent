@@ -43,6 +43,10 @@ backend/app/
 |------|------|
 | `session_blackboard.py` | 会话黑板（共享数据） |
 | `session_context.py` | 会话上下文管理 |
+| `conversation_summary.py` | 超长会话 LLM 摘要压缩 |
+| `llm_context_budget.py` | LLM 消息 token 估算与预算截断 |
+| `token_counter.py` | tiktoken 本地计数 |
+| `tool_observation_compact.py` | Observation / 轨迹 JSON 压缩（ReAct 注入 LLM 前） |
 | `checkpointer.py` | 状态检查点 |
 | `learner_node.py` | 学习者节点 |
 
@@ -77,7 +81,6 @@ backend/app/
 |------|------|
 | `llm_openai.py` | OpenAI LLM接口 |
 | `llm_retry.py` | LLM重试机制 |
-| `llm_context_budget.py` | 上下文预算管理 |
 
 ### 9. API路由 (api/v1/)
 | 文件 | 功能 |

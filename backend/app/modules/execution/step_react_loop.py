@@ -19,6 +19,10 @@ from app.modules.execution.tool_runner import run_single_tool_with_retry
 from app.modules.prompts.step_react import build_step_react_system_prompt
 from app.repositories import event_repository
 from app.schemas.tools import ToolItem
+from app.modules.memory.tool_observation_compact import (
+    compact_json_for_prompt,
+    observation_json_for_llm,
+)
 from app.shared.react_llm_output import (
     extract_tool_invocations,
     parse_react_round_json,
@@ -124,15 +128,18 @@ def _synthetic_final_when_tools_ok(call_results: list[dict[str, Any]]) -> str:
     return f"本步已执行工具：{suffix}，均已成功；详细输出见任务时间线中的工具结果。"
 
 
-def _observation_block(tool_name: str, last_exec: dict[str, Any]) -> str:
-    """将单次工具执行结果序列化为 Observation 载荷字符串。"""
-    payload = {
-        "tool": tool_name,
-        "ok": last_exec.get("ok"),
-        "data": last_exec.get("data"),
-        "error": last_exec.get("error"),
-    }
-    return json.dumps(payload, ensure_ascii=False)
+def _observation_block(
+    tool_name: str,
+    last_exec: dict[str, Any],
+    *,
+    max_json_chars: int,
+) -> str:
+    """将单次工具执行结果序列化为 Observation 载荷（长度受控，避免大返回挤尽上下文）。"""
+    return observation_json_for_llm(
+        tool_name,
+        last_exec,
+        max_json_chars=max_json_chars,
+    )
 
 
 async def run_step_react_loop(
@@ -153,13 +160,16 @@ async def run_step_react_loop(
     if not tools or not is_llm_configured(s):
         return False, [], None
 
+    obs_cap = int(s.react_tool_observation_max_json_chars)
+
     # 2. 首轮消息（系统提示 + 用户任务 / 步骤 / 历史轨迹摘要）
     chat = build_chat_model(s)
     sys_text = build_step_react_system_prompt(tools)
+    trace_snippet = compact_json_for_prompt(_tail_prior(prior_tool_trace), obs_cap)
     initial = (
         f"用户任务：{user_message}\n"
         f"当前步骤（仅目标）：{json.dumps(step, ensure_ascii=False)}\n"
-        f"此前步骤轨迹摘要：{json.dumps(_tail_prior(prior_tool_trace), ensure_ascii=False)}\n"
+        f"此前步骤轨迹摘要：{trace_snippet}\n"
         "输出本轮 JSON：thought +（actions 批量或单 action，或 final_answer）。"
     )
     messages: list[BaseMessage] = [
@@ -238,7 +248,8 @@ async def run_step_react_loop(
                 )
                 messages.append(
                     HumanMessage(
-                        content="Observation:\n" + _observation_block(tn, last_exec),
+                        content="Observation:\n"
+                        + _observation_block(tn, last_exec, max_json_chars=obs_cap),
                     )
                 )
             continue

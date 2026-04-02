@@ -9,7 +9,7 @@ import logging
 from collections.abc import Sequence
 from typing import Any
 
-from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
 from app.core.config import Settings, get_settings
 from app.core.llm_openai import build_chat_model, is_llm_configured
@@ -32,6 +32,12 @@ _DEFAULT_STEPS: list[dict[str, Any]] = [
     },
 ]
 
+
+_PLANNER_PARSE_RETRY_USER_HINT = (
+    "上一条助手回复无法解析为符合要求的 JSON（根对象须含 steps 数组，"
+    "每步须含非空 title，且不得包含工具相关键名）。"
+    "请严格只输出一个 JSON 对象，不要 markdown 围栏、不要任何其他说明文字。"
+)
 
 _FORBIDDEN_PLAN_KEYS = frozenset(
     {
@@ -85,22 +91,52 @@ async def plan_steps_with_llm(
 
     chat = build_chat_model(s)
     sys = build_planner_system_prompt()
-    # 2. 调用模型、解析 JSON、规范化；任一步失败则内置计划
-    try:
-        msg = await ainvoke_with_retry(
-            chat, [SystemMessage(content=sys), *list(chat_messages)], s
-        )
+    messages: list[BaseMessage] = [SystemMessage(content=sys), *list(chat_messages)]
+    max_rounds = max(1, int(s.planner_parse_max_attempts))
+    # 2. 调用模型、解析 JSON、规范化；解析或结构失败时可多轮重试（附上上一轮输出与纠偏提示）
+    for attempt in range(max_rounds):
+        try:
+            msg = await ainvoke_with_retry(chat, messages, s)
+        except Exception:
+            logger.exception(
+                "planner LLM call failed (attempt %s/%s)",
+                attempt + 1,
+                max_rounds,
+            )
+            if attempt >= max_rounds - 1:
+                return list(_DEFAULT_STEPS)
+            continue
+
         content = getattr(msg, "content", None)
         text = content if isinstance(content, str) else str(content or "")
         data = parse_llm_json_object(text)
         if data is None:
-            logger.warning("planner LLM output not valid JSON, using default steps")
-            return list(_DEFAULT_STEPS)
+            logger.warning(
+                "planner LLM output not valid JSON (attempt %s/%s)",
+                attempt + 1,
+                max_rounds,
+            )
+            if attempt < max_rounds - 1:
+                messages.append(msg)
+                messages.append(HumanMessage(content=_PLANNER_PARSE_RETRY_USER_HINT))
+            continue
+
         normalized = _normalize_steps(data)
         if not normalized:
-            logger.warning("planner LLM steps invalid, using default steps")
-            return list(_DEFAULT_STEPS)
+            logger.warning(
+                "planner LLM steps invalid (attempt %s/%s)",
+                attempt + 1,
+                max_rounds,
+            )
+            if attempt < max_rounds - 1:
+                messages.append(msg)
+                messages.append(HumanMessage(content=_PLANNER_PARSE_RETRY_USER_HINT))
+            continue
+
         return normalized
-    except Exception:
-        logger.exception("planner LLM call failed, using default steps")
-        return list(_DEFAULT_STEPS)
+
+    logger.warning(
+        "planner exhausted %s parse/validation attempt(s), using default steps",
+        max_rounds,
+    )
+    return list(_DEFAULT_STEPS)

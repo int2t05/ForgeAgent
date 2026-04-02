@@ -6,10 +6,10 @@
 
 | 模块 | 文件 | 说明 |
 |------|------|------|
-| 消息加载 | `session_context.py` | 从 DB 加载最近 32 条消息 |
-| Token 估算 | `llm_context_budget.py` | 启发式 `len//3 + msgs*4`，精度低 |
-| 截断策略 | `llm_context_budget.py` | 先丢历史，再截断首条，方式粗暴 |
-| 黑板记忆 | `session_blackboard.py` | 跨任务持久化，但容量有限 |
+| 消息加载 | `memory/session_context.py` | 从 DB 加载最近 32 条消息 |
+| Token 估算 | `memory/llm_context_budget.py` | tiktoken / 模型计数优先，附启发式回退 |
+| 截断策略 | `memory/llm_context_budget.py` | 保留系统块；非系统从最新往前填充预算 |
+| 黑板记忆 | `memory/session_blackboard.py` | 跨任务持久化，但容量有限 |
 
 ### 1.2 存在的问题
 
@@ -35,7 +35,7 @@ def estimate_messages_tokens(chat, messages) -> int:
 **方案**：接入 Anthropic 精确计数
 
 ```python
-# backend/app/core/token_counter.py
+# backend/app/modules/memory/token_counter.py
 
 from anthropic import Anthropic
 
@@ -66,7 +66,7 @@ tokens = counter.count([{"role": "user", "content": "hello"}])
 **方案**：保留最近 N 条 + 系统提示，始终完整
 
 ```python
-# backend/app/core/llm_context_budget.py
+# backend/app/modules/memory/llm_context_budget.py
 
 def truncate_to_budget(messages: list[BaseMessage], max_tokens: int) -> list[BaseMessage]:
     """智能截断：保留最新消息，截断最旧消息"""
@@ -91,12 +91,14 @@ def truncate_to_budget(messages: list[BaseMessage], max_tokens: int) -> list[Bas
 
 ### 2.3 Tier 2: 对话摘要压缩（3-5 天）
 
-**现状**：超长直接丢弃
+**现状**：超长直接丢弃（截断层仍会裁尾部，摘要可减少先验丢失）
 
-**方案**：引入摘要机制
+**已实现**：`backend/app/modules/memory/conversation_summary.py` 的 ``maybe_compress_chat_history``，在 ``SessionLLMContextManager.load_chat_messages`` 中于入库窗口加载后调用。
+
+**方案（参考）**：引入摘要机制
 
 ```python
-# backend/app/agent/nodes/summarization_node.py
+# 参考形态（实际见 conversation_summary.py）
 
 async def summarize_old_messages(messages: list[BaseMessage], max_keep: int = 10) -> tuple[list[BaseMessage], str]:
     """将旧消息压缩为摘要"""

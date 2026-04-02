@@ -34,7 +34,7 @@ const LlmStreamFold = memo(function LlmStreamFold({
   body?: string
   children?: ReactNode
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(() => title === 'Thought')
   const preRef = useRef<HTMLPreElement>(null)
   const hasBody = Boolean(body?.trim())
 
@@ -173,7 +173,7 @@ export const ComposerLlmStreamPanel = memo(function ComposerLlmStreamPanel({
       {rounds.map((r) => (
         <Fragment key={r.id}>
           {r.thought.trim() ? <LlmStreamFold title="Thought" body={r.thought} /> : null}
-          {r.action ? (
+          {r.action && r.action.subtitle?.trim() !== '终答' ? (
             <LlmStreamFold
               title={`Action · ${r.action.subtitle?.trim() ? r.action.subtitle : '…'}`}
               body={

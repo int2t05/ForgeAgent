@@ -1,5 +1,6 @@
 """跨层复用的小件：纯函数、ORM 类型装饰器等（无业务规则、无请求/DB 生命周期）。"""
 
+from app.shared.langchain_content import message_content_text
 from app.shared.llm_json_parse import (
     collect_json_candidates,
     parse_llm_json_object,
@@ -16,6 +17,7 @@ from app.shared.react_llm_output import (
 from app.shared.utc_datetime import UtcDateTime
 
 __all__ = [
+    "message_content_text",
     "UtcDateTime",
     "collect_json_candidates",
     "parse_llm_json_object",

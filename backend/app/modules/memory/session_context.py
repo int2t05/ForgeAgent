@@ -7,7 +7,9 @@ from collections.abc import Sequence
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import Settings, get_settings
 from app.models.message import Message
+from app.modules.memory.conversation_summary import maybe_compress_chat_history
 from app.repositories import message_repository
 
 # 与 LangChain / OpenAI 习惯角色对齐（MessageCreate 允许任意 role，未知则降级为 HumanMessage）
@@ -52,11 +54,14 @@ class SessionLLMContextManager:
         *,
         session_id: str,
         fallback_user_content: str,
+        settings: Settings | None = None,
     ) -> list[BaseMessage]:
-        """加载会话最近 ``max_messages`` 条（按 id 时间序），无记录时用单条用户消息兜底。"""
+        """加载会话最近 ``max_messages`` 条（按 id 时间序），无记录时用单条用户消息兜底；超长时可选摘要压缩。"""
+        s = settings or get_settings()
         rows = await message_repository.list_recent_messages(
             db, session_id, limit=self._max_messages
         )
         if not rows:
             return [HumanMessage(content=fallback_user_content)]
-        return session_messages_to_chat_messages(rows)
+        msgs = session_messages_to_chat_messages(rows)
+        return await maybe_compress_chat_history(msgs, s)

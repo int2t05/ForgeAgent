@@ -9,7 +9,7 @@ import json
 import logging
 from typing import Any
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
@@ -25,6 +25,12 @@ from app.repositories import event_repository
 from app.shared.llm_json_parse import parse_llm_json_object
 
 logger = logging.getLogger(__name__)
+
+_LEARNER_PARSE_RETRY_USER_HINT = (
+    "上一条助手回复无法解析为符合要求的 JSON（根对象须含非空字符串 reflection、"
+    "布尔 request_replan、字符串 rationale）。"
+    "请严格只输出一个 JSON 对象，不要 markdown 围栏、不要任何其他说明文字。"
+)
 
 
 def _synthesize_lesson_lines(state: AgentState) -> list[str]:
@@ -126,37 +132,56 @@ async def learner_node(state: AgentState) -> dict[str, Any]:
     reflection_text = ""
     llm_request_replan = False
 
-    # 2. LLM 可用且本回合非失败：请求结构化反思 JSON
+    # 2. LLM 可用且本回合非失败：请求结构化反思 JSON（解析失败时可多轮纠偏重试）
     if is_llm_configured(settings) and not failed:
         chat = build_chat_model(settings)
         user_block = build_learner_reflection_user_payload(state)
-        try:
-            msg = await ainvoke_with_retry(
-                chat,
-                [
-                    SystemMessage(content=LEARNER_REFLECTION_SYSTEM),
-                    HumanMessage(
-                        content="【本回合执行材料】\n" + user_block,
-                    ),
-                ],
-                settings,
-            )
+        messages: list[BaseMessage] = [
+            SystemMessage(content=LEARNER_REFLECTION_SYSTEM),
+            HumanMessage(content="【本回合执行材料】\n" + user_block),
+        ]
+        max_rounds = max(1, int(settings.learner_parse_max_attempts))
+        for attempt in range(max_rounds):
+            try:
+                msg = await ainvoke_with_retry(chat, messages, settings)
+            except Exception:
+                logger.exception(
+                    "learner reflection LLM failed for task %s (attempt %s/%s)",
+                    task_id,
+                    attempt + 1,
+                    max_rounds,
+                )
+                if attempt >= max_rounds - 1:
+                    break
+                continue
+
             raw = getattr(msg, "content", None)
             text = raw if isinstance(raw, str) else str(raw or "")
             data = parse_llm_json_object(text)
+            parsed_ok = False
             if data:
                 r = data.get("reflection")
                 if isinstance(r, str) and r.strip():
                     reflection_text = r.strip()
-                raw_rp = data.get("request_replan")
-                if isinstance(raw_rp, bool):
-                    llm_request_replan = raw_rp
-                elif raw_rp in (1, "1", "true", "True", "yes"):
-                    llm_request_replan = True
-            else:
-                logger.warning("learner reflection output not valid JSON for task %s", task_id)
-        except Exception:
-            logger.exception("learner reflection LLM failed for task %s", task_id)
+                    raw_rp = data.get("request_replan")
+                    if isinstance(raw_rp, bool):
+                        llm_request_replan = raw_rp
+                    elif raw_rp in (1, "1", "true", "True", "yes"):
+                        llm_request_replan = True
+                    parsed_ok = True
+            if parsed_ok:
+                break
+
+            logger.warning(
+                "learner reflection output not valid JSON or unusable reflection for task %s "
+                "(attempt %s/%s)",
+                task_id,
+                attempt + 1,
+                max_rounds,
+            )
+            if attempt < max_rounds - 1:
+                messages.append(msg)
+                messages.append(HumanMessage(content=_LEARNER_PARSE_RETRY_USER_HINT))
 
     # 3. 若无模型正文则用轨迹摘要拼接；失败或超限则清零模型再规划请求
     if not reflection_text and fallback_lines:

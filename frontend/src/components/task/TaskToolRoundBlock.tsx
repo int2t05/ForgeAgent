@@ -643,7 +643,6 @@ export function TaskToolRoundBlock({ events }: TaskToolRoundBlockProps) {
                 />
               ) : (
                 <li key={`final-${t.seq}`} className="space-y-2">
-                  <span className="text-xs text-neutral-500">轮次 {t.round} · 终答</span>
                   <div className="fa-chat-block-thinking !p-0">
                     <details className="fa-thinking-fold" open>
                       <summary className="fa-thinking-summary">
@@ -659,18 +658,8 @@ export function TaskToolRoundBlock({ events }: TaskToolRoundBlockProps) {
                       )}
                     </details>
                   </div>
-                  <div className="fa-chat-block-thinking !p-0">
-                    <details className="fa-thinking-fold" open>
-                      <summary className="fa-thinking-summary">
-                        <span className="fa-chat-fold-link">Action · final_answer</span>
-                        <span className="fa-chat-fold-chevron" aria-hidden>
-                          ›
-                        </span>
-                      </summary>
-                      <pre className="fa-chat-thinking-pre mt-1 max-h-[min(20rem,45vh)] overflow-auto">
-                        {t.finalAnswer}
-                      </pre>
-                    </details>
+                  <div className="max-h-[min(20rem,45vh)] overflow-auto rounded-lg bg-neutral-50/80 px-3 py-2 text-neutral-800 text-sm leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]">
+                    {t.finalAnswer}
                   </div>
                 </li>
               ),

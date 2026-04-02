@@ -23,6 +23,7 @@ import {
   useQueries,
   useQuery,
   useQueryClient,
+  type Query,
   type QueryClient,
 } from '@tanstack/react-query'
 import { Link } from 'react-router'
@@ -41,6 +42,7 @@ import {
 } from '@/utils/normalizeTaskPlan'
 import { splitThinkingFromMessage } from '@/utils/parseMessageThinking'
 import { ChatWorkspaceSidebar } from '@/components/chat/ChatWorkspaceSidebar'
+import { ComposerContextRing } from '@/components/chat/ComposerContextRing'
 import { ComposerLlmStreamPanel } from '@/components/chat/ComposerLlmStreamPanel'
 import { TaskPlanSteps } from '@/components/task/TaskPlanSteps'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
@@ -65,9 +67,15 @@ import {
   getTasks,
   patchTask,
 } from '@/api/tasks'
+import { LLM_CONTEXT_WINDOW_TOKENS } from '@/config/env'
 import type { PlanStep, PlanTodoProgress } from '@/utils/normalizeTaskPlan'
+import {
+  estimateMessagesContextTokens,
+  estimateTokensFromText,
+} from '@/utils/estimateContextTokens'
+import { TERMINAL_STATUSES } from '@/constants/task'
 import type { Message } from '@/types/session'
-import type { TaskEvent } from '@/types/task'
+import type { TaskDetail, TaskEvent } from '@/types/task'
 
 const ChatMarkdown = lazy(() =>
   import('@/components/chat/ChatMarkdown').then((m) => ({
@@ -259,13 +267,13 @@ function isNearScrollBottom(el: HTMLElement, thresholdPx = 96): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight <= thresholdPx
 }
 
-/** 已落库助手消息的思考段：小号辅文 + 链接式折叠 */
+/** 已落库助手消息的思考段：小号辅文 + 链接式折叠（默认展开） */
 const AssistantThinkingPanel = memo(function AssistantThinkingPanel({
   thinking,
 }: {
   thinking: string
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(true)
 
   return (
     <div className="fa-chat-block-thinking">
@@ -286,62 +294,75 @@ const AssistantThinkingPanel = memo(function AssistantThinkingPanel({
   )
 })
 
-/** 折叠标题左侧：列表+圆点，与 To-do 语义一致 */
-function PlanTodoSummaryGlyph({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
-    >
-      <path
-        d="M5 7.25h10M5 12h14M5 16.75h10"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-      <circle cx="17.25" cy="7.25" r="1.35" fill="currentColor" />
-      <circle cx="17.25" cy="16.75" r="1.35" fill="currentColor" />
-    </svg>
-  )
-}
-
-const PlanStepsDialogBubble = memo(function PlanStepsDialogBubble({
+/** 聊天气泡区顶条：与 ``fa-chat-messages`` 同水平内边距（左缘与消息对齐），可折叠，状态写入 localStorage */
+const ChatHeaderPlanTodos = memo(function ChatHeaderPlanTodos({
   steps,
   todoProgress,
 }: {
   steps: PlanStep[]
   todoProgress: PlanTodoProgress
 }) {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(() => {
+    if (typeof window === 'undefined') return true
+    return window.localStorage.getItem('fa-chat-plan-todos-open') !== '0'
+  })
+
+  useEffect(() => {
+    window.localStorage.setItem('fa-chat-plan-todos-open', open ? '1' : '0')
+  }, [open])
+
+  const { done, total } = useMemo(() => {
+    const t = steps.length
+    const d = steps.filter((s) => todoProgress.statusByStepId[s.id] === 'done').length
+    return { done: d, total: t }
+  }, [steps, todoProgress])
 
   return (
-    <div className="fa-chat-thread">
-      <div className="fa-chat-block-plan">
-        <details
-          className="fa-thinking-fold"
-          open={open}
-          onToggle={(e) => setOpen(e.currentTarget.open)}
+    <div
+      className="shrink-0 border-neutral-200/70 border-b bg-white/95 px-3 pb-1 pt-1 sm:px-5"
+      aria-label="当前任务步骤"
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full min-w-0 items-center gap-2 rounded-md py-0.5 text-left text-neutral-700 transition hover:bg-neutral-100/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500/35"
+        aria-expanded={open}
+      >
+        <span className="font-medium text-[0.6875rem] text-neutral-500 uppercase tracking-wide">
+          To-dos
+        </span>
+        <span className="font-medium text-neutral-400 text-xs tabular-nums">
+          {done}/{total}
+        </span>
+        <span
+          className={`ml-auto shrink-0 text-neutral-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          aria-hidden
         >
-          <summary className="fa-plan-summary">
-            <PlanTodoSummaryGlyph className="size-[1.05rem] shrink-0 text-neutral-400" />
-            <span className="fa-chat-fold-link">To-dos</span>
-            <span className="tabular-nums text-neutral-400">{steps.length}</span>
-            <span className="fa-chat-fold-chevron" aria-hidden>
-              ›
-            </span>
-          </summary>
-          <div className="fa-plan-body">
-            <TaskPlanSteps
-              steps={steps}
-              todoProgress={todoProgress}
-              className="border-0 bg-transparent px-0 py-0 shadow-none"
+          <svg
+            className="size-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M6 9l6 6 6-6"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
-          </div>
-        </details>
-      </div>
+          </svg>
+        </span>
+      </button>
+      {open ? (
+        <div className="mt-0.5 max-h-[min(38vh,10rem)] overflow-y-auto overscroll-contain border-neutral-200/80 border-l pl-2.5">
+          <TaskPlanSteps
+            steps={steps}
+            todoProgress={todoProgress}
+            className="border-0 bg-transparent px-0 py-0 shadow-none [font-size:0.8125rem] [--fa-chat-fs:0.8125rem] [--fa-chat-lh:1.45]"
+          />
+        </div>
+      ) : null}
     </div>
   )
 })
@@ -456,6 +477,11 @@ export function ChatPage() {
       queryFn: () => getTask(t.id),
       enabled: Boolean(sessionId) && tasksChrono.length > 0,
       staleTime: 60_000,
+      refetchInterval: (query: Query<TaskDetail, Error, TaskDetail, readonly ['task', string]>) => {
+        const row = query.state.data
+        if (!row || TERMINAL_STATUSES.has(row.status)) return false
+        return 1000
+      },
     })),
   })
 
@@ -714,6 +740,23 @@ export function ChatPage() {
     startTaskMutation.isPending ||
     stopTaskMutation.isPending ||
     (!isStreamingTask && !draft.trim())
+
+  /** 底栏上下文环：落库消息 + 草稿 +（生成中）流式块 +（完成后）归档 Thought/Action 粗估 */
+  const composerContextUsedTokens = useMemo(() => {
+    let n = estimateMessagesContextTokens(messages)
+    n += estimateTokensFromText(draft)
+    if (busy) {
+      n += estimateTokensFromText(streamedLlm.answer)
+      n += Math.ceil(composerRoundsPayloadLength(streamedLlm.rounds) / 3)
+    } else if (
+      composerArchiveRounds != null &&
+      composerRoundsHaveContent(composerArchiveRounds)
+    ) {
+      n += Math.ceil(composerRoundsPayloadLength(composerArchiveRounds) / 3)
+    }
+    return n
+  }, [messages, draft, busy, streamedLlm.answer, streamedLlm.rounds, composerArchiveRounds])
+
   /**
    * 规划展示：SSE 实时 > 内存 sticky > 后端持久化（避免刷新后丢失）。
    * 新一轮 composer 进行中且尚无 SSE 规划时不用 persisted，以免闪现上一轮步骤。
@@ -811,6 +854,32 @@ export function ChatPage() {
     [pendingTaskId, liveTaskEvents, plansByTaskId, taskEventsByIdForChat],
   )
 
+  /** 与原先消息内 To-do 气泡一致：优先 detached（流式尾部），否则对齐最后一条用户消息对应任务 */
+  const headerPlanContext = useMemo((): {
+    steps: PlanStep[]
+    taskId: string
+  } | null => {
+    if (!sessionId) return null
+    if (
+      detachedComposerPlan?.sessionId === sessionId &&
+      detachedComposerPlan.steps.length > 0
+    ) {
+      return {
+        steps: detachedComposerPlan.steps,
+        taskId: detachedComposerPlan.taskId,
+      }
+    }
+    if (lastUserMessageIndex < 0) return null
+    return planContextAfterUserMessageAt(lastUserMessageIndex)
+  }, [
+    sessionId,
+    detachedComposerPlan?.sessionId,
+    detachedComposerPlan?.taskId,
+    detachedComposerPlan?.steps,
+    lastUserMessageIndex,
+    planContextAfterUserMessageAt,
+  ])
+
   useLayoutEffect(() => {
     if (sessionId !== prevSessionIdForScrollRef.current) {
       prevSessionIdForScrollRef.current = sessionId
@@ -850,53 +919,57 @@ export function ChatPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col py-3 sm:py-4 px-2 sm:px-3">
-        <div className="mb-2 flex shrink-0 items-center gap-1.5 border-neutral-200/80 border-b bg-white/90 px-2 py-2.5 sm:px-3">
-            <button
-              type="button"
-              onClick={toggleMainNav}
-              className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-neutral-900 transition hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500/35"
-              aria-label={mainNavOpen ? '隐藏导航栏' : '显示导航栏'}
-              aria-expanded={mainNavOpen}
-            >
-              <ChatHeaderNavToggleIcon className="size-[1.375rem]" />
-            </button>
-            <button
-              type="button"
-              onClick={() => createSessionHeaderMutation.mutate()}
-              disabled={createSessionHeaderMutation.isPending}
-              className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-neutral-900 transition hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500/35 disabled:cursor-not-allowed disabled:opacity-45"
-              aria-label="新会话"
-            >
-              <ChatHeaderNewSessionIcon className="size-[1.375rem]" />
-            </button>
-            {sessionId ? (
-              <button
-                type="button"
-                onClick={() => setWorkspaceSidebarOpen((v) => !v)}
-                aria-pressed={workspaceSidebarOpen}
-                aria-label={workspaceSidebarOpen ? '隐藏工作区侧栏' : '显示工作区侧栏'}
-                className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-neutral-900 transition hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500/35"
-              >
-                <ChatHeaderWorkspaceIcon className="size-[1.375rem]" />
-              </button>
-            ) : null}
-            <div className="min-w-0 flex-1 text-center">
-              {sessionId ? (
-                <>
-                  <p className="truncate font-medium text-base text-neutral-900">
-                    {sessionDetailQuery.data?.title?.trim() || '新对话'}
-                  </p>
-                  <p className="fa-text-caption text-neutral-500">内容由 AI 生成，请核对重要信息</p>
-                </>
-              ) : (
-                <>
-                  <p className="truncate font-medium text-base text-neutral-800">对话</p>
-                  <p className="fa-text-caption text-neutral-500">
-                    在左侧边栏「历史对话」中选会话，或点击「新会话」。
-                  </p>
-                </>
-              )}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col px-2 pt-1 pb-2 sm:px-3 sm:pt-1.5 sm:pb-2.5">
+        <div className="mb-1 shrink-0 border-neutral-200/80 border-b bg-white/90 px-2 py-1.5 sm:px-3 sm:py-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="flex shrink-0 items-center gap-1.5 self-center">
+                <button
+                  type="button"
+                  onClick={toggleMainNav}
+                  className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-neutral-900 transition hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500/35"
+                  aria-label={mainNavOpen ? '隐藏导航栏' : '显示导航栏'}
+                  aria-expanded={mainNavOpen}
+                >
+                  <ChatHeaderNavToggleIcon className="size-[1.375rem]" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => createSessionHeaderMutation.mutate()}
+                  disabled={createSessionHeaderMutation.isPending}
+                  className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-neutral-900 transition hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500/35 disabled:cursor-not-allowed disabled:opacity-45"
+                  aria-label="新会话"
+                >
+                  <ChatHeaderNewSessionIcon className="size-[1.375rem]" />
+                </button>
+                {sessionId ? (
+                  <button
+                    type="button"
+                    onClick={() => setWorkspaceSidebarOpen((v) => !v)}
+                    aria-pressed={workspaceSidebarOpen}
+                    aria-label={workspaceSidebarOpen ? '隐藏工作区侧栏' : '显示工作区侧栏'}
+                    className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-neutral-900 transition hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500/35"
+                  >
+                    <ChatHeaderWorkspaceIcon className="size-[1.375rem]" />
+                  </button>
+                ) : null}
+              </div>
+              <div className="min-w-0 flex-1 self-center text-center">
+                {sessionId ? (
+                  <>
+                    <p className="truncate font-medium text-base text-neutral-900">
+                      {sessionDetailQuery.data?.title?.trim() || '新对话'}
+                    </p>
+                    <p className="fa-text-caption text-neutral-500">内容由 AI 生成，请核对重要信息</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="truncate font-medium text-base text-neutral-800">对话</p>
+                    <p className="fa-text-caption text-neutral-500">
+                      在左侧边栏「历史对话」中选会话，或点击「新会话」。
+                    </p>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
@@ -929,7 +1002,7 @@ export function ChatPage() {
           )}
 
           {sessionId && (
-            <div className="min-h-0 flex-1 flex flex-col gap-2">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-1">
               {(startTaskMutation.error ||
                 stopTaskMutation.error ||
                 sessionLoadError ||
@@ -979,7 +1052,16 @@ export function ChatPage() {
 
               <div className="fa-chat-canvas flex min-h-0 flex-1 min-w-0 flex-col md:flex-row">
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-                <div ref={messagesScrollRef} className="fa-chat-messages">
+                  {headerPlanContext ? (
+                    <ChatHeaderPlanTodos
+                      steps={headerPlanContext.steps}
+                      todoProgress={resolvePlanTodoProgress(
+                        headerPlanContext.taskId,
+                        headerPlanContext.steps,
+                      )}
+                    />
+                  ) : null}
+                  <div ref={messagesScrollRef} className="fa-chat-messages">
                   {messagesQuery.isLoading && <LoadingSpinner />}
                   {messages.length === 0 && !messagesQuery.isLoading && (
                     <div className="flex flex-1 flex-col items-center justify-center px-4 pb-10 pt-6">
@@ -1009,7 +1091,6 @@ export function ChatPage() {
                     </div>
                   )}
                   {messages.map((m, i) => {
-                    const planCtx = planContextAfterUserMessageAt(i)
                     const archiveBeforeThisAssistant =
                       insertArchiveBeforeLastAssistant &&
                       i === messages.length - 1 &&
@@ -1051,30 +1132,9 @@ export function ChatPage() {
                             startTaskMutation.isPending || stopTaskMutation.isPending
                           }
                         />
-                        {m.role === 'user' && planCtx ? (
-                          <PlanStepsDialogBubble
-                            steps={planCtx.steps}
-                            todoProgress={resolvePlanTodoProgress(
-                              planCtx.taskId,
-                              planCtx.steps,
-                            )}
-                          />
-                        ) : null}
                       </Fragment>
                     )
                   })}
-                  {detachedComposerPlan?.sessionId === sessionId &&
-                  detachedComposerPlan.steps.length > 0 ? (
-                    <div className="fa-chat-thread">
-                      <PlanStepsDialogBubble
-                        steps={detachedComposerPlan.steps}
-                        todoProgress={resolvePlanTodoProgress(
-                          detachedComposerPlan.taskId,
-                          detachedComposerPlan.steps,
-                        )}
-                      />
-                    </div>
-                  ) : null}
                   {busy ? (
                     <ComposerLlmStreamPanel
                       variant="streaming"
@@ -1096,6 +1156,11 @@ export function ChatPage() {
 
                 <form onSubmit={handleSubmit} className="fa-chat-composer">
                   <div className="fa-chat-composer-inner">
+                    <ComposerContextRing
+                      usedTokens={composerContextUsedTokens}
+                      windowTokens={LLM_CONTEXT_WINDOW_TOKENS}
+                      className="translate-y-[0.5px]"
+                    />
                     <textarea
                       value={draft}
                       onChange={(e) => setDraft(e.target.value)}

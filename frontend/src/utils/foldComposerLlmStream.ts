@@ -578,15 +578,12 @@ function buildComposerRoundSegmentsSorted(
           const p = e.payload as Record<string, unknown> | undefined
           const localTh =
             p && typeof p.thought === 'string' ? p.thought.trim() : ''
-          const fa =
-            p && typeof p.final_answer === 'string' ? p.final_answer.trim() : ''
+          if (!localTh) continue
           segments.push({
             id: `rt-${e.seq}`,
             roundIndex: segments.length + 1,
             thought: localTh,
-            action: fa
-              ? { id: `rt-a-${e.seq}`, subtitle: '终答', body: fa }
-              : null,
+            action: null,
           })
         }
       }
@@ -631,8 +628,8 @@ function buildComposerRoundSegmentsSorted(
     if (reactOrdered.length > 0) {
       for (let j = 0; j < reactOrdered.length; j++) {
         const e = reactOrdered[j]!
-        roundCounter += 1
         if (e.kind === 'tool_call') {
+          roundCounter += 1
           const p = e.payload as Record<string, unknown> | undefined
           const localTh =
             p && typeof p.thought === 'string' ? p.thought.trim() : ''
@@ -653,15 +650,13 @@ function buildComposerRoundSegmentsSorted(
           const p = e.payload as Record<string, unknown> | undefined
           const localTh =
             p && typeof p.thought === 'string' ? p.thought.trim() : ''
-          const fa =
-            p && typeof p.final_answer === 'string' ? p.final_answer.trim() : ''
+          if (!localTh) continue
+          roundCounter += 1
           out.push({
             id: `rt-${e.seq}`,
             roundIndex: roundCounter,
             thought: localTh,
-            action: fa
-              ? { id: `rt-a-${e.seq}`, subtitle: '终答', body: fa }
-              : null,
+            action: null,
           })
         }
       }

@@ -54,6 +54,7 @@ async def planner_node(state: AgentState) -> dict:
             db,
             session_id=session_id,
             fallback_user_content=user_message,
+            settings=settings,
         )
     notes = state.get("blackboard_notes") or []
     if notes:
