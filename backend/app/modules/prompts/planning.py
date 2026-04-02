@@ -48,13 +48,6 @@ Only select a skill if its SKILL.md contains concrete guidance (e.g. design rule
 """
 
 
-_SKILL_SELECTOR_PARSE_RETRY_USER_HINT = (
-    "Your last reply could not be parsed as the required JSON "
-    "(root object must contain a non-empty `skill_imports` array; values must be strings "
-    "from the catalog). Reply with **only** one raw JSON object—no markdown fences, no other text."
-)
-
-
 # ---------------------------------------------------------------------------------------------------------------------
 # Planner
 # ---------------------------------------------------------------------------------------------------------------------

@@ -28,4 +28,4 @@ class Message(Base):
         nullable=False,
     )
     # 防止循环依赖
-    session: Mapped["Session"] = relationship("Session", back_populates="messages")  # type: ignore
+    session: Mapped["Session"] = relationship("Session", back_populates="messages")  # type: ignore # noqa: F821

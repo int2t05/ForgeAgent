@@ -1,6 +1,8 @@
 """ReAct 轮次 JSON：须含 action 或 final_answer，避免误取文档示例。"""
 
 from app.shared.react_llm_output import (
+    _FINAL_ANSWER_TRUE,
+    coerce_final_answer_value,
     extract_tool_invocations,
     parse_react_round_json,
     pick_final_answer,
@@ -77,3 +79,47 @@ def test_actions_batch_order():
         ("read_file", {"file_path": "a"}),
         ("list_directory", {"dir_path": "b"}),
     ]
+
+
+# 新增：测试 final_answer boolean 语义
+
+
+def test_final_answer_boolean_true_returns_sentinel():
+    """final_answer: true (boolean) 应返回哨兵值表示子目标满足。"""
+    raw = '{"thought":"t","final_answer":true}'
+    d = parse_react_round_json(raw)
+    assert d is not None
+    fa = pick_final_answer(d)
+    assert fa == _FINAL_ANSWER_TRUE
+
+
+def test_coerce_final_answer_true_string_converts_to_sentinel():
+    """字符串 "true" 应被转换为哨兵值（兼容模型输出）。"""
+    assert coerce_final_answer_value("true") == _FINAL_ANSWER_TRUE
+    assert coerce_final_answer_value("True") == _FINAL_ANSWER_TRUE
+    assert coerce_final_answer_value("TRUE") == _FINAL_ANSWER_TRUE
+
+
+def test_coerce_final_answer_boolean_true_returns_sentinel():
+    """布尔值 true 应返回哨兵值。"""
+    assert coerce_final_answer_value(True) == _FINAL_ANSWER_TRUE
+
+
+def test_final_answer_false_or_none_returns_none():
+    """false 或 None 不应返回有效终答；布尔 False 转为字符串 'False' 视为有效内容。"""
+    assert coerce_final_answer_value(None) is None
+    assert coerce_final_answer_value("") is None
+    # 布尔 False 通过 int/float 分支转为字符串 "False"，视为有效内容
+    assert coerce_final_answer_value(False) == "False"
+    # 字符串 "false" 仍视为有效内容
+    assert coerce_final_answer_value("false") == "false"
+
+
+def test_final_answer_legacy_string_still_works():
+    """旧格式的字符串 final_answer 仍可正常解析（向后兼容）。"""
+    raw = '{"thought":"t","final_answer":"已完成"}'
+    d = parse_react_round_json(raw)
+    assert d is not None
+    fa = pick_final_answer(d)
+    assert fa == "已完成"
+

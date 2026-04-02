@@ -23,13 +23,13 @@ class Session(Base):
         nullable=False,
     )
 
-    messages: Mapped[list["Message"]] = relationship(  # type: ignore
+    messages: Mapped[list["Message"]] = relationship(  # type: ignore # noqa: F821
         "Message",
         back_populates="session",
         cascade="all, delete-orphan",
     )
     # passive_deletes：删除会话时依赖 DB 的 ON DELETE CASCADE，避免 ORM 先把 task.session_id 置 NULL 触发 NOT NULL 错误
-    tasks: Mapped[list["Task"]] = relationship(  # type: ignore
+    tasks: Mapped[list["Task"]] = relationship(  # type: ignore # noqa: F821
         "Task",
         back_populates="session",
         passive_deletes=True,

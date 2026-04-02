@@ -23,16 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 async def planner_node(state: AgentState) -> dict:
-    """Planner LangGraph节点：加载会话上下文，通过LLM选择相关技能，生成计划步骤。
-    步骤：
-    1.如果请求重新计划，则保留重新计划事件和通气计划版本。
-    2.从数据库加载聊天记录（在同一事务中，以避免额外的连接）。
-    3.询问``select_skills_for_planner``哪些技能目录是相关的，然后注入它们的
-    SKILL.md 内容作为HumanMessage，以便计划者LLM可以引用它。
-    4.添加共享黑板笔记。
-    5.调用``plan_steps_with_llm``生成抽象步骤。
-    6.保持"plan_created"事件并重置"current_step_index"。
-    """
+    """Planner LangGraph节点：加载会话上下文，通过LLM选择相关技能，生成计划步骤并落库。"""
     task_id = state["task_id"]  # type: ignore
     user_message = state.get("user_message") or ""
     session_id = state.get("session_id") or ""

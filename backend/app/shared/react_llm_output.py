@@ -98,14 +98,22 @@ def is_pseudo_react_tool_name(name: str) -> bool:
     return n in _PSEUDO_REACT_TOOL_NAMES
 
 
+# 布尔 true 的哨兵值，标识"子目标已满足、循环可结束"
+_FINAL_ANSWER_TRUE = "__FINAL_ANSWER_TRUE__"
+
+
 def coerce_final_answer_value(value: Any) -> str | None:
-    """将任意类型规整为非空终答字符串；无法表示则 None。"""
+    """将任意类型规整为终答标识；true 时返回哨兵供上层识别，字符串仅作兼容保留。"""
     if value is None:
         return None
+    if value is True:
+        return _FINAL_ANSWER_TRUE
     if isinstance(value, str):
         s = value.strip()
+        if s.lower() == 'true':
+            return _FINAL_ANSWER_TRUE
         return s if s else None
-    if isinstance(value, (int, float, bool)):
+    if isinstance(value, (int, float)):
         return str(value)
     if isinstance(value, (dict, list)):
         try:

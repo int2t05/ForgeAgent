@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import tiktoken
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, SystemMessage
 
 from app.shared.langchain_content import message_content_text
 

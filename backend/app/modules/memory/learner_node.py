@@ -20,18 +20,13 @@ from app.modules.prompts.learner_reflection import (
     LEARNER_REFLECTION_SYSTEM,
     build_learner_reflection_user_payload,
 )
+from app.modules.prompts.parse_retry import LEARNER_PARSE_RETRY
 from app.modules.workflow.state import AgentState
 from app.repositories import event_repository
 from app.shared.langchain_content import message_content_text
 from app.shared.llm_json_parse import parse_llm_json_object
 
 logger = logging.getLogger(__name__)
-
-_LEARNER_PARSE_RETRY_USER_HINT = (
-    "上一条助手回复无法解析为符合要求的 JSON（根对象须含非空字符串 reflection、"
-    "布尔 request_replan、字符串 rationale）。"
-    "请严格只输出一个 JSON 对象，不要 markdown 围栏、不要任何其他说明文字。"
-)
 
 
 def _synthesize_lesson_lines(state: AgentState) -> list[str]:
@@ -181,7 +176,7 @@ async def learner_node(state: AgentState) -> dict[str, Any]:
             )
             if attempt < max_rounds - 1:
                 messages.append(msg)
-                messages.append(HumanMessage(content=_LEARNER_PARSE_RETRY_USER_HINT))
+                messages.append(HumanMessage(content=LEARNER_PARSE_RETRY))
 
     # 3. 若无模型正文则用轨迹摘要拼接；失败或超限则清零模型再规划请求
     if not reflection_text and fallback_lines:

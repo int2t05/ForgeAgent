@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -18,17 +19,19 @@ from app.core.llm_retry import ainvoke_with_retry
 from app.modules.execution.step_react_internals import (
     estimate_react_output_tokens,
     observation_block_for_llm,
-    synthetic_final_when_all_tools_ok,
     tail_prior_tool_trace,
     try_react_closing_final_answer,
 )
 from app.modules.execution.tool_runner import run_single_tool_with_retry
 from app.modules.memory.tool_observation_compact import compact_json_for_prompt
+from app.modules.prompts.parse_retry import REACT_PARSE_RETRY
+from app.modules.prompts.react_hints import _SKILL_IMPORT_HUMAN_PREFIX
 from app.modules.prompts.step_react import build_step_react_system_prompt
 from app.repositories import event_repository
 from app.schemas.tools import ToolItem
 from app.shared.langchain_content import message_content_text
 from app.shared.react_llm_output import (
+    _FINAL_ANSWER_TRUE,
     extract_tool_invocations,
     parse_react_round_json,
     pick_final_answer,
@@ -37,18 +40,8 @@ from app.shared.react_llm_output import (
 
 logger = logging.getLogger(__name__)
 
-_REACT_PARSE_RETRY_USER_HINT = (
-    "Your last reply could not be parsed as required ReAct JSON. "
-    "Reply with exactly one JSON object containing either "
-    "`final_answer` or executable `action`/`actions` fields. "
-    "Do not output markdown fences or extra text."
-)
-
-_SKILL_IMPORT_HUMAN_PREFIX = (
-    "## Imported skill context (planner-selected, this step only)\n\n"
-    "Content read from SKILL.md under the chosen directories. "
-    "This is not the tool catalogue.\n\n"
-)
+# 限制工具并发执行数，避免连接池耗尽
+_TOOL_SEMAPHORE = asyncio.Semaphore(3)
 
 
 async def run_step_react_loop(
@@ -142,7 +135,7 @@ async def run_step_react_loop(
                 max_parse_attempts,
             )
             if react_parse_failures < max_parse_attempts:
-                messages.append(HumanMessage(content=_REACT_PARSE_RETRY_USER_HINT))
+                messages.append(HumanMessage(content=REACT_PARSE_RETRY))
                 continue
             break
 
@@ -151,38 +144,71 @@ async def run_step_react_loop(
         thought_round = pick_thought(data)
 
         if invocations:
-            for tn, args in invocations:
-                final_ok, last_exec, attempt_rows = await run_single_tool_with_retry(
-                    task_id,
-                    step_id,
-                    tn,
-                    args,
-                    max_tool_tries,
-                    react_thought=thought_round,
-                )
-                call_results.append(
-                    {
-                        "tool": tn,
-                        "args": args,
-                        "ok": final_ok,
-                        "data": last_exec.get("data"),
-                        "error": last_exec.get("error"),
-                        "attempts": attempt_rows,
-                    }
-                )
-                messages.append(
-                    HumanMessage(
-                        content="Observation:\n"
-                        + observation_block_for_llm(
-                            tn,
-                            last_exec,
-                            max_json_chars=obs_cap,
-                        ),
+            # 使用信号量限制并发执行，避免连接池耗尽
+            async def run_with_semaphore(tn: str, args: dict[str, Any]) -> Any:
+                async with _TOOL_SEMAPHORE:
+                    return await run_single_tool_with_retry(
+                        task_id,
+                        step_id,
+                        tn,
+                        args,
+                        max_tool_tries,
+                        react_thought=thought_round,
                     )
-                )
+
+            tasks = [run_with_semaphore(tn, args) for tn, args in invocations]
+            raw_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # 按原顺序处理结果
+            for (tn, args), result in zip(invocations, raw_results):
+                if isinstance(result, Exception):
+                    call_results.append(
+                        {
+                            "tool": tn,
+                            "args": args,
+                            "ok": False,
+                            "data": None,
+                            "error": str(result),
+                            "attempts": [],
+                        }
+                    )
+                    messages.append(
+                        HumanMessage(
+                            content="Observation:\n"
+                            + observation_block_for_llm(
+                                tn,
+                                {"ok": False, "data": None, "error": str(result)},
+                                max_json_chars=obs_cap,
+                            ),
+                        )
+                    )
+                else:
+                    final_ok, last_exec, attempt_rows = result
+                    call_results.append(
+                        {
+                            "tool": tn,
+                            "args": args,
+                            "ok": final_ok,
+                            "data": last_exec.get("data"),
+                            "error": last_exec.get("error"),
+                            "attempts": attempt_rows,
+                        }
+                    )
+                    messages.append(
+                        HumanMessage(
+                            content="Observation:\n"
+                            + observation_block_for_llm(
+                                tn,
+                                last_exec,
+                                max_json_chars=obs_cap,
+                            ),
+                        )
+                    )
             continue
 
         if fa:
+            # fa == _FINAL_ANSWER_TRUE 表示模型输出 final_answer:true，即"子目标满足可结束"
+            # 此时 step_final 为哨兵（真值），跳过后续合成逻辑；break 后 overall=true
             step_final = fa
             closing_thought = thought_round
             break
@@ -213,7 +239,7 @@ async def run_step_react_loop(
                 task_id,
                 step_id,
             )
-            step_final = synthetic_final_when_all_tools_ok(call_results)
+            step_final = _FINAL_ANSWER_TRUE
             closing_thought = closing_thought or th2
 
     overall = bool(step_final) and all_tool_ok
@@ -222,7 +248,7 @@ async def run_step_react_loop(
         try:
             payload_obj: dict[str, Any] = {
                 "step_id": str(step_id),
-                "final_answer": step_final,
+                "final_answer": True if step_final == _FINAL_ANSWER_TRUE else step_final,
             }
             ct = closing_thought if (closing_thought and str(closing_thought).strip()) else None
             if ct:
@@ -243,4 +269,4 @@ async def run_step_react_loop(
                 step_id,
             )
 
-    return overall, call_results, step_final
+    return overall, call_results, ("completed" if step_final == _FINAL_ANSWER_TRUE else step_final)

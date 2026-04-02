@@ -129,49 +129,75 @@ function formatToolResultBody(data: unknown): { text: string; preWrap: boolean }
   return { text: formatJson(data), preWrap: false }
 }
 
+type ToolCallWithResults = {
+  call: TaskEvent
+  results: TaskEvent[]
+}
+
 type ToolReactTurn = {
   kind: 'tool'
   round: number
   thought: string
-  call: TaskEvent
-  results: TaskEvent[]
+  tools: ToolCallWithResults[]
 }
 
 type FinalReactTurn = {
   kind: 'final'
   round: number
   thought: string
-  finalAnswer: string
+  finalAnswer: boolean
   seq: number
+  /** true when backend sent final_answer:true (boolean) indicating sub-goal satisfied */
+  isCompleted: boolean
 }
 
-/** 按 seq 归并 tool_call、挂接 tool_result，并收录带 final_answer 的 react_turn。 */
+/** 按 seq 归并 tool_call、挂接 tool_result，并收录带 final_answer 的 react_turn。
+ * 
+ * 核心逻辑：一轮 ReAct 可能包含多个并行工具调用（通过 actions 数组），
+ * 这些 tool_call 事件是连续的且共享相同的 thought。
+ * 将它们归为一轮展示，体现真正的并行执行语义。
+ */
 function buildReactTurns(events: TaskEvent[]): (ToolReactTurn | FinalReactTurn)[] {
   const sorted = [...events].sort((a, b) => a.seq - b.seq)
   const turns: (ToolReactTurn | FinalReactTurn)[] = []
   let round = 0
+  let currentToolTurn: ToolReactTurn | null = null
+
   for (const e of sorted) {
-    // 1. 新开一轮工具：推入占位，后续 tool_result 挂到该轮
     if (e.kind === 'tool_call') {
-      round += 1
       const p = e.payload as Record<string, unknown> | null
       const thought = p && typeof p.thought === 'string' ? p.thought.trim() : ''
-      turns.push({ kind: 'tool', round, thought, call: e, results: [] })
+      
+      // 判断是否属于当前轮：
+      // 1. 当前没有活跃的 tool 轮，或
+      // 2. thought 不同（说明是新的 LLM 输出）
+      if (!currentToolTurn || currentToolTurn.thought !== thought) {
+        round += 1
+        currentToolTurn = { kind: 'tool', round, thought, tools: [] }
+        turns.push(currentToolTurn)
+      }
+      
+      // 将 tool_call 添加到当前轮的工具列表中
+      currentToolTurn.tools.push({ call: e, results: [] })
     } else if (e.kind === 'tool_result') {
-      // 2. 将结果挂到当前最后一个工具轮次
-      const last = turns[turns.length - 1]
-      if (last?.kind === 'tool') {
-        last.results.push(e)
+      // 将结果挂到当前轮最后一个工具上
+      if (currentToolTurn && currentToolTurn.tools.length > 0) {
+        const lastTool = currentToolTurn.tools[currentToolTurn.tools.length - 1]
+        lastTool.results.push(e)
       }
     } else if (e.kind === 'react_turn') {
-      // 3. 若带终答则单独成轮，便于与工具轮并列展示
+      // 若带终答则单独成轮，便于与工具轮并列展示
       const p = e.payload as Record<string, unknown> | null
       const thought = p && typeof p.thought === 'string' ? p.thought.trim() : ''
-      const fa =
-        p && typeof p.final_answer === 'string' ? p.final_answer.trim() : ''
+      const faRaw = p?.final_answer
+      // final_answer 现在是 boolean 类型；true 表示"子目标满足可结束"
+      // 兼容旧格式："completed" 字符串也视为 true
+      const isCompleted = faRaw === true || faRaw === 'completed'
+      const fa = typeof faRaw === 'boolean' ? faRaw : (typeof faRaw === 'string' ? faRaw.trim() === 'completed' : false)
       if (fa) {
         round += 1
-        turns.push({ kind: 'final', round, thought, finalAnswer: fa, seq: e.seq })
+        currentToolTurn = null
+        turns.push({ kind: 'final', round, thought, finalAnswer: true, seq: e.seq, isCompleted })
       }
     }
   }
@@ -496,7 +522,13 @@ function ToolAttemptBlocks({
   )
 }
 
-/** 单轮工具调用的列表项（Thought / Action / 结果）。 */
+/** 单轮 ReAct 调用的列表项（Thought / 多个并行 Actions / 各自结果）。
+ * 
+ * 展示逻辑：
+ * - 一次 Thought（该轮的推理）
+ * - N 个并行 Action（每个工具一个卡片）
+ * - 每个工具的独立结果
+ */
 function ToolRoundListItem({
   turn,
   workspaceRoot,
@@ -504,19 +536,23 @@ function ToolRoundListItem({
   turn: ToolReactTurn
   workspaceRoot: string
 }) {
-  const { name: toolNm, args: toolArg, argsForDisplay: toolArgDisplay } = toolCallNameArgs(
-    turn.call,
-  )
-  const p0 = turn.call.payload as Record<string, unknown> | null
-  const hasServerDisplay = p0?.args_for_display != null
-  const resolvedArgs =
-    hasServerDisplay || !workspaceRoot
-      ? toolArgDisplay
-      : clientResolveToolPathsForDisplay(toolNm, toolArgDisplay, workspaceRoot)
-  const builtinAction = renderBuiltinToolActionBody(toolNm, resolvedArgs)
+  const parallelCount = turn.tools.length
+  const isParallel = parallelCount > 1
+  
   return (
-    <li className="space-y-2">
-      <span className="text-xs text-neutral-500">轮次 {turn.round} · 工具</span>
+    <li className="space-y-3">
+      <div className="flex items-center gap-2 text-xs text-neutral-500">
+        <span>轮次 {turn.round}</span>
+        {isParallel ? (
+          <span className="rounded bg-primary-500/10 px-1.5 py-0.5 font-medium text-primary-700">
+            并行 {parallelCount} 个工具
+          </span>
+        ) : (
+          <span>· 工具</span>
+        )}
+      </div>
+      
+      {/* Thought：整轮共享的推理 */}
       <div className="fa-chat-block-thinking !p-0">
         <details className="fa-thinking-fold" open>
           <summary className="fa-thinking-summary">
@@ -534,45 +570,83 @@ function ToolRoundListItem({
           )}
         </details>
       </div>
-      <div className="fa-chat-block-thinking !p-0">
-        <details className="fa-thinking-fold" open>
-          <summary className="fa-thinking-summary">
-            <span className="fa-chat-fold-link">Action · {toolNm || '—'}</span>
-            <span className="fa-chat-fold-chevron" aria-hidden>
-              ›
-            </span>
-          </summary>
-          <div className="mt-2 space-y-2">
-            {builtinAction ?? (
-              <pre className="mt-1 max-h-40 overflow-auto rounded-md bg-neutral-900/90 p-2.5 font-mono text-xs text-neutral-100">
-                {formatJson(toolArg)}
-              </pre>
-            )}
-            {builtinAction ? (
-              <details className="rounded border border-neutral-200/80 bg-neutral-50/50">
-                <summary className="cursor-pointer px-2 py-1.5 font-mono text-neutral-600 text-xs">
-                  原始 JSON 参数
-                </summary>
-                <pre className="max-h-32 overflow-auto border-neutral-200/80 border-t p-2 font-mono text-neutral-800 text-xs">
-                  {formatJson(toolArg)}
-                </pre>
-              </details>
-            ) : null}
-          </div>
-        </details>
-      </div>
-      <div className="fa-chat-block-thinking !p-0">
-        <details className="fa-thinking-fold" open>
-          <summary className="fa-thinking-summary">
-            <span className="fa-chat-fold-link">工具调用结果</span>
-            <span className="fa-chat-fold-chevron" aria-hidden>
-              ›
-            </span>
-          </summary>
-          <div className="mt-2">
-            <ToolAttemptBlocks results={turn.results} toolName={toolNm} toolArgs={resolvedArgs} />
-          </div>
-        </details>
+
+      {/* 并行工具调用列表 */}
+      <div className={isParallel ? 'space-y-3' : ''}>
+        {turn.tools.map((toolItem, idx) => {
+          const { name: toolNm, args: toolArg, argsForDisplay: toolArgDisplay } = toolCallNameArgs(
+            toolItem.call,
+          )
+          const p0 = toolItem.call.payload as Record<string, unknown> | null
+          const hasServerDisplay = p0?.args_for_display != null
+          const resolvedArgs =
+            hasServerDisplay || !workspaceRoot
+              ? toolArgDisplay
+              : clientResolveToolPathsForDisplay(toolNm, toolArgDisplay, workspaceRoot)
+          const builtinAction = renderBuiltinToolActionBody(toolNm, resolvedArgs)
+
+          return (
+            <div key={toolItem.call.seq} className={isParallel ? 'rounded-lg border border-neutral-200/80 bg-neutral-50/50 p-2.5 space-y-2' : 'space-y-2'}>
+              {/* 工具标题 */}
+              {isParallel && (
+                <p className="font-mono text-neutral-700 text-xs font-medium flex items-center gap-2">
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary-500/10 text-primary-700 text-[10px]">
+                    {idx + 1}
+                  </span>
+                  {toolNm || '—'}
+                </p>
+              )}
+
+              {/* Action 详情 */}
+              <div className="fa-chat-block-thinking !p-0">
+                <details className="fa-thinking-fold" open>
+                  <summary className="fa-thinking-summary">
+                    <span className="fa-chat-fold-link">
+                      {isParallel ? `Action #${idx + 1}` : `Action`} · {toolNm || '—'}
+                    </span>
+                    <span className="fa-chat-fold-chevron" aria-hidden>
+                      ›
+                    </span>
+                  </summary>
+                  <div className="mt-2 space-y-2">
+                    {builtinAction ?? (
+                      <pre className="mt-1 max-h-40 overflow-auto rounded-md bg-neutral-900/90 p-2.5 font-mono text-xs text-neutral-100">
+                        {formatJson(toolArg)}
+                      </pre>
+                    )}
+                    {builtinAction ? (
+                      <details className="rounded border border-neutral-200/80 bg-neutral-50/50">
+                        <summary className="cursor-pointer px-2 py-1.5 font-mono text-neutral-600 text-xs">
+                          原始 JSON 参数
+                        </summary>
+                        <pre className="max-h-32 overflow-auto border-neutral-200/80 border-t p-2 font-mono text-neutral-800 text-xs">
+                          {formatJson(toolArg)}
+                        </pre>
+                      </details>
+                    ) : null}
+                  </div>
+                </details>
+              </div>
+
+              {/* 工具结果 */}
+              <div className="fa-chat-block-thinking !p-0">
+                <details className="fa-thinking-fold" open>
+                  <summary className="fa-thinking-summary">
+                    <span className="fa-chat-fold-link">工具调用结果</span>
+                    <span className="fa-chat-fold-chevron" aria-hidden>
+                      ›
+                    </span>
+                  </summary>
+                  <ToolAttemptBlocks
+                    results={toolItem.results}
+                    toolName={toolNm}
+                    toolArgs={resolvedArgs}
+                  />
+                </details>
+              </div>
+            </div>
+          )
+        })}
       </div>
     </li>
   )
@@ -637,7 +711,7 @@ export function TaskToolRoundBlock({ events }: TaskToolRoundBlockProps) {
             {turns.map((t) =>
               t.kind === 'tool' ? (
                 <ToolRoundListItem
-                  key={`tool-${t.call.seq}`}
+                  key={`tool-${t.round}`}
                   turn={t}
                   workspaceRoot={workspaceRoot}
                 />
@@ -658,9 +732,15 @@ export function TaskToolRoundBlock({ events }: TaskToolRoundBlockProps) {
                       )}
                     </details>
                   </div>
-                  <div className="max-h-[min(20rem,45vh)] overflow-auto rounded-lg bg-neutral-50/80 px-3 py-2 text-neutral-800 text-sm leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]">
-                    {t.finalAnswer}
-                  </div>
+                  {t.isCompleted ? (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-emerald-800 text-sm">
+                      ✓ 步骤已完成
+                    </div>
+                  ) : t.finalAnswer ? (
+                    <div className="max-h-[min(20rem,45vh)] overflow-auto rounded-lg bg-neutral-50/80 px-3 py-2 text-neutral-800 text-sm leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]">
+                      {t.finalAnswer}
+                    </div>
+                  ) : null}
                 </li>
               ),
             )}

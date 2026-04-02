@@ -10,6 +10,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from app.core.config import Settings
 from app.core.llm_retry import ainvoke_with_retry
 from app.modules.memory.tool_observation_compact import observation_json_for_llm
+from app.modules.prompts.react_hints import CLOSING_FINAL_NUDGE
 from app.shared.langchain_content import message_content_text
 from app.shared.react_llm_output import (
     extract_tool_invocations,
@@ -22,12 +23,6 @@ logger = logging.getLogger(__name__)
 
 PRIOR_TRACE_TAIL_LIMIT = 4
 _CHARS_PER_TOKEN_EST = 4
-
-CLOSING_FINAL_NUDGE = (
-    "System: In this step every tool run succeeded (see Observations above).\n"
-    "Reply with **only** one JSON object and **do not** include action, actions, tool_calls, or calls.\n"
-    'Include final_answer, e.g. {"thought":"one line","final_answer":"Step conclusion for the user (Simplified Chinese)"}'
-)
 
 
 def estimate_react_output_tokens(text: str) -> int:

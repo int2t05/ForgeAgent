@@ -79,125 +79,125 @@ async def run_single_tool_with_retry(
     max_tool_tries: int,
     *,
     react_thought: str | None = None,
+    _db: Any = None,
 ) -> tuple[bool, dict[str, Any], list[dict[str, Any]]]:
     """带重试与熔断地执行命名工具，返回是否成功、末次执行结果及每次尝试列表。"""
-    async with AsyncSessionLocal() as db:
-        async with db.begin():
+    _owning_db = _db is None
+    _session = _db or AsyncSessionLocal()
+
+    async def _write_event(module: str, kind: str, payload: dict[str, Any]) -> None:
+        if _owning_db:
+            async with _session.begin():
+                await event_repository.append_event(
+                    _session, task_id, module, kind, json.dumps(payload, ensure_ascii=False)
+                )
+        else:
             await event_repository.append_event(
-                db,
+                _session, task_id, module, kind, json.dumps(payload, ensure_ascii=False)
+            )
+
+    try:
+        async with _session.begin():
+            await event_repository.append_event(
+                _session,
                 task_id,
                 "tool",
                 "tool_call",
                 json.dumps(
                     _tool_call_payload(
-                        step_id,
-                        tool_name,
-                        tool_args,
-                        max_tool_tries,
-                        react_thought,
+                        step_id, tool_name, tool_args, max_tool_tries, react_thought
                     ),
                     ensure_ascii=False,
                 ),
             )
 
-    attempt_rows: list[dict[str, Any]] = []
-    final_ok = False
-    last_exec: dict[str, Any] = {"ok": False, "data": None, "error": None}
-    breaker = get_tool_circuit_breaker()
-    settings = get_settings()
-    base_delay = max(0.05, float(settings.tool_retry_base_delay_sec))
-    max_delay = max(base_delay, float(settings.tool_retry_max_delay_sec))
+        attempt_rows: list[dict[str, Any]] = []
+        final_ok = False
+        last_exec: dict[str, Any] = {"ok": False, "data": None, "error": None}
+        breaker = get_tool_circuit_breaker()
+        settings = get_settings()
+        base_delay = max(0.05, float(settings.tool_retry_base_delay_sec))
+        max_delay = max(base_delay, float(settings.tool_retry_max_delay_sec))
 
-    for attempt in range(1, max_tool_tries + 1):
-        # 熔断前置检查；开路则落库失败并结束循环
-        try:
-            breaker.before_call()
-        except CircuitOpenError as e:
-            last_exec = {"ok": False, "data": None, "error": str(e)}
-            attempt_rows.append(
-                {
-                    "attempt": attempt,
-                    "ok": False,
-                    "data": None,
-                    "error": str(e),
-                }
-            )
-            async with AsyncSessionLocal() as db:
-                async with db.begin():
-                    await event_repository.append_event(
-                        db,
-                        task_id,
-                        "tool",
-                        "tool_result",
-                        json.dumps(
-                            {
-                                "step_id": step_id,
-                                "tool": tool_name,
-                                "attempt": attempt,
-                                "max_attempts": max_tool_tries,
-                                "ok": False,
-                                "result": None,
-                                "error": str(e),
-                            },
-                            ensure_ascii=False,
-                        ),
-                    )
-            break
+        for attempt in range(1, max_tool_tries + 1):
+            # 熔断前置检查；开路则落库失败并结束循环
+            try:
+                breaker.before_call()
+            except CircuitOpenError as e:
+                last_exec = {"ok": False, "data": None, "error": str(e)}
+                attempt_rows.append(
+                    {
+                        "attempt": attempt,
+                        "ok": False,
+                        "data": None,
+                        "error": str(e),
+                    }
+                )
+                await _write_event(
+                    "tool",
+                    "tool_result",
+                    {
+                        "step_id": step_id,
+                        "tool": tool_name,
+                        "attempt": attempt,
+                        "max_attempts": max_tool_tries,
+                        "ok": False,
+                        "result": None,
+                        "error": str(e),
+                    },
+                )
+                break
 
-        # 调用注册表执行工具
-        exec_out = await tool_registry.execute(tool_name, tool_args)
-        last_exec = {
-            "ok": bool(exec_out.get("ok")),
-            "data": exec_out.get("data"),
-            "error": exec_out.get("error"),
-        }
-        ok = last_exec["ok"]
-        attempt_rows.append(
-            {
-                "attempt": attempt,
-                "ok": ok,
+            # 调用注册表执行工具
+            exec_out = await tool_registry.execute(tool_name, tool_args)
+            last_exec = {
+                "ok": bool(exec_out.get("ok")),
                 "data": exec_out.get("data"),
                 "error": exec_out.get("error"),
             }
-        )
-        async with AsyncSessionLocal() as db:
-            async with db.begin():
-                await event_repository.append_event(
-                    db,
-                    task_id,
-                    "tool",
-                    "tool_result",
-                    json.dumps(
-                        {
-                            "step_id": step_id,
-                            "tool": tool_name,
-                            "attempt": attempt,
-                            "max_attempts": max_tool_tries,
-                            "ok": ok,
-                            "result": exec_out.get("data"),
-                            "error": exec_out.get("error"),
-                        },
-                        ensure_ascii=False,
-                ),
+            ok = last_exec["ok"]
+            attempt_rows.append(
+                {
+                    "attempt": attempt,
+                    "ok": ok,
+                    "data": exec_out.get("data"),
+                    "error": exec_out.get("error"),
+                }
             )
-        if ok:
-            breaker.record_success()
-            final_ok = True
-            break
-
-        # 失败：记录熔断失败；仍有次数则退避等待
-        breaker.record_failure()
-        if attempt < max_tool_tries:
-            exp = min(max_delay, base_delay * (2 ** (attempt - 1)))
-            jitter = 0.5 + random.random() * 0.5
-            wait = min(max_delay, exp * jitter)
-            logger.warning(
-                "工具失败将重试（%s/%s）：%s；等待 %.1fs",
-                attempt,
-                max_tool_tries,
-                tool_name,
-                wait,
+            await _write_event(
+                "tool",
+                "tool_result",
+                {
+                    "step_id": step_id,
+                    "tool": tool_name,
+                    "attempt": attempt,
+                    "max_attempts": max_tool_tries,
+                    "ok": ok,
+                    "result": exec_out.get("data"),
+                    "error": exec_out.get("error"),
+                },
             )
-            await asyncio.sleep(wait)
+            if ok:
+                breaker.record_success()
+                final_ok = True
+                break
 
-    return final_ok, last_exec, attempt_rows
+            # 失败：记录熔断失败；仍有次数则退避等待
+            breaker.record_failure()
+            if attempt < max_tool_tries:
+                exp = min(max_delay, base_delay * (2 ** (attempt - 1)))
+                jitter = 0.5 + random.random() * 0.5
+                wait = min(max_delay, exp * jitter)
+                logger.warning(
+                    "工具失败将重试（%s/%s）：%s；等待 %.1fs",
+                    attempt,
+                    max_tool_tries,
+                    tool_name,
+                    wait,
+                )
+                await asyncio.sleep(wait)
+
+        return final_ok, last_exec, attempt_rows
+    finally:
+        if _owning_db:
+            await _session.close()

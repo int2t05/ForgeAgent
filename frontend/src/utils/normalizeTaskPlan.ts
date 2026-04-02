@@ -12,7 +12,7 @@ export interface PlanStep {
 /** 对话区 To-do 与步骤 id 对齐的三种状态。 */
 export type PlanStepTodoStatus = 'pending' | 'active' | 'done'
 
-/** 由执行事件推导：react_turn 含非空 final_answer 时该 step_id 记为完成；进行中取最近一次 `step_start` 且尚未终答的步骤。 */
+/** 由执行事件推导：react_turn 含 final_answer=true 时该 step_id 记为完成；进行中取最近一次 `step_start` 且尚未终答的步骤。 */
 export interface PlanTodoProgress {
   statusByStepId: Record<string, PlanStepTodoStatus>
 }
@@ -38,7 +38,10 @@ export function derivePlanTodoProgress(
       }
     } else if (e.kind === 'react_turn') {
       const p = e.payload
-      const fa = p && typeof p.final_answer === 'string' ? p.final_answer.trim() : ''
+      // final_answer 现在是 boolean 类型；true 表示"子目标满足可结束"
+      // 兼容旧格式："completed" 字符串也视为 true
+      const faRaw = p?.final_answer
+      const fa = faRaw === true || (typeof faRaw === 'string' && faRaw.trim() === 'completed')
       const rid = p?.step_id
       if (fa && rid != null && String(rid).trim() !== '') {
         completed.add(String(rid))

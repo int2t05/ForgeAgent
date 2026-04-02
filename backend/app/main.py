@@ -12,7 +12,8 @@ from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal, close_db, init_db
 from app.core.exceptions import AppHTTPException
 from app.modules.memory.checkpointer import close_langgraph_checkpointer, open_langgraph_checkpointer
-from app.modules.tools import mcp_client_manager, tool_registry
+from app.modules.tools.mcp_client import mcp_client_manager
+from app.modules.tools.registry import tool_registry
 from app.modules.workflow.graph import (
     get_checkpoint_guard_ref,
     init_compiled_agent_graph,

@@ -17,7 +17,10 @@ from app.core.llm_retry import ainvoke_with_retry
 from app.modules.prompts.planning import (
     build_planner_system_prompt,
     build_skill_selector_system_prompt,
-    _SKILL_SELECTOR_PARSE_RETRY_USER_HINT,
+)
+from app.modules.prompts.parse_retry import (
+    PLANNER_PARSE_RETRY,
+    SKILL_SELECTOR_PARSE_RETRY,
 )
 from app.modules.tools.skill_sources import resolve_planner_skill_imports
 from app.shared.langchain_content import message_content_text
@@ -77,7 +80,7 @@ async def select_skills_for_planner(
             if attempt < max_attempts - 1:
                 messages.append(msg)
                 messages.append(
-                    HumanMessage(content=_SKILL_SELECTOR_PARSE_RETRY_USER_HINT)
+                    HumanMessage(content=SKILL_SELECTOR_PARSE_RETRY)
                 )
             continue
 
@@ -115,13 +118,6 @@ _DEFAULT_STEPS: list[dict[str, Any]] = [
     },
 ]
 
-
-_PLANNER_PARSE_RETRY_USER_HINT = (
-    "Your last reply could not be parsed as the required JSON "
-    "(root object must contain a non-empty `steps` array; each step must have a non-empty "
-    "`title`; optional per-step `skill_imports` string array must follow the catalog). "
-    "Reply with **only** one raw JSON object—no markdown fences, no other text."
-)
 
 _FORBIDDEN_PLAN_KEYS = frozenset(
     {
@@ -227,7 +223,7 @@ async def plan_steps_with_llm(
             )
             if attempt < max_rounds - 1:
                 messages.append(msg)
-                messages.append(HumanMessage(content=_PLANNER_PARSE_RETRY_USER_HINT))
+                messages.append(HumanMessage(content=PLANNER_PARSE_RETRY))
             continue
 
         normalized = _normalize_steps(data, configured_skill_paths=skill_paths)
@@ -239,7 +235,7 @@ async def plan_steps_with_llm(
             )
             if attempt < max_rounds - 1:
                 messages.append(msg)
-                messages.append(HumanMessage(content=_PLANNER_PARSE_RETRY_USER_HINT))
+                messages.append(HumanMessage(content=PLANNER_PARSE_RETRY))
             continue
 
         return normalized

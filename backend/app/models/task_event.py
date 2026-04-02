@@ -35,4 +35,4 @@ class TaskEvent(Base):
     kind: Mapped[str] = mapped_column(Text, nullable=False)
     payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    task: Mapped["Task"] = relationship("Task", back_populates="events")  # type: ignore
+    task: Mapped["Task"] = relationship("Task", back_populates="events")  # type: ignore # noqa: F821
