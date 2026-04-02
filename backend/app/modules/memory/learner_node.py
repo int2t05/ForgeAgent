@@ -22,6 +22,7 @@ from app.modules.prompts.learner_reflection import (
 )
 from app.modules.workflow.state import AgentState
 from app.repositories import event_repository
+from app.shared.langchain_content import lc_message_text
 from app.shared.llm_json_parse import parse_llm_json_object
 
 logger = logging.getLogger(__name__)
@@ -155,8 +156,7 @@ async def learner_node(state: AgentState) -> dict[str, Any]:
                     break
                 continue
 
-            raw = getattr(msg, "content", None)
-            text = raw if isinstance(raw, str) else str(raw or "")
+            text = lc_message_text(msg)
             data = parse_llm_json_object(text)
             parsed_ok = False
             if data:

@@ -442,21 +442,48 @@ function toolCallLocalThought(p: Record<string, unknown> | undefined): string {
 
 /**
  * 当前 thought 子段在组内首条下标 chunkFirstG 处展示用文案；
- * 仅「整条 react 的第一个 tool 组」且「该组内下标为 0」时与流式 base 合并。
+ * 仅与同组首条 chunk 合并「该 tool_call 之前」时间窗内的流式 thinking（preToolStream），
+ * 避免把整段步进/全局缓冲的思考提前糊到第一轮或塞进后续 react。
  */
 function thoughtForToolCallChunk(
   group: TaskEvent[],
   chunkFirstG: number,
-  j: number,
-  thoughtBaseForFirst: string,
+  preToolStreamThought: string,
 ): string {
   const localTh = toolCallLocalThought(
     group[chunkFirstG]!.payload as Record<string, unknown> | undefined,
   )
-  if (chunkFirstG === 0 && j === 0) {
-    return mergeThoughtDisplayParts(thoughtBaseForFirst, localTh).trim()
+  if (chunkFirstG === 0) {
+    return mergeThoughtDisplayParts(preToolStreamThought, localTh).trim()
   }
   return localTh
+}
+
+/**
+ * tool 组结束后推进流式切片上界：包含组内最后一次 tool_call 及其后紧随的 tool_result，
+ * 以便其后的 llm_stream_delta 归入下一轮而非倒灌进上一轮 Thought。
+ */
+function maxSeqAfterToolGroup(
+  scopedAsc: TaskEvent[],
+  group: TaskEvent[],
+  nextAfterGroup: TaskEvent | undefined,
+  maxSeq: number,
+): number {
+  const upperBound = nextAfterGroup?.seq ?? maxSeq
+  const lastCall = group[group.length - 1]!.seq
+  let mx = lastCall
+  let seenResultAfterCall = false
+  for (const ev of scopedAsc) {
+    if (ev.seq <= lastCall) continue
+    if (ev.seq >= upperBound) break
+    if (ev.kind === 'tool_result') {
+      mx = Math.max(mx, ev.seq)
+      seenResultAfterCall = true
+      continue
+    }
+    if (seenResultAfterCall) break
+  }
+  return mx
 }
 
 /**
@@ -465,8 +492,7 @@ function thoughtForToolCallChunk(
  */
 function chunkGroupIndicesByConsecutiveThought(
   group: TaskEvent[],
-  j: number,
-  thoughtBaseForFirst: string,
+  preToolStreamThought: string,
 ): number[][] {
   const chunks: number[][] = []
   for (let g = 0; g < group.length; g++) {
@@ -480,7 +506,7 @@ function chunkGroupIndicesByConsecutiveThought(
       cur.push(g)
       continue
     }
-    const displayFirst = thoughtForToolCallChunk(group, cur[0]!, j, thoughtBaseForFirst)
+    const displayFirst = thoughtForToolCallChunk(group, cur[0]!, preToolStreamThought)
     if (collapseWs(localTh) === collapseWs(displayFirst)) {
       cur.push(g)
     } else {
@@ -493,16 +519,33 @@ function chunkGroupIndicesByConsecutiveThought(
 /**
  * 将 reactOrdered（tool_call | react_turn 交错）转为 ComposerRoundSegment；
  * 连续相同 tool 名的 tool_call 合并为一轮 Action。
+ *
+ * streamLowerSeq：已消费的 llm_stream_delta 上界（通常为 0 或当前 step_start.seq）；
+ * 仅将「各 react 节点 seq 之前」时间窗内的流式 thinking 并入该节点，避免整段缓冲倒序灌入首轮。
  */
 function appendSegmentsFromReactOrdered(
   reactOrdered: TaskEvent[],
   scopedAsc: TaskEvent[],
-  thoughtBaseForFirst: string,
+  streamLowerSeq: number,
   maxSeq: number,
   out: ComposerRoundSegment[],
   roundIndexMode: 'fromOutLength' | 'incremental',
   incrementalCounter: { n: number } | null,
+  opts?: { stepThoughtPrefix?: string },
 ): void {
+  let streamCutSeq = streamLowerSeq
+  let pendingStepPrefix = (opts?.stepThoughtPrefix ?? '').trim()
+
+  const mergeFirstSliceThought = (streamPart: string, localPart: string): string => {
+    const inner = mergeThoughtDisplayParts(streamPart.trim(), localPart.trim()).trim()
+    if (pendingStepPrefix) {
+      const outThought = mergeThoughtDisplayParts(pendingStepPrefix, inner).trim()
+      pendingStepPrefix = ''
+      return outThought
+    }
+    return inner
+  }
+
   let j = 0
   while (j < reactOrdered.length) {
     const e = reactOrdered[j]!
@@ -510,10 +553,13 @@ function appendSegmentsFromReactOrdered(
       const p = e.payload as Record<string, unknown> | undefined
       const localTh =
         p && typeof p.thought === 'string' ? p.thought.trim() : ''
-      if (!localTh) {
-        j += 1
-        continue
-      }
+      const slice = foldLlmStreamDeltasInSeqRange(scopedAsc, streamCutSeq, e.seq - 1)
+      const sm = mergeAnswerThinkIntoDisplayThinking(slice.thinking, slice.answer)
+      const streamPart = sm.thinking.trim()
+      const thought = mergeFirstSliceThought(streamPart, localTh)
+      streamCutSeq = e.seq
+      j += 1
+      if (!thought) continue
       const roundIndex =
         roundIndexMode === 'fromOutLength'
           ? out.length + 1
@@ -521,10 +567,9 @@ function appendSegmentsFromReactOrdered(
       out.push({
         id: `rt-${e.seq}`,
         roundIndex,
-        thought: localTh,
+        thought,
         action: null,
       })
-      j += 1
       continue
     }
     if (e.kind !== 'tool_call') {
@@ -543,7 +588,26 @@ function appendSegmentsFromReactOrdered(
     }
     const nextAfterGroup = reactOrdered[k]
 
-    const thoughtChunks = chunkGroupIndicesByConsecutiveThought(group, j, thoughtBaseForFirst)
+    const firstToolSeq = group[0]!.seq
+    const preToolSlice = foldLlmStreamDeltasInSeqRange(
+      scopedAsc,
+      streamCutSeq,
+      firstToolSeq - 1,
+    )
+    const preToolMerged = mergeAnswerThinkIntoDisplayThinking(
+      preToolSlice.thinking,
+      preToolSlice.answer,
+    )
+    let preToolStreamThought = preToolMerged.thinking.trim()
+    if (pendingStepPrefix) {
+      preToolStreamThought = mergeThoughtDisplayParts(
+        pendingStepPrefix,
+        preToolStreamThought,
+      ).trim()
+      pendingStepPrefix = ''
+    }
+
+    const thoughtChunks = chunkGroupIndicesByConsecutiveThought(group, preToolStreamThought)
     for (const idxs of thoughtChunks) {
       const blocks: ComposerActionBlock[] = []
       for (const g of idxs) {
@@ -557,7 +621,7 @@ function appendSegmentsFromReactOrdered(
         if (block) blocks.push(block)
       }
 
-      const thought = thoughtForToolCallChunk(group, idxs[0]!, j, thoughtBaseForFirst)
+      const thought = thoughtForToolCallChunk(group, idxs[0]!, preToolStreamThought)
 
       if (blocks.length > 0) {
         const firstG = idxs[0]!
@@ -591,6 +655,7 @@ function appendSegmentsFromReactOrdered(
         })
       }
     }
+    streamCutSeq = maxSeqAfterToolGroup(scopedAsc, group, nextAfterGroup, maxSeq)
     j = k
   }
 }
@@ -773,7 +838,7 @@ function buildComposerRoundSegmentsSorted(
       appendSegmentsFromReactOrdered(
         reactOrdered,
         scopedAsc,
-        streamThought,
+        0,
         maxSeq,
         segments,
         'fromOutLength',
@@ -822,11 +887,12 @@ function buildComposerRoundSegmentsSorted(
       appendSegmentsFromReactOrdered(
         reactOrdered,
         inStepAsc,
-        baseThought,
+        ss.seq,
         nextSeq,
         out,
         'incremental',
         ctr,
+        { stepThoughtPrefix: rawThought },
       )
       roundCounter = ctr.n
       continue

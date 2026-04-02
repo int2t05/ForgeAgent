@@ -18,3 +18,8 @@ def message_content_text(content: Any) -> str:
                 parts.append(str(part.get("text") or ""))
         return "".join(parts)
     return str(content or "")
+
+
+def lc_message_text(message_like: Any) -> str:
+    """从 LangChain ``BaseMessage`` / 流式 chunk 等对象取出扁平化纯文本。"""
+    return message_content_text(getattr(message_like, "content", None))

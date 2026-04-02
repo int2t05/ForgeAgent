@@ -18,24 +18,9 @@ from app.core.llm_openai import build_chat_model, is_llm_configured
 from app.core.llm_retry import astream_with_retry
 from app.modules.prompts.assistant_reply import ASSISTANT_EXECUTOR_SUMMARY_SYSTEM
 from app.modules.execution.stream_split import ThinkAnswerStream
+from app.shared.langchain_content import lc_message_text
 
 logger = logging.getLogger(__name__)
-
-
-def _chunk_text_content(chunk: Any) -> str:
-    """从流式 chunk 中提取可拼接的纯文本内容。"""
-    content = getattr(chunk, "content", None)
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for part in content:
-            if isinstance(part, str):
-                parts.append(part)
-            elif isinstance(part, dict) and part.get("type") == "text":
-                parts.append(str(part.get("text") or ""))
-        return "".join(parts)
-    return str(content or "")
 
 
 async def assistant_reply_stream_with_llm(
@@ -53,9 +38,9 @@ async def assistant_reply_stream_with_llm(
     trace_text = json.dumps(tool_trace, ensure_ascii=False) if tool_trace else "[]"
     sys_stream = ASSISTANT_EXECUTOR_SUMMARY_SYSTEM
     human_stream = (
-        f"用户问题：{user_message}\n"
-        f"计划步骤：{plan_text}\n"
-        f"工具执行结果（JSON 数组，按步骤顺序）：{trace_text}"
+        f"User question: {user_message}\n"
+        f"Plan steps: {plan_text}\n"
+        f"Tool execution results (JSON array, step order): {trace_text}"
     )
     # 2. 未配置模型时输出内置占位说明流
     if not is_llm_configured(s):
@@ -75,7 +60,7 @@ async def assistant_reply_stream_with_llm(
             [SystemMessage(content=sys_stream), HumanMessage(content=human_stream)],
             s,
         ):
-            text = _chunk_text_content(chunk)
+            text = lc_message_text(chunk)
             if not text:
                 continue
             for phase, delta in splitter.feed(text):

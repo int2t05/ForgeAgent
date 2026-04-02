@@ -15,6 +15,7 @@ from app.core.config import Settings, get_settings
 from app.core.llm_openai import build_chat_model, is_llm_configured
 from app.core.llm_retry import ainvoke_with_retry
 from app.modules.prompts.planning import build_planner_system_prompt
+from app.shared.langchain_content import lc_message_text
 from app.shared.llm_json_parse import parse_llm_json_object
 
 logger = logging.getLogger(__name__)
@@ -34,9 +35,10 @@ _DEFAULT_STEPS: list[dict[str, Any]] = [
 
 
 _PLANNER_PARSE_RETRY_USER_HINT = (
-    "上一条助手回复无法解析为符合要求的 JSON（根对象须含 steps 数组，"
-    "每步须含非空 title，且不得包含工具相关键名）。"
-    "请严格只输出一个 JSON 对象，不要 markdown 围栏、不要任何其他说明文字。"
+    "Your last reply could not be parsed as the required JSON "
+    "(root object must contain a non-empty `steps` array; each step must have a non-empty "
+    "`title`; no tool-related keys on steps). "
+    "Reply with **only** one raw JSON object—no markdown fences, no other text."
 )
 
 _FORBIDDEN_PLAN_KEYS = frozenset(
@@ -107,8 +109,7 @@ async def plan_steps_with_llm(
                 return list(_DEFAULT_STEPS)
             continue
 
-        content = getattr(msg, "content", None)
-        text = content if isinstance(content, str) else str(content or "")
+        text = lc_message_text(msg)
         data = parse_llm_json_object(text)
         if data is None:
             logger.warning(

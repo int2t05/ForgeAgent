@@ -6,10 +6,13 @@
 
 | 节点 | 文件 | 内容 |
 |------|------|------|
-| 框架路由 | `framework_router.py` | 简短指令，约 200 字 |
-| 规划器 | `planning.py` | 结构化输出约束，约 300 字 |
-| ReAct | `react.py` | JSON 输出格式，约 400 字 |
-| 总结 | `assistant_reply.py` | 简洁指令，约 100 字 |
+| 外部会话（全栈编码） | `M-prompts/M9CODESTEP.md` | 英文结构化指令（角色/任务/标准/流程）+ **强制简体中文应答**；与 Anthropic 等官方材料一致：先明确角色与任务，再列约束与输出流程 |
+| 规划器 | `backend/app/modules/prompts/planning.py` | 英文 System：仅输出步骤级 JSON；步骤文案 **简体中文**；禁工具键 |
+| 单步 ReAct | `backend/app/modules/prompts/step_react.py` | 英文 System：每轮单一 JSON；`final_answer` 面向用户为 **简体中文**；嵌入工具目录 |
+| 执行后总结 | `backend/app/modules/prompts/assistant_reply.py` | 英文 System：综合计划与工具轨迹；默认 **简体中文** 作答 |
+| Learner 反思 | `backend/app/modules/prompts/learner_reflection.py` | 英文 System：`reflection` / `rationale` 为 **简体中文**；仅 JSON |
+| ReAct 首轮 / 收官 User | `backend/app/modules/execution/step_react_loop.py` | 首轮任务与「工具已成功请 final_answer」提示为英文，与用户中文内容同一上下文 |
+| 规划解析重试 User | `backend/app/modules/planning/llm.py` | `_PLANNER_PARSE_RETRY_USER_HINT`：英文纠偏，与 Planner System 一致 |
 
 ### 1.2 存在的问题
 

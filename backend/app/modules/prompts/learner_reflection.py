@@ -1,4 +1,4 @@
-"""Learner 反思阶段：口头反馈式 Reflection（零权重训练），仅输出结构化 JSON。"""
+"""Learner reflection: structured JSON for blackboard + replan decision."""
 
 from __future__ import annotations
 
@@ -7,25 +7,30 @@ from typing import Any
 
 from app.modules.workflow.state import AgentState
 
+LEARNER_REFLECTION_SYSTEM = """You are the **Learner** module: short self-reflection after one agent turn.
 
-LEARNER_REFLECTION_SYSTEM = """你是 Agent 的 Learner（学习与反思）模块。根据本回合的执行材料做简短的自我反思：
-- 归纳可复用的经验、踩坑与纠错建议（自然语言，写入团队共享黑板，供下一轮 Planner 阅读）；
-- 判断在用户目标是否很可能已充分达成、且无需再改计划；若仍明显不足、工具结果矛盾、或遗漏关键步骤，则应请求再回到 Planner 重新规划（request_replan=true）。
+## Inputs (in user message)
+You receive a compact JSON payload with the user goal, outcome, tool trace, plan step titles, replan limits, optional blackboard tail, etc.
 
-务必只输出一个 JSON 对象，不要 markdown 代码块、不要额外说明。
+## Task
+1. Summarize reusable lessons, pitfalls, and corrections (natural language) for the shared **blackboard** so the next Planner can read them.
+2. Decide if the user goal is **likely satisfied** and no plan change is needed, or if planning should run again (`request_replan`).
 
-【输出 JSON 形状】
-{"reflection":"多句中文反思与可执行提示，可含分条但不要 markdown","request_replan":true或false,"rationale":"一句话说明为何需要或不需要再规划"}
+## Output
+Emit **only one JSON object**. No markdown fences, no extra prose.
 
-【约束】
-- reflection 要具体，便于下一轮 Planner 据此改步骤；避免空泛套话。
-- 若本回合 outcome 为失败（任务已终止），request_replan 必须为 false。
-- 若用户需求简单且本回合已成功交付清晰最终答案，request_replan 应为 false。
-- 当上下文中已标明「剩余重规划次数为 0」时，request_replan 必须为 false。"""
+## Shape
+{"reflection":"…","request_replan":false,"rationale":"…"} — use JSON booleans for `request_replan`; `reflection` and `rationale` in Simplified Chinese.
+
+## Constraints
+- Make `reflection` specific and actionable; avoid empty generic phrases.
+- If this turn’s `outcome` is **failure** (task already terminated), `request_replan` must be **false**.
+- If the request was simple and this turn delivered a clear final success, `request_replan` should be **false**.
+- If the context states **remaining replan cycles = 0**, `request_replan` must be **false**."""
 
 
 def build_learner_reflection_user_payload(state: AgentState) -> str:
-    """组装供 Learner 反思模型阅读的结构化上下文（紧凑 JSON 字符串）。"""
+    """Build compact JSON for the learner user message."""
     trace: list[dict[str, Any]] = list(state.get("actor_tool_trace") or [])
     plan_steps = state.get("plan_steps") or []
     max_r = int(state.get("max_replan_attempts") or 0)
