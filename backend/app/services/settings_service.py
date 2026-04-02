@@ -81,6 +81,19 @@ def _walk_no_secret_keys(obj: Any, *, _parent_key: str | None = None) -> None:
             _walk_no_secret_keys(item, _parent_key=None)
 
 
+def _normalize_mcp_for_storage(mcp_items: list[Any]) -> list[Any]:
+    """入库前归一化 MCP 列表：enabled=false 视为删除，不写入 settings_kv。"""
+    out: list[Any] = []
+    for item in mcp_items:
+        if not isinstance(item, dict):
+            out.append(item)
+            continue
+        if item.get("enabled") is False:
+            continue
+        out.append(item)
+    return out
+
+
 async def get_settings_public(db: AsyncSession) -> SettingsPublic:
     """读取 settings_kv 中与 GET /settings 对应的结构化字段。"""
     # 1. 读行
@@ -107,9 +120,10 @@ async def update_settings(
     """校验请求体并写回 settings_kv（MCP、Skills、工作区根）。"""
     # 1. 禁止可疑键名
     _walk_no_secret_keys(body.model_dump())
+    normalized_mcp = _normalize_mcp_for_storage(body.mcp)
     # 2. 分项 upsert
     await settings_repository.upsert_value(
-        db, _SETTINGS_KEY_MCP, json.dumps(body.mcp, ensure_ascii=False)
+        db, _SETTINGS_KEY_MCP, json.dumps(normalized_mcp, ensure_ascii=False)
     )
     await settings_repository.upsert_value(
         db,

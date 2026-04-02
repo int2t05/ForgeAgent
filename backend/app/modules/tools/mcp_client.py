@@ -117,6 +117,16 @@ class _McpConnection:
     async def close(self) -> None:
         try:
             await self._exit_stack.aclose()
+        except RuntimeError as exc:
+            # anyio 的 cancel scope 需要在进入它的同一 task 中退出；
+            # 某些 streamable HTTP 版本在跨 task 关闭时会触发该异常。
+            if "Attempted to exit cancel scope in a different task" in str(exc):
+                logger.debug(
+                    "关闭 MCP 连接出现已知跨 task cancel-scope 异常（忽略）: %s",
+                    self.server_name,
+                )
+            else:
+                logger.warning("关闭 MCP 连接失败: %s", self.server_name, exc_info=True)
         except Exception:
             logger.warning("关闭 MCP 连接失败: %s", self.server_name, exc_info=True)
         finally:
@@ -264,8 +274,21 @@ class McpClientManager:
                 )
                 for t in result.tools
             ]
-        except Exception:
-            logger.error("MCP list_tools 失败: %s", server_name, exc_info=True)
+        except Exception as exc:
+            # 连接底层流已关闭时，移除失效连接，避免后续请求持续报同类错误。
+            dead_conn = (
+                "ClosedResourceError" in type(exc).__name__
+                or "Attempted to exit cancel scope in a different task" in str(exc)
+            )
+            if dead_conn:
+                logger.warning("MCP 连接已失效，移除并等待下次自动重连: %s", server_name)
+                async with self._lock:
+                    conn = self._conns.pop(server_name, None)
+                    self._cfg_fingerprint.pop(server_name, None)
+                    if conn is not None:
+                        conn.session = None
+            else:
+                logger.error("MCP list_tools 失败: %s", server_name, exc_info=True)
             return []
 
     async def list_all_tools(self) -> dict[str, list[McpToolMeta]]:

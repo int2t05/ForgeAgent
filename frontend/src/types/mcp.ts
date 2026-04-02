@@ -371,8 +371,8 @@ export function draftToMcpPayload(d: McpServerDraft): Record<string, unknown> {
   const out: Record<string, unknown> = {
     name,
     transport: d.transport,
+    enabled: d.enabled,
   }
-  if (d.enabled === false) out.enabled = false
 
   if (d.transport === 'mock') {
     out.tools = d.tools
