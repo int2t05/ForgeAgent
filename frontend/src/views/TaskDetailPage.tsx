@@ -3,13 +3,14 @@
  * 阶段7：REST 分页历史 + SSE 增量合并的时间线与详情轮询刷新。
  */
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Header } from '@/layouts/Header'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ErrorAlert } from '@/components/ui/ErrorAlert'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { ToolApprovalDialog } from '@/components/task/ToolApprovalDialog'
 import { useTaskDetail } from '@/hooks/useTaskDetail'
 import { useTaskTimeline } from '@/hooks/useTaskTimeline'
 import { TaskPlanSteps } from '@/components/task/TaskPlanSteps'
@@ -21,7 +22,9 @@ import {
   latestPlanStepsFromEvents,
   normalizePlanStepsFromUnknown,
 } from '@/utils/normalizeTaskPlan'
-import type { TaskStatus } from '@/types/task'
+import type { TaskEvent, TaskStatus } from '@/types/task'
+import type { ToolApprovalRequiredEvent } from '@/types/approval'
+import { useToastStore } from '@/store/toastStore'
 
 export function TaskDetailPage() {
   const navigate = useNavigate()
@@ -29,8 +32,48 @@ export function TaskDetailPage() {
   const { taskId } = useParams<{ taskId: string }>()
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [confirmCancel, setConfirmCancel] = useState(false)
+  const [pendingApproval, setPendingApproval] = useState<ToolApprovalRequiredEvent | null>(null)
+  const [handledApprovalIds, setHandledApprovalIds] = useState<Set<string>>(new Set())
   const { data: task, isLoading, error } = useTaskDetail(taskId)
   const { events, connectionState, loadError } = useTaskTimeline(taskId)
+  const addToast = useToastStore((s) => s.addToast)
+
+  useEffect(() => {
+    const latestApproval = [...events]
+      .reverse()
+      .find((e) => e.kind === 'tool_approval_required' && e.payload)
+    if (latestApproval?.payload) {
+      const payload = latestApproval.payload as unknown as ToolApprovalRequiredEvent
+      if (!handledApprovalIds.has(payload.approval_id)) {
+        setPendingApproval(payload)
+        setHandledApprovalIds((prev) => new Set(prev).add(payload.approval_id))
+        addToast({
+          type: 'info',
+          title: '等待审批',
+          description: `敏感工具「${payload.tool}」需要您确认是否执行`,
+          duration: 8000,
+        })
+      }
+    }
+
+    const rejectionEvent = [...events]
+      .reverse()
+      .find(
+        (e) =>
+          e.kind === 'error' &&
+          e.payload &&
+          (e.payload as Record<string, unknown>).error_type === 'approval_rejected',
+      )
+    if (rejectionEvent?.payload) {
+      const p = rejectionEvent.payload as Record<string, unknown>
+      addToast({
+        type: 'warning',
+        title: '工具执行被拒绝',
+        description: typeof p.message === 'string' ? p.message : '用户拒绝了敏感工具的执行请求',
+        duration: 6000,
+      })
+    }
+  }, [events, addToast, handledApprovalIds])
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteTask(taskId!),
@@ -115,6 +158,13 @@ export function TaskDetailPage() {
         onConfirm={() => deleteMutation.mutate()}
       />
 
+      <ToolApprovalDialog
+        open={!!pendingApproval}
+        taskId={taskId!}
+        event={pendingApproval}
+        onClose={() => setPendingApproval(null)}
+      />
+
       <div className="shrink-0">
         <Header
           title="任务详情"
@@ -152,92 +202,92 @@ export function TaskDetailPage() {
 
       <div className="fa-reveal min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-6">
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 pb-8">
-        {cancelMutation.error && (
-          <ErrorAlert
-            message="取消任务失败"
-            detail={
-              cancelMutation.error instanceof Error
-                ? cancelMutation.error.message
-                : '未知错误'
-            }
-          />
-        )}
-
-        {/* 顶部概览 */}
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-base font-medium ${statusColors.bg} ${statusColors.text}`}
-          >
-            <span className={`h-2 w-2 rounded-full ${statusColors.dot}`} />
-            {statusLabel}
-          </span>
-          <span className="text-base text-neutral-500 tabular-nums">
-            计划版本 v{task.plan_version}
-          </span>
-          <span className="fa-text-caption text-neutral-500">
-            创建于 {formatDateTime(task.created_at)}
-          </span>
-        </div>
-
-        <dl className="flex flex-wrap gap-x-6 gap-y-1 border-neutral-200/80 border-y py-3">
-          <div className="flex min-w-0 max-w-full items-baseline gap-2">
-            <dt className="fa-kv-label shrink-0">task_id</dt>
-            <dd className="fa-kv-value-mono min-w-0 truncate" title={task.id}>
-              {task.id}
-            </dd>
-          </div>
-          <div className="flex min-w-0 max-w-full items-baseline gap-2">
-            <dt className="fa-kv-label shrink-0">session_id</dt>
-            <dd className="fa-kv-value-mono min-w-0 truncate" title={task.session_id}>
-              {task.session_id}
-            </dd>
-          </div>
-        </dl>
-
-        {/* 摘要 */}
-        {task.summary && <p className="text-base text-neutral-700 leading-relaxed">{task.summary}</p>}
-
-        {deleteMutation.error && (
-          <ErrorAlert
-            message="删除失败"
-            detail={
-              deleteMutation.error instanceof Error
-                ? deleteMutation.error.message
-                : '未知错误'
-            }
-          />
-        )}
-
-        {/* 错误信息 */}
-        {task.error_message && (
-          <ErrorAlert
-            message="执行错误"
-            detail={task.error_message}
-            dismissible={false}
-          />
-        )}
-
-        {/* LLM 规划步骤（API plan + 时间线 plan_created 合并，避免仅 JSON 占位） */}
-        <section>
-          <h2 className="fa-section-title">执行计划</h2>
-          {planSteps?.length ? (
-            <TaskPlanSteps steps={planSteps} />
-          ) : task.status === 'running' || task.status === 'pending' ? (
-            <p className="fa-text-caption text-neutral-500">规划生成中…</p>
-          ) : (
-            <p className="fa-text-caption text-neutral-500">暂无计划数据</p>
+          {cancelMutation.error && (
+            <ErrorAlert
+              message="取消任务失败"
+              detail={
+                cancelMutation.error instanceof Error
+                  ? cancelMutation.error.message
+                  : '未知错误'
+              }
+            />
           )}
-        </section>
 
-        {/* 执行时间线：REST 历史 + SSE 增量（GET /events + SSE） */}
-        <section>
-          <h2 className="fa-section-title">执行时间线</h2>
-          <TaskTimeline
-            events={events}
-            connectionState={connectionState}
-            loadError={loadError}
-          />
-        </section>
+          {/* 顶部概览 */}
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-base font-medium ${statusColors.bg} ${statusColors.text}`}
+            >
+              <span className={`h-2 w-2 rounded-full ${statusColors.dot}`} />
+              {statusLabel}
+            </span>
+            <span className="text-base text-neutral-500 tabular-nums">
+              计划版本 v{task.plan_version}
+            </span>
+            <span className="fa-text-caption text-neutral-500">
+              创建于 {formatDateTime(task.created_at)}
+            </span>
+          </div>
+
+          <dl className="flex flex-wrap gap-x-6 gap-y-1 border-neutral-200/80 border-y py-3">
+            <div className="flex min-w-0 max-w-full items-baseline gap-2">
+              <dt className="fa-kv-label shrink-0">task_id</dt>
+              <dd className="fa-kv-value-mono min-w-0 truncate" title={task.id}>
+                {task.id}
+              </dd>
+            </div>
+            <div className="flex min-w-0 max-w-full items-baseline gap-2">
+              <dt className="fa-kv-label shrink-0">session_id</dt>
+              <dd className="fa-kv-value-mono min-w-0 truncate" title={task.session_id}>
+                {task.session_id}
+              </dd>
+            </div>
+          </dl>
+
+          {/* 摘要 */}
+          {task.summary && <p className="text-base text-neutral-700 leading-relaxed">{task.summary}</p>}
+
+          {deleteMutation.error && (
+            <ErrorAlert
+              message="删除失败"
+              detail={
+                deleteMutation.error instanceof Error
+                  ? deleteMutation.error.message
+                  : '未知错误'
+              }
+            />
+          )}
+
+          {/* 错误信息 */}
+          {task.error_message && (
+            <ErrorAlert
+              message="执行错误"
+              detail={task.error_message}
+              dismissible={false}
+            />
+          )}
+
+          {/* LLM 规划步骤（API plan + 时间线 plan_created 合并，避免仅 JSON 占位） */}
+          <section>
+            <h2 className="fa-section-title">执行计划</h2>
+            {planSteps?.length ? (
+              <TaskPlanSteps steps={planSteps} />
+            ) : task.status === 'running' || task.status === 'pending' ? (
+              <p className="fa-text-caption text-neutral-500">规划生成中…</p>
+            ) : (
+              <p className="fa-text-caption text-neutral-500">暂无计划数据</p>
+            )}
+          </section>
+
+          {/* 执行时间线：REST 历史 + SSE 增量（GET /events + SSE） */}
+          <section>
+            <h2 className="fa-section-title">执行时间线</h2>
+            <TaskTimeline
+              events={events}
+              connectionState={connectionState}
+              loadError={loadError}
+            />
+          </section>
         </div>
       </div>
     </div>

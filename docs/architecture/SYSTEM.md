@@ -1,0 +1,63 @@
+# 系统架构
+
+## 整体架构
+
+```
+┌─────────────────────────────────────────────────────┐
+│                    ForgeAgent                         │
+├─────────────────────────────────────────────────────┤
+│  Frontend                                          │
+│  ├── React 18 + TypeScript + Vite                  │
+│  ├── TailwindCSS + Radix UI                        │
+│  ├── Zustand 状态管理                               │
+│  └── SSE 实时事件监控                               │
+├─────────────────────────────────────────────────────┤
+│  Backend                                           │
+│  ├── FastAPI + Uvicorn                            │
+│  ├── LangGraph Agent Engine                        │
+│  ├── SQLAlchemy 2.0 (async)                       │
+│  └── SQLite                                        │
+└─────────────────────────────────────────────────────┘
+```
+
+## 后端目录
+
+```
+backend/app/
+├── api/v1/           # REST API
+├── core/             # 配置、安全、熔断器
+├── models/           # ORM 模型
+├── modules/          # Agent 核心模块
+│   ├── execution/    # 执行引擎
+│   ├── memory/       # 记忆管理
+│   ├── planning/     # 规划模块
+│   ├── prompts/      # 提示词
+│   ├── tools/        # 工具系统
+│   └── workflow/     # 工作流
+├── repositories/     # 数据访问
+├── schemas/          # Pydantic 模型
+└── services/         # 业务逻辑
+```
+
+## 前端目录
+
+```
+frontend/src/
+├── api/              # API 客户端
+├── components/       # React 组件
+├── views/            # 页面
+├── store/            # Zustand 状态
+├── hooks/            # 自定义 Hooks
+├── types/            # TypeScript 类型
+└── router/           # 路由
+```
+
+## 核心模块
+
+| 模块 | 职责 |
+|------|------|
+| `planning/` | 任务分解、计划生成、重规划 |
+| `execution/` | ReAct 循环、工具调用、结果汇总 |
+| `memory/` | 会话记忆、黑板反思、上下文管理 |
+| `tools/` | 工具注册、内置工具、MCP 客户端 |
+| `workflow/` | LangGraph 状态机定义 |

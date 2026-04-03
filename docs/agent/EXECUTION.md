@@ -1,0 +1,55 @@
+# 执行模块
+
+## Actor 节点
+
+```python
+async def actor_node(state: AgentState) -> dict:
+    for step in plan_steps:
+        # ReAct 循环执行每步
+        trace = await execute_plan_step_react(task_id, step, ...)
+        tool_trace.append(trace)
+
+    # 生成总结
+    summary = await assistant_reply_stream_with_llm(...)
+
+    return {"outcome": "success", "summary": summary}
+```
+
+## ReAct 循环
+
+```
+while True:
+    msg = LLM.ainvoke(messages)
+    data = parse_json(msg)
+
+    if data.get("action"):
+        # 执行工具
+        result = await run_single_tool_with_retry(...)
+        messages.append(HumanMessage(content=result))
+    elif data.get("final_answer"):
+        # 完成
+        break
+```
+
+## 工具执行
+
+```python
+async def run_single_tool_with_retry(task_id, tool_name, args, max_tries):
+    for attempt in range(max_tries):
+        result = await tool_registry.execute(tool_name, args)
+        if result["ok"]:
+            return result
+        # 指数退避重试
+```
+
+## 内置工具
+
+| 工具 | 说明 |
+|------|------|
+| `tavily_search` | 网页搜索 |
+| `duckduckgo_search` | 网页搜索 |
+| `read_file` | 文件读取 |
+| `write_file` | 文件写入 |
+| `list_directory` | 目录列表 |
+| `python_repl` | Python 执行 |
+| `shell` | 系统命令 |

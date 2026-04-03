@@ -1,4 +1,4 @@
-"""对外可写设置：MCP、Skills、Agent 工作区根（settings_kv）；拒绝密钥形状字段名。"""
+"""对外可写设置：MCP、Skills、Agent 工作区根、执行模式（settings_kv）；拒绝密钥形状字段名。"""
 
 import json
 from typing import Any
@@ -17,6 +17,8 @@ from app.schemas.settings import (
 _SETTINGS_KEY_MCP = "mcp"
 _SETTINGS_KEY_SKILLS = "skills_paths"
 _SETTINGS_KEY_WORKSPACE = "agent_workspace_root"
+_SETTINGS_KEY_EXECUTION_MODE = "execution_mode"
+_SETTINGS_KEY_APPROVED_TOOLS = "approved_tool_patterns"
 
 _FORBIDDEN_KEY_FRAGMENTS = (
     "api_key",
@@ -96,23 +98,29 @@ async def get_settings_public(db: AsyncSession) -> SettingsPublic:
     mcp_row = await settings_repository.get_value(db, _SETTINGS_KEY_MCP)
     skills_row = await settings_repository.get_value(db, _SETTINGS_KEY_SKILLS)
     ws_row = await settings_repository.get_value(db, _SETTINGS_KEY_WORKSPACE)
+    mode_row = await settings_repository.get_value(db, _SETTINGS_KEY_EXECUTION_MODE)
+    approved_row = await settings_repository.get_value(db, _SETTINGS_KEY_APPROVED_TOOLS)
     mcp = _json_list_from_row(mcp_row.value_json if mcp_row else None)
     skills_raw = _json_list_from_row(skills_row.value_json if skills_row else None)
     skills_paths = [str(x) for x in skills_raw]
     agent_workspace_root = _optional_workspace_root_from_row(
         ws_row.value_json if ws_row else None,
     )
+    execution_mode = _execution_mode_from_row(mode_row.value_json if mode_row else None)
+    approved_tool_patterns = _json_list_from_row(approved_row.value_json if approved_row else None)
     return SettingsPublic(
         mcp=mcp,
         skills_paths=skills_paths,
         agent_workspace_root=agent_workspace_root,
+        execution_mode=execution_mode,
+        approved_tool_patterns=approved_tool_patterns,
     )
 
 
 async def update_settings(
     db: AsyncSession, body: SettingsUpdate
 ) -> SettingsUpdateResponse:
-    """校验请求体并写回 settings_kv（MCP、Skills、工作区根）。"""
+    """校验请求体并写回 settings_kv（MCP、Skills、工作区根、执行模式）。"""
     _walk_no_secret_keys(body.model_dump())
     normalized_mcp = _normalize_mcp_for_storage(body.mcp)
     await settings_repository.upsert_value(
@@ -127,6 +135,16 @@ async def update_settings(
         db,
         _SETTINGS_KEY_WORKSPACE,
         json.dumps(body.agent_workspace_root, ensure_ascii=False),
+    )
+    await settings_repository.upsert_value(
+        db,
+        _SETTINGS_KEY_EXECUTION_MODE,
+        json.dumps(body.execution_mode, ensure_ascii=False),
+    )
+    await settings_repository.upsert_value(
+        db,
+        _SETTINGS_KEY_APPROVED_TOOLS,
+        json.dumps(body.approved_tool_patterns or [], ensure_ascii=False),
     )
     return SettingsUpdateResponse()
 
@@ -145,18 +163,49 @@ async def patch_settings(
         if body.agent_workspace_root is not None
         else current.agent_workspace_root
     )
+    new_mode = (
+        body.execution_mode
+        if body.execution_mode is not None
+        else current.execution_mode
+    )
+    new_approved = (
+        body.approved_tool_patterns
+        if body.approved_tool_patterns is not None
+        else current.approved_tool_patterns
+    )
     merged = SettingsUpdate(
         mcp=new_mcp,
         skills_paths=new_paths,
         agent_workspace_root=new_ws,
+        execution_mode=new_mode,
+        approved_tool_patterns=new_approved,
     )
     return await update_settings(db, merged)
 
 
 async def reset_settings(db: AsyncSession) -> SettingsUpdateResponse:
-    """清空对外 MCP、Skills 与工作区根（回退环境变量），仅影响可 API 读写的键。"""
+    """清空对外 MCP、Skills、工作区根与执行模式（回退环境变量），仅影响可 API 读写的键。"""
     await update_settings(
         db,
-        SettingsUpdate(mcp=[], skills_paths=[], agent_workspace_root=None),
+        SettingsUpdate(
+            mcp=[],
+            skills_paths=[],
+            agent_workspace_root=None,
+            execution_mode="auto",
+            approved_tool_patterns=[],
+        ),
     )
     return SettingsUpdateResponse()
+
+
+def _execution_mode_from_row(value_json: str | None) -> str:
+    """解析 settings_kv 中的 execution_mode；缺失或非法值默认 auto。"""
+    if not value_json:
+        return "auto"
+    try:
+        v = json.loads(value_json)
+        if isinstance(v, str) and v in ("auto", "confirm", "learn"):
+            return v
+    except (json.JSONDecodeError, ValueError):
+        pass
+    return "auto"

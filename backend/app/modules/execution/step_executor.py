@@ -81,6 +81,20 @@ async def execute_plan_step_react(
             break
 
     # 写入 step_end
+    has_real_final = bool(step_ans)
+    has_approval_rejected = any(
+        isinstance(c, dict) and c.get("approval_rejected")
+        for c in call_results
+    )
+    if has_approval_rejected:
+        end_status = "cancelled"
+    elif has_real_final:
+        end_status = "ok"
+    elif call_results:
+        end_status = "no_final_answer"
+    else:
+        end_status = "failed"
+
     async with get_db_session() as db:
         async with db.begin():
             await event_repository.append_event(
@@ -91,7 +105,7 @@ async def execute_plan_step_react(
                 json.dumps(
                     {
                         "step_id": sid,
-                        "status": "ok" if ok_loop else "failed",
+                        "status": end_status,
                         "attempts": total_attempts,
                     },
                     ensure_ascii=False,

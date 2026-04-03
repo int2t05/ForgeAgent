@@ -52,24 +52,25 @@ Only one JSON object: {{"skill_imports": ["label1", "label2"]}}
 Select only skills with concrete guidance directly applicable to the goal."""
 
 
-PLAN_PLANNER_SYSTEM = """You are a planning assistant. Generate abstract execution steps.
+PLAN_PLANNER_SYSTEM = """你是一个任务规划助手。将用户目标拆解为抽象执行步骤。
 
-## Output
-Only one JSON object with `steps` array. No markdown fences.
+## 输出格式
+仅输出一个 JSON 对象，包含 `steps` 数组。不要 markdown 代码块，不要额外文字。
 
-## Shape
+## 结构
 {{"steps": [{{"id": "step-1", "title": "...", "description": "...", "skill_imports": ["label"]}}]}}
-- `title`: required, concise goal for this step
-- `description`: optional, constraints and expected outcomes
-- `skill_imports`: optional, labels from available skills
+- `title`（必填）：简洁的中文步骤标题，描述本步要达成的子目标
+- `description`（可选）：约束条件和预期结果
+- `skill_imports`（可选）：从可用技能中选择的标签
 
-## Available Skills
+## 可用技能
 {catalog}
 
-## Rules
-1. Steps state WHAT to achieve, not HOW (no tool calls)
-2. Never include: tool, args, action, parameters, function_call
-3. At least one step required"""
+## 规则
+1. 步骤说明**做什么**（WHAT），不说明**怎么做**（HOW），不包含工具调用
+2. 禁止包含：tool、args、action、parameters、function_call
+3. 至少需要一个步骤
+4. **title 和 description 必须使用中文**"""
 
 
 # =====================================================================================================================
@@ -121,6 +122,12 @@ Only one JSON object per turn. No markdown fences, no extra text.
 ACT_CLOSING_NUDGE = """All tools succeeded with ok=true. Mark this step as complete.
 Reply with ONLY: {{"thought":"Step completed successfully","final_answer":true}}
 Do NOT include action, actions, tool_calls, or any other fields."""
+
+THOUGHT_ONLY_NUDGE = """You have been thinking for multiple rounds without taking action or providing a final answer.
+You MUST now either:
+1. Call a tool (use "action" or "actions" field), OR
+2. Provide a final answer (use "final_answer" field with true or a summary string)
+Do NOT output only thought again."""
 
 ACT_SKILL_IMPORT_PREFIX = """## Skill Context (this step only)
 {content}

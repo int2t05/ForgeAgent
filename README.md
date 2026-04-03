@@ -1,56 +1,102 @@
 # ForgeAgent
 
-面向开发与使用场景的 **AI Agent 应用**（非通用编排框架）：**规划、记忆、工具、执行** 四类能力，**Plan-and-Execute** 主循环；前端用于任务与可观测事件监控。MVP 能力与数据模型见 [`docs/architecture/TECH_DESIGN.md`](docs/architecture/TECH_DESIGN.md)；**完整文档索引**见 [`docs/README.md`](docs/README.md)。
+> 面向开发与使用场景的 AI Agent 应用（非通用编排框架）
 
-## 仓库说明
+## 核心特性
 
-本仓库为 **monorepo**：`frontend/`（Node/React）与 `backend/`（Python/FastAPI）**目录分离**。
-
-- **Node / npm 仅在 `frontend/`**：仓库根目录**没有** `package.json`，避免与 Python 后端混在一起、也避免误用 npm workspace 在根目录产生多余 `node_modules`。
-- **Python 仅在 `backend/`**：建议使用虚拟环境（`.venv`）与 `pip install -e .`，详见 [`START.md`](START.md)。
+| 特性 | 说明 |
+|------|------|
+| **Plan-and-Execute** | 先规划后执行的 Agent 认知框架 |
+| **四大模块** | 规划(Planning)、记忆(Memory)、工具(Tools)、执行(Execution) |
+| **MCP 支持** | 支持 Model Context Protocol 工具扩展 |
+| **Skill 上下文** | 支持 Skill 目录作为知识上下文注入 |
+| **LangGraph** | 基于 LangGraph 的状态机工作流 |
+| **实时监控** | 前端 SSE 实时展示任务执行状态 |
 
 ## 快速开始
 
-详细安装、环境变量与启动命令见 **[`START.md`](START.md)**（前后端分步说明）。
-
-摘要：
-
 ```bash
-# 前端（在 frontend 目录）
-cd frontend
-npm install
-npm run dev
-```
+# 前端
+cd frontend && npm install && npm run dev
 
-```bash
-# 后端（在 backend 目录，需先创建并激活 venv）
+# 后端
 cd backend
 python -m venv .venv
-# Windows: .\.venv\Scripts\Activate.ps1
 pip install -e .
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-从仓库根目录复制环境变量模板：`copy .env.example .env`（Windows）或 `cp .env.example .env`（Unix），再按需填写；**勿将含真实密钥的 `.env` 提交到 Git**。
+详见 [START.md](START.md)
+
+## 技术架构
+
+```
+┌─────────────────────────────────────────────────────┐
+│                    ForgeAgent                         │
+├─────────────────────────────────────────────────────┤
+│  Frontend (React + TypeScript + Vite)               │
+│  ├── SSE 实时事件监控                               │
+│  ├── Zustand 状态管理                               │
+│  └── TailwindCSS + Radix UI                        │
+├─────────────────────────────────────────────────────┤
+│  Backend (Python + FastAPI + LangGraph)              │
+│  ├── Plan-Execute 工作流                            │
+│  ├── Session Memory + 黑板反思                      │
+│  ├── Tool Registry (内置/MCP/Skill)                 │
+│  └── SQLite + SQLAlchemy 2.0                       │
+└─────────────────────────────────────────────────────┘
+```
+
+### Agent 工作流
+
+```
+Planner → Actor → Learner
+    ↑                │
+    └──── replan? ───┘
+```
+
+| 节点 | 职责 |
+|------|------|
+| **Planner** | 生成抽象计划步骤 |
+| **Actor** | ReAct 循环执行，工具调用 |
+| **Learner** | 反思轨迹，决定是否重规划 |
+
+## 仓库结构
+
+```
+ForgeAgent/
+├── frontend/          # React + TypeScript + Vite
+├── backend/          # Python + FastAPI + LangGraph
+├── docs/             # 详细文档
+│   ├── getting-started/  # 入门指南
+│   ├── architecture/    # 架构文档
+│   ├── agent/           # Agent 核心
+│   ├── optimization/    # 优化方案
+│   └── api/             # API 文档
+├── M-prompts/        # 方法提示词
+└── skills/           # 技能目录
+```
 
 ## 文档索引
 
-详见 **[`docs/README.md`](docs/README.md)**。摘要：
+| 分类 | 文档 | 说明 |
+|------|------|------|
+| 入门 | [docs/getting-started/README.md](docs/getting-started/README.md) | 文档索引 |
+| 入门 | [docs/getting-started/QUICK-START.md](docs/getting-started/QUICK-START.md) | 快速开始 |
+| 架构 | [docs/architecture/README.md](docs/architecture/README.md) | 架构索引 |
+| 架构 | [docs/architecture/SYSTEM.md](docs/architecture/SYSTEM.md) | 系统架构 |
+| 架构 | [docs/architecture/WORKFLOW.md](docs/architecture/WORKFLOW.md) | 工作流详解 |
+| Agent | [docs/agent/README.md](docs/agent/README.md) | Agent 索引 |
+| Agent | [docs/agent/PLANNING.md](docs/agent/PLANNING.md) | 规划模块 |
+| Agent | [docs/agent/EXECUTION.md](docs/agent/EXECUTION.md) | 执行模块 |
+| Agent | [docs/agent/MEMORY.md](docs/agent/MEMORY.md) | 记忆模块 |
+| Agent | [docs/agent/CONTEXT.md](docs/agent/CONTEXT.md) | 上下文管理 |
+| 优化 | [docs/optimization/README.md](docs/optimization/README.md) | 优化索引 |
+| 优化 | [docs/optimization/PERFORMANCE.md](docs/optimization/PERFORMANCE.md) | 性能优化 |
+| 优化 | [docs/optimization/PROMPT.md](docs/optimization/PROMPT.md) | 提示词优化 |
+| API | [docs/api/README.md](docs/api/README.md) | API 索引 |
+| API | [docs/api/REFERENCE.md](docs/api/REFERENCE.md) | API 参考 |
 
-| 文档 | 说明 |
-|------|------|
-| [`START.md`](START.md) | 脚手架安装、启动步骤、`frontend/package.json` 脚本说明 |
-| [`AGENTS.md`](AGENTS.md) | AI 协作与工程规范（Cursor 等工具） |
-| [`docs/architecture/TECH_DESIGN.md`](docs/architecture/TECH_DESIGN.md) | 技术设计、数据模型与 API 方向 |
-| [`docs/architecture/ARCH.md`](docs/architecture/ARCH.md) | 全栈目录与模块职责（与实现对齐） |
-| [`docs/conversation-flow.md`](docs/conversation-flow.md) | 对话、SSE、流式等业务流程 |
-| [`docs/backend/TODO.md`](docs/backend/TODO.md) | 后端迭代 TODO |
-| [`docs/backend/业务流程文档.md`](docs/backend/业务流程文档.md) | 业务流程与伪代码 |
-| [`docs/performance-optimization.md`](docs/performance-optimization.md) | 性能优化笔记 |
-| [`docs/llm-context-prompt-optimization.md`](docs/llm-context-prompt-optimization.md) | LLM 上下文与提示词优化 |
+## License
 
-接口字段与路径以运行后端 **`/openapi.json`** 为准（`TECH_DESIGN.md` 第 4 节为概要表）。
-
-## 许可
-
-见仓库根目录 [`LICENSE`](LICENSE)。
+见 [LICENSE](LICENSE)

@@ -396,6 +396,8 @@ async def patch_task(
                 code="CONFLICT",
                 status_code=409,
             )
+        from app.modules.execution.approval import approval_manager
+        approval_manager.cancel_for_task(task_id)
         mid = task.source_user_message_id
         if task.owns_source_user_message and mid is not None:
             msg = await message_repository.get_message_by_id(db, mid)

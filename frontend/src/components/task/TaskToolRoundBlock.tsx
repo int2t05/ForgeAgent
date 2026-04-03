@@ -167,7 +167,7 @@ function buildReactTurns(events: TaskEvent[]): (ToolReactTurn | FinalReactTurn)[
     if (e.kind === 'tool_call') {
       const p = e.payload as Record<string, unknown> | null
       const thought = p && typeof p.thought === 'string' ? p.thought.trim() : ''
-      
+
       // 判断是否属于当前轮：
       // 1. 当前没有活跃的 tool 轮，或
       // 2. thought 不同（说明是新的 LLM 输出）
@@ -176,7 +176,7 @@ function buildReactTurns(events: TaskEvent[]): (ToolReactTurn | FinalReactTurn)[
         currentToolTurn = { kind: 'tool', round, thought, tools: [] }
         turns.push(currentToolTurn)
       }
-      
+
       // 将 tool_call 添加到当前轮的工具列表中
       currentToolTurn.tools.push({ call: e, results: [] })
     } else if (e.kind === 'tool_result') {
@@ -253,6 +253,20 @@ function resolveStepEndBadge(
     return {
       label: '已跳过',
       badgeClass: 'bg-neutral-100 text-neutral-700 border-neutral-200',
+    }
+  }
+  if (endStatus === 'cancelled') {
+    return {
+      label: '已拒绝',
+      badgeClass: 'bg-red-50 text-red-800 border-red-200',
+      hint: '用户在审批环节拒绝了敏感工具的执行请求。',
+    }
+  }
+  if (endStatus === 'no_final_answer') {
+    return {
+      label: '未收官',
+      badgeClass: 'bg-amber-50 text-amber-900 border-amber-200',
+      hint: '工具已执行，但模型未产出 final_answer（仅返回 thought）。',
     }
   }
   if (
@@ -397,11 +411,18 @@ function ToolAttemptRow({
   const ok = p?.ok === true
   const err = p?.error
   const result = p?.result ?? null
+  const isApprovalRejected = p?.approval_rejected === true
   const argRec = asRecord(toolArgs)
 
   const errBlock =
     err != null && err !== '' ? (
-      <p className="mt-2 text-red-800 text-xs leading-relaxed">
+      <p className={`mt-2 text-xs leading-relaxed ${isApprovalRejected ? 'text-amber-800 bg-amber-50 rounded-md px-3 py-2 border border-amber-200' : 'text-red-800'}`}>
+        {isApprovalRejected && (
+          <span className="inline-flex items-center gap-1 font-medium mb-0.5">
+            ⛔ 用户拒绝执行
+          </span>
+        )}
+        <br />
         {typeof err === 'string' ? err : formatJson(err)}
       </p>
     ) : null
@@ -478,9 +499,8 @@ function ToolAttemptRow({
     const body = formatToolResultBody(result)
     mainBody = (
       <pre
-        className={`mt-2 max-h-[min(16rem,40vh)] overflow-auto rounded-md bg-neutral-900/90 p-2 font-mono text-xs text-neutral-100 ${
-          body.preWrap ? 'whitespace-pre-wrap break-words' : ''
-        }`}
+        className={`mt-2 max-h-[min(16rem,40vh)] overflow-auto rounded-md bg-neutral-900/90 p-2 font-mono text-xs text-neutral-100 ${body.preWrap ? 'whitespace-pre-wrap break-words' : ''
+          }`}
       >
         {body.text}
       </pre>
@@ -536,7 +556,7 @@ function ToolRoundListItem({
 }) {
   const parallelCount = turn.tools.length
   const isParallel = parallelCount > 1
-  
+
   return (
     <li className="space-y-3">
       <div className="flex items-center gap-2 text-xs text-neutral-500">
@@ -549,7 +569,7 @@ function ToolRoundListItem({
           <span>· 工具</span>
         )}
       </div>
-      
+
       {/* Thought：整轮共享的推理 */}
       <div className="fa-chat-block-thinking !p-0">
         <details className="fa-thinking-fold" open>

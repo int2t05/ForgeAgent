@@ -13,6 +13,8 @@ export type EventKind =
   | 'step_end'
   | 'tool_call'
   | 'tool_result'
+  | 'tool_approval_required'
+  | 'tool_approval_result'
   | 'error'
   | 'replan'
   | 'llm_stream_delta'

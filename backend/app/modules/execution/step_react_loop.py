@@ -24,7 +24,7 @@ from app.modules.execution.step_react_internals import (
 )
 from app.modules.execution.tool_runner import run_single_tool_with_retry
 from app.modules.memory.tool_observation_compact import compact_json_for_prompt
-from app.modules.prompts import RETRY_REACT, build_react_prompt
+from app.modules.prompts import RETRY_REACT, build_react_prompt, THOUGHT_ONLY_NUDGE
 from app.repositories import event_repository
 from app.schemas.tools import ToolItem
 from app.shared.langchain_content import message_content_text
@@ -93,6 +93,8 @@ async def run_step_react_loop(
     total_tokens_used = 0
     react_parse_failures = 0
     max_parse_attempts = max(1, int(s.react_parse_max_attempts))
+    consecutive_thought_only = 0
+    max_consecutive_thought = 3
 
     # 步内循环：模型轮次 → 若有一批工具则顺序执行并回注 Observation → 否则收终答
     while True:
@@ -147,6 +149,7 @@ async def run_step_react_loop(
         thought_round = pick_thought(data)
 
         if invocations:
+            consecutive_thought_only = 0
             # 使用信号量限制并发执行，避免连接池耗尽
             async def run_with_semaphore(tn: str, args: dict[str, Any]) -> Any:
                 async with _TOOL_SEMAPHORE:
@@ -216,14 +219,28 @@ async def run_step_react_loop(
             closing_thought = thought_round
             break
 
-        # 只有 thought 的纯推理轮次：继续下一轮（不添加 Observation）
-        # 这意味着模型只是在思考，还没决定要做什么
-        logger.warning(
-            "step react 纯推理轮次 task=%s step=%s round=%s (仅 thought，继续)",
-            task_id,
-            step_id,
-            round_num,
-        )
+        # 只有 thought 的纯推理轮次：追踪连续次数，达到阈值后注入 nudge 要求终答
+        consecutive_thought_only += 1
+        if consecutive_thought_only >= max_consecutive_thought:
+            logger.warning(
+                "step react 连续 %d 次纯 thought 无进展 task=%s step=%s round=%s",
+                consecutive_thought_only, task_id, step_id, round_num,
+            )
+            messages.append(HumanMessage(content=THOUGHT_ONLY_NUDGE))
+            break
+        if consecutive_thought_only >= 2:
+            logger.info(
+                "step react 连续 %d 次纯 thought 注入 nudge task=%s step=%s",
+                consecutive_thought_only, task_id, step_id,
+            )
+            messages.append(HumanMessage(content=THOUGHT_ONLY_NUDGE))
+        else:
+            logger.warning(
+                "step react 纯推理轮次 task=%s step=%s round=%s (仅 thought，继续)",
+                task_id,
+                step_id,
+                round_num,
+            )
         continue
 
     all_tool_ok = all(c.get("ok") for c in call_results) if call_results else True
@@ -243,12 +260,10 @@ async def run_step_react_loop(
             closing_thought = th2
         else:
             logger.warning(
-                "react synthetic final after failed closing task=%s step=%s",
+                "react 未产出 final_answer task=%s step=%s (工具成功但模型未给出终答，标记为未收官)",
                 task_id,
                 step_id,
             )
-            step_final = _FINAL_ANSWER_TRUE
-            closing_thought = closing_thought or th2
 
     overall = bool(step_final) and all_tool_ok
 

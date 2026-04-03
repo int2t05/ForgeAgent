@@ -10,6 +10,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { MessageDialog } from '@/components/ui/MessageDialog'
 import { McpServersEditor } from '@/components/settings/McpServersEditor'
 import { ToolsRegistrySection } from '@/components/settings/ToolsRegistrySection'
+import { ExecutionModeSection } from '@/components/settings/ExecutionModeSection'
 import { validateSkillPaths } from '@/api/settings'
 import { useSettings } from '@/hooks/useSettings'
 import {
@@ -17,13 +18,14 @@ import {
   draftsToMcpPayload,
   type McpServerDraft,
 } from '@/types/mcp'
-import type { Settings, SkillPathsValidateResponse } from '@/types/settings'
+import type { Settings, SkillPathsValidateResponse, ExecutionMode } from '@/types/settings'
 
 /** 设置表单内容（仅在 settings 加载完成后渲染）。 */
 function SettingsForm({
   initialSkillsPaths,
   initialAgentWorkspaceRoot,
   initialMcp,
+  initialExecutionMode,
   updateSettings,
   isUpdating,
   updateError,
@@ -31,6 +33,7 @@ function SettingsForm({
   initialSkillsPaths: string
   initialAgentWorkspaceRoot: string
   initialMcp: unknown[]
+  initialExecutionMode: ExecutionMode
   updateSettings: ReturnType<typeof useSettings>['updateSettings']
   isUpdating: boolean
   updateError: ReturnType<typeof useSettings>['updateError']
@@ -40,6 +43,7 @@ function SettingsForm({
   const [mcpServers, setMcpServers] = useState<McpServerDraft[]>(() =>
     parseMcpListFromApi(initialMcp),
   )
+  const [executionMode, setExecutionMode] = useState<ExecutionMode>(initialExecutionMode)
   const [skillValidate, setSkillValidate] = useState<SkillPathsValidateResponse | null>(null)
   const [skillValidateLoading, setSkillValidateLoading] = useState(false)
   const [skillValidateError, setSkillValidateError] = useState<string | null>(null)
@@ -76,6 +80,7 @@ function SettingsForm({
         .map((s) => s.trim())
         .filter(Boolean),
       agent_workspace_root: agentWorkspaceRoot.trim() || null,
+      execution_mode: executionMode,
     }
     updateSettings(body)
   }
@@ -95,6 +100,11 @@ function SettingsForm({
           }
         />
       )}
+
+      <ExecutionModeSection
+        value={executionMode}
+        onChange={setExecutionMode}
+      />
 
       <section>
         <h2 className="mb-3 text-base font-semibold text-neutral-800">Agent 工作区根目录</h2>
@@ -250,6 +260,8 @@ export function SettingsPage() {
     [settings],
   )
 
+  const initialExecutionMode: ExecutionMode = settings?.execution_mode ?? 'auto'
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <ConfirmDialog
@@ -274,50 +286,51 @@ export function SettingsPage() {
       />
 
       <div className="shrink-0">
-      <Header
-        title="设置"
-        actions={
-          <button
-            type="button"
-            className="fa-btn-secondary py-1.5"
-            disabled={isResetting || isLoading}
-            onClick={() => setConfirmReset(true)}
-          >
-            重置
-          </button>
-        }
-      />
+        <Header
+          title="设置"
+          actions={
+            <button
+              type="button"
+              className="fa-btn-secondary py-1.5"
+              disabled={isResetting || isLoading}
+              onClick={() => setConfirmReset(true)}
+            >
+              重置
+            </button>
+          }
+        />
       </div>
 
       <div className="fa-reveal min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="mx-auto w-full max-w-3xl px-6 py-6 pb-10">
-        {isLoading && <LoadingSpinner />}
-        {error && <ErrorAlert message="加载设置失败" />}
+          {isLoading && <LoadingSpinner />}
+          {error && <ErrorAlert message="加载设置失败" />}
 
-        {resetError && (
-          <ErrorAlert
-            message="重置失败"
-            detail={
-              resetError instanceof Error ? resetError.message : '未知错误'
-            }
-          />
-        )}
+          {resetError && (
+            <ErrorAlert
+              message="重置失败"
+              detail={
+                resetError instanceof Error ? resetError.message : '未知错误'
+              }
+            />
+          )}
 
-        {settings && (
-          <SettingsForm
-            key={dataUpdatedAt}
-            initialSkillsPaths={initialSkillsPaths}
-            initialAgentWorkspaceRoot={initialAgentWorkspaceRoot}
-            initialMcp={settings.mcp}
-            updateSettings={updateSettings}
-            isUpdating={isUpdating}
-            updateError={updateError}
-          />
-        )}
+          {settings && (
+            <SettingsForm
+              key={dataUpdatedAt}
+              initialSkillsPaths={initialSkillsPaths}
+              initialAgentWorkspaceRoot={initialAgentWorkspaceRoot}
+              initialMcp={settings.mcp}
+              initialExecutionMode={initialExecutionMode}
+              updateSettings={updateSettings}
+              isUpdating={isUpdating}
+              updateError={updateError}
+            />
+          )}
 
-        <div className="mt-10 border-t border-neutral-200/90 pt-10">
-          <ToolsRegistrySection />
-        </div>
+          <div className="mt-10 border-t border-neutral-200/90 pt-10">
+            <ToolsRegistrySection />
+          </div>
         </div>
       </div>
     </div>
