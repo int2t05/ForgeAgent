@@ -1,7 +1,13 @@
-"""LangGraph Agent 编排：Planner → Actor → Learner，Learner 条件回到 Planner 或结束。
+"""LangGraph Agent 编排：Plan → Act → Learn 三角循环。
 
-图结构与本模块耦合；具体节点实现通过 ``build_agent_graph`` 注入（默认惰性加载），
-便于独立优化 / 单测替换 Planner、Actor、Learner 而无需改边定义。
+Plan: 获取会话上下文 → 生成步骤
+Act: 每步循环执行 → 收集工具上下文
+Learn: 总结归纳 → 反思 → 判断重规划 or 生成最终回答
+
+图结构：
+START → plan → act → learn → (条件边)
+                                    ├─ plan (重规划)
+                                    └─ END (完成)
 """
 
 from __future__ import annotations
@@ -14,56 +20,64 @@ from langgraph.graph import END, START, StateGraph
 from app.modules.workflow.state import AgentState
 
 AgentNode: TypeAlias = Callable[[AgentState], Awaitable[dict[str, Any]]]
-LearnerRoute: TypeAlias = Callable[
-    [AgentState], Literal["planner", "done"]
-]
+LearnRoute: TypeAlias = Callable[[AgentState], Literal["plan", "done"]]
 
 
-def _default_workflow_nodes() -> tuple[AgentNode, AgentNode, AgentNode, LearnerRoute]:
-    """惰性加载默认可运行节点，避免 ``graph`` 与规划/执行模块的导入期循环依赖。"""
-    from app.modules.execution.nodes import actor_node, route_after_learner
-    from app.modules.memory.learner_node import learner_node
-    from app.modules.planning.nodes import planner_node
+def _default_workflow_nodes() -> tuple[AgentNode, AgentNode, AgentNode, LearnRoute]:
+    """惰性加载默认节点，避免循环依赖。"""
+    from app.modules.execution.nodes import act_node
+    from app.modules.memory.learner_node import learn_node, route_after_learn
+    from app.modules.planning.nodes import plan_node
 
-    return planner_node, actor_node, learner_node, route_after_learner
+    return plan_node, act_node, learn_node, route_after_learn
 
 
 def build_agent_graph(
     *,
-    planner: AgentNode | None = None,
-    actor: AgentNode | None = None,
-    learner: AgentNode | None = None,
-    route_after_learner: LearnerRoute | None = None,
+    plan: AgentNode | None = None,
+    act: AgentNode | None = None,
+    learn: AgentNode | None = None,
+    route_after_learn: LearnRoute | None = None,
 ) -> StateGraph:
-    """返回已挂接节点与条件边的 ``StateGraph`` 构造器（未 ``compile``）。
+    """构建 Plan-Act-Learn 三角循环图。
 
-    未传入的槽位使用默认 ``planner_node`` / ``actor_node`` / ``learner_node`` /
-    ``route_after_learner``，在调用本函数时再导入对应模块。
+    节点命名：
+    - plan: 规划节点
+    - act: 执行节点
+    - learn: 学习节点
+
+    边：
+    - START → plan
+    - plan → act
+    - act → learn
+    - learn → (条件边) → plan 或 END
     """
     if (
-        planner is None
-        or actor is None
-        or learner is None
-        or route_after_learner is None
+        plan is None
+        or act is None
+        or learn is None
+        or route_after_learn is None
     ):
         dp, da, dl, dr = _default_workflow_nodes()
-        planner = planner or dp
-        actor = actor or da
-        learner = learner or dl
-        route_after_learner = route_after_learner or dr
+        plan = plan or dp
+        act = act or da
+        learn = learn or dl
+        route_after_learn = route_after_learn or dr
 
     builder = StateGraph(AgentState)
-    builder.add_node("planner", planner)
-    builder.add_node("actor", actor)
-    builder.add_node("learner", learner)
-    builder.add_edge(START, "planner")
-    builder.add_edge("planner", "actor")
-    builder.add_edge("actor", "learner")
+    builder.add_node("plan", plan)
+    builder.add_node("act", act)
+    builder.add_node("learn", learn)
+
+    builder.add_edge(START, "plan")
+    builder.add_edge("plan", "act")
+    builder.add_edge("act", "learn")
     builder.add_conditional_edges(
-        "learner",
-        route_after_learner,
-        {"planner": "planner", "done": END},
+        "learn",
+        route_after_learn,
+        {"plan": "plan", "done": END},
     )
+
     return builder
 
 
@@ -72,34 +86,33 @@ _checkpointer: BaseCheckpointSaver | None = None
 
 
 def init_compiled_agent_graph(checkpointer: BaseCheckpointSaver) -> None:
-    """注入 checkpointer 并完成编译图单例初始化（通常在 FastAPI lifespan 调用）。"""
+    """初始化编译图单例。"""
     global _compiled, _checkpointer
     _checkpointer = checkpointer
     _compiled = build_agent_graph().compile(checkpointer=checkpointer)
 
 
 def get_checkpoint_guard_ref() -> BaseCheckpointSaver | None:
-    """返回当前全局 checkpointer 引用，供应用关闭链路与测试清理。"""
+    """返回当前 checkpointer 引用。"""
     return _checkpointer
 
 
 def reset_compiled_agent_graph_for_tests() -> None:
-    """测试用：丢弃编译图与 checkpointer 引用（不主动关闭底层连接）。"""
+    """测试用：重置编译图。"""
     shutdown_compiled_agent_graph()
 
 
 def shutdown_compiled_agent_graph() -> None:
-    """释放编译图与 checkpointer 全局引用（宜在 checkpointer 关闭之后调用）。"""
+    """释放编译图与 checkpointer 引用。"""
     global _compiled, _checkpointer
     _compiled = None
     _checkpointer = None
 
 
 def get_compiled_agent_graph():
-    """返回已编译图单例；未初始化时抛 ``RuntimeError``。"""
+    """返回已编译图单例。"""
     if _compiled is None:
         raise RuntimeError(
-            "Agent 图未初始化：请确认 FastAPI lifespan 已调用 init_compiled_agent_graph，"
-            "或在测试中显式初始化。"
+            "Agent 图未初始化：请确认 FastAPI lifespan 已调用 init_compiled_agent_graph。"
         )
     return _compiled

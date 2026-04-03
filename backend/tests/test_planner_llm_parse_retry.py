@@ -74,7 +74,7 @@ async def test_plan_steps_retries_after_invalid_json_then_succeeds() -> None:
     # 第二轮应带上首轮助手输出 + 纠偏用户消息
     second_call_messages = invoke.await_args_list[1].args[1]
     assert second_call_messages[-2] is bad
-    assert "could not be parsed" in (second_call_messages[-1].content or "")
+    assert "Invalid JSON" in (second_call_messages[-1].content or "")
 
 
 @pytest.mark.asyncio

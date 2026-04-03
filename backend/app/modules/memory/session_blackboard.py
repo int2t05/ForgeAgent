@@ -8,7 +8,7 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.database import AsyncSessionLocal
+from app.core.database import get_db_session
 from app.repositories import session_repository
 
 logger = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ async def write_session_blackboard(
 
 async def load_blackboard_seed(session_id: str) -> list[str]:
     """新任务启动时注入图初始 blackboard_notes。"""
-    async with AsyncSessionLocal() as db:
+    async with get_db_session() as db:
         return await read_session_blackboard(db, session_id)
 
 
@@ -76,7 +76,7 @@ async def flush_blackboard_from_graph_checkpoint(
         if not isinstance(notes, list) or not notes:
             return
         cap = get_settings().session_blackboard_max_notes
-        async with AsyncSessionLocal() as db:
+        async with get_db_session() as db:
             async with db.begin():
                 await write_session_blackboard(
                     db, session_id, notes, max_notes=cap

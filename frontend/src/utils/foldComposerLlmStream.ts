@@ -185,10 +185,9 @@ function formatToolResultsForComposer(toolName: string, results: TaskEvent[]): s
   for (const r of results) {
     const p = r.payload as Record<string, unknown> | null
     const ok = p?.ok === true
-    const attempt = typeof p?.attempt === 'number' ? p.attempt : null
     const err = p?.error
     lines.push('')
-    lines.push(`尝试 ${attempt ?? '—'} · ${ok ? '成功' : '失败'}`)
+    lines.push(ok ? '成功' : '失败')
     if (err != null && err !== '') {
       lines.push(typeof err === 'string' ? err : formatToolResultValue(err))
     }
@@ -235,9 +234,8 @@ function toolResultsFollowingCall(
 function toolResultAttemptPlain(r: TaskEvent): string {
   const rp = r.payload as Record<string, unknown> | null
   const ok = rp?.ok === true
-  const attempt = typeof rp?.attempt === 'number' ? rp.attempt : null
   const err = rp?.error
-  const lines: string[] = [`尝试 ${attempt ?? '—'} · ${ok ? '成功' : '失败'}`]
+  const lines: string[] = [ok ? '成功' : '失败']
   if (err != null && err !== '') {
     lines.push(typeof err === 'string' ? err : formatToolResultValue(err))
   }
@@ -400,13 +398,6 @@ function mergeComposerActionBlocksForSameTool(
   const mergedPanels: ComposerToolActionPanel[] = []
   for (let i = 0; i < ok.length; i++) {
     const b = ok[i]!
-    if (i > 0) {
-      mergedPanels.push({
-        id: `${b.id}-sep`,
-        variant: 'plain',
-        content: `第 ${i + 1} 次调用`,
-      })
-    }
     if (b.panels?.length) {
       for (const p of b.panels) {
         mergedPanels.push({ ...p, id: `${b.id}__${p.id}` })
@@ -414,7 +405,6 @@ function mergeComposerActionBlocksForSameTool(
     } else if (b.body.trim()) {
       mergedPanels.push({
         id: `${b.id}-body`,
-        title: i > 0 ? `正文（第 ${i + 1} 次）` : undefined,
         variant: 'code',
         collapsible: true,
         content: b.body,
@@ -423,7 +413,7 @@ function mergeComposerActionBlocksForSameTool(
   }
   return {
     id: ok.map((b) => b.id).join('+'),
-    subtitle: `${toolLabel} · ${ok.length} 次`,
+    subtitle: toolLabel,
     body: '',
     panels: mergedPanels,
   }

@@ -14,13 +14,11 @@ from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from app.core.config import Settings, get_settings
 from app.core.llm_openai import build_chat_model, is_llm_configured
 from app.core.llm_retry import ainvoke_with_retry
-from app.modules.prompts.planning import (
-    build_planner_system_prompt,
-    build_skill_selector_system_prompt,
-)
-from app.modules.prompts.parse_retry import (
-    PLANNER_PARSE_RETRY,
-    SKILL_SELECTOR_PARSE_RETRY,
+from app.modules.prompts import (
+    RETRY_PLANNER,
+    RETRY_SKILL_SELECTOR,
+    build_planner_prompt,
+    build_skill_selector_prompt,
 )
 from app.modules.tools.skill_sources import resolve_planner_skill_imports
 from app.shared.langchain_content import message_content_text
@@ -49,9 +47,7 @@ async def select_skills_for_planner(
         return []
 
     chat = build_chat_model(s)
-    sys_prompt = build_skill_selector_system_prompt(
-        configured_skill_paths=list(configured_skill_paths),
-    )
+    sys_prompt = build_skill_selector_prompt(list(configured_skill_paths))
     messages: list[BaseMessage] = [
         SystemMessage(content=sys_prompt),
         *list(chat_messages),
@@ -79,9 +75,7 @@ async def select_skills_for_planner(
             )
             if attempt < max_attempts - 1:
                 messages.append(msg)
-                messages.append(
-                    HumanMessage(content=SKILL_SELECTOR_PARSE_RETRY)
-                )
+                messages.append(HumanMessage(content=RETRY_SKILL_SELECTOR))
             continue
 
         raw = data.get("skill_imports")
@@ -104,6 +98,7 @@ async def select_skills_for_planner(
 
     logger.warning("skill selector exhausted attempts; returning empty list")
     return []
+
 
 _DEFAULT_STEPS: list[dict[str, Any]] = [
     {
@@ -196,7 +191,7 @@ async def plan_steps_with_llm(
         return list(_DEFAULT_STEPS)
 
     chat = build_chat_model(s)
-    sys = build_planner_system_prompt(configured_skill_paths=skill_paths)
+    sys = build_planner_prompt(skill_paths)
     messages: list[BaseMessage] = [SystemMessage(content=sys), *list(chat_messages)]
     max_rounds = max(1, int(s.planner_parse_max_attempts))
     # 2. 调用模型、解析 JSON、规范化；解析或结构失败时可多轮重试（附上上一轮输出与纠偏提示）
@@ -223,7 +218,7 @@ async def plan_steps_with_llm(
             )
             if attempt < max_rounds - 1:
                 messages.append(msg)
-                messages.append(HumanMessage(content=PLANNER_PARSE_RETRY))
+                messages.append(HumanMessage(content=RETRY_PLANNER))
             continue
 
         normalized = _normalize_steps(data, configured_skill_paths=skill_paths)
@@ -235,7 +230,7 @@ async def plan_steps_with_llm(
             )
             if attempt < max_rounds - 1:
                 messages.append(msg)
-                messages.append(HumanMessage(content=PLANNER_PARSE_RETRY))
+                messages.append(HumanMessage(content=RETRY_PLANNER))
             continue
 
         return normalized

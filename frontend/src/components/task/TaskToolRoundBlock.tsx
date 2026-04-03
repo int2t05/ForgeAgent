@@ -395,7 +395,6 @@ function ToolAttemptRow({
 }) {
   const p = ev.payload as Record<string, unknown> | null
   const ok = p?.ok === true
-  const attempt = typeof p?.attempt === 'number' ? p.attempt : null
   const err = p?.error
   const result = p?.result ?? null
   const argRec = asRecord(toolArgs)
@@ -491,7 +490,6 @@ function ToolAttemptRow({
   return (
     <div className="rounded border border-neutral-200 bg-neutral-50/80 p-2">
       <p className="font-mono text-neutral-800 text-xs">
-        <span className="text-neutral-500">尝试</span> {attempt ?? '—'} ·{' '}
         <span className={ok ? 'text-emerald-700' : 'text-red-700'}>{ok ? '成功' : '失败'}</span>
       </p>
       {errBlock}

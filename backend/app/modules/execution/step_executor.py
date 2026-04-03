@@ -9,7 +9,7 @@ import json
 from typing import Any
 
 from app.core.config import Settings
-from app.core.database import AsyncSessionLocal
+from app.core.database import get_db_session
 from app.modules.execution.step_react_loop import run_step_react_loop
 from app.modules.tools.skill_sources import skill_import_context_from_paths
 from app.repositories import event_repository
@@ -41,7 +41,7 @@ async def execute_plan_step_react(
     skill_ctx = skill_import_context_from_paths(_step_skill_paths(step))
 
     # 落库 step_start（短事务；ReAct 耗时不一定持有同一会话，以免占满连接池）
-    async with AsyncSessionLocal() as db:
+    async with get_db_session() as db:
         async with db.begin():
             await event_repository.append_event(
                 db,
@@ -81,7 +81,7 @@ async def execute_plan_step_react(
             break
 
     # 写入 step_end
-    async with AsyncSessionLocal() as db:
+    async with get_db_session() as db:
         async with db.begin():
             await event_repository.append_event(
                 db,

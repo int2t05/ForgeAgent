@@ -6,27 +6,27 @@
 
 假设：2 步计划，每步 2 个工具调用，无重试
 
-| 阶段 | 延迟 |
-|------|------|
-| POST /tasks (API) | ~50ms |
-| Planner LLM | ~2s |
-| Actor 第 1 步 (2 工具) | ~3.3s |
-| Actor 第 2 步 (2 工具) | ~3.3s |
-| 总结 LLM | ~2s |
-| Learner LLM | ~2s |
-| 终态 SSE 关闭延迟 | +400ms |
-| **总计** | **~13-16s** |
+| 阶段                 | 延迟          |
+| ------------------ | ----------- |
+| POST /tasks (API)  | ~50ms       |
+| Planner LLM        | ~2s         |
+| Actor 第 1 步 (2 工具) | ~3.3s       |
+| Actor 第 2 步 (2 工具) | ~3.3s       |
+| 总结 LLM             | ~2s         |
+| Learner LLM        | ~2s         |
+| 终态 SSE 关闭延迟        | +400ms      |
+| **总计**             | **~13-16s** |
 
 ### 1.2 关键瓶颈
 
-| 优先级 | 瓶颈 | 影响 |
-|--------|------|------|
-| P0 | SSE 轮询间隔 100ms | 事件推送最大延迟 100ms |
-| P0 | 每工具调用独立 DB 事务 | 11 条事件/步 × ~15ms = ~165ms |
-| P1 | ReAct 串行执行 | 工具间无并行 |
-| P1 | LLM 重试退避过长 | 429/5xx 时最长 60s |
-| P2 | Planner JSON 重试 | 最多 3 次 LLM 调用 |
-| P2 | Learner 反思 LLM | 额外 1-3 次调用 |
+| 优先级 | 瓶颈              | 影响                        |
+| --- | --------------- | ------------------------- |
+| P0  | SSE 轮询间隔 100ms  | 事件推送最大延迟 100ms            |
+| P0  | 每工具调用独立 DB 事务   | 11 条事件/步 × ~15ms = ~165ms |
+| P1  | ReAct 串行执行      | 工具间无并行                    |
+| P1  | LLM 重试退避过长      | 429/5xx 时最长 60s           |
+| P2  | Planner JSON 重试 | 最多 3 次 LLM 调用             |
+| P2  | Learner 反思 LLM  | 额外 1-3 次调用                |
 
 ---
 
@@ -385,28 +385,28 @@ class Settings:
 
 ### 8.1 优化前后对比
 
-| 优化项 | 优化前 | 优化后 | 节省 |
-|--------|--------|--------|------|
-| SSE 轮询间隔 | 100ms | 50ms | 50ms |
-| 工具并行执行 | 串行 ~600ms | 并行 ~300ms | ~300ms/步 |
-| 批量 DB 写入 | 11 事务 ~165ms | 1 事务 ~30ms | ~135ms/步 |
-| 快速失败 | 最多 3 次规划重试 | 1 次 | ~2s |
-| 降低重试延迟 | base 1.5s | base 0.5s | ~2s (遇错误时) |
-| ReAct 轮次 | 最多 20 | 最多 10 | ~2s/步 |
+| 优化项      | 优化前          | 优化后        | 节省         |
+| -------- | ------------ | ---------- | ---------- |
+| SSE 轮询间隔 | 100ms        | 50ms       | 50ms       |
+| 工具并行执行   | 串行 ~600ms    | 并行 ~300ms  | ~300ms/步   |
+| 批量 DB 写入 | 11 事务 ~165ms | 1 事务 ~30ms | ~135ms/步   |
+| 快速失败     | 最多 3 次规划重试   | 1 次        | ~2s        |
+| 降低重试延迟   | base 1.5s    | base 0.5s  | ~2s (遇错误时) |
+| ReAct 轮次 | 最多 20        | 最多 10      | ~2s/步      |
 
 ### 8.2 预期总延迟
 
 **优化后典型路径**（2 步计划，每步 2 工具，无重试）：
 
-| 阶段 | 优化后 |
-|------|--------|
-| POST /tasks | ~50ms |
-| Planner LLM | ~2s |
-| Actor 第 1 步 (并行工具) | ~2.5s |
-| Actor 第 2 步 (并行工具) | ~2.5s |
-| 总结 LLM | ~2s |
-| Learner LLM | ~2s |
-| **总计** | **~11s** |
+| 阶段                 | 优化后      |
+| ------------------ | -------- |
+| POST /tasks        | ~50ms    |
+| Planner LLM        | ~2s      |
+| Actor 第 1 步 (并行工具) | ~2.5s    |
+| Actor 第 2 步 (并行工具) | ~2.5s    |
+| 总结 LLM             | ~2s      |
+| Learner LLM        | ~2s      |
+| **总计**             | **~11s** |
 
 **提升**：13-16s → ~11s，**提升约 20-30%**
 
@@ -414,25 +414,59 @@ class Settings:
 
 ## 九、实施优先级
 
-| 优先级 | 优化项 | 工作量 | 风险 |
-|--------|--------|--------|------|
-| P0 | SSE 轮询降至 50ms | 5 分钟 | 低 |
-| P0 | 批量 DB 事件写入 | 2-3 小时 | 中 |
-| P1 | 工具并行执行 | 1-2 小时 | 中 |
-| P1 | 降低重试延迟 | 5 分钟 | 低 |
-| P1 | 规划器快速失败 | 30 分钟 | 低 |
-| P2 | ReAct 轮次限制 | 30 分钟 | 低 |
-| P2 | SSE 通知机制 | 4-6 小时 | 高 |
+| 优先级 | 优化项           | 工作量    | 风险  |
+| --- | ------------- | ------ | --- |
+| P0  | SSE 轮询降至 50ms | 5 分钟   | 低   |
+| P0  | 批量 DB 事件写入    | 2-3 小时 | 中   |
+| P1  | 工具并行执行        | 1-2 小时 | 中   |
+| P1  | 降低重试延迟        | 5 分钟   | 低   |
+| P1  | 规划器快速失败       | 30 分钟  | 低   |
+| P2  | ReAct 轮次限制    | 30 分钟  | 低   |
+| P2  | SSE 通知机制      | 4-6 小时 | 高   |
 
 ---
 
 ## 十、关键文件
 
-| 文件 | 优化位置 |
-|------|---------|
-| `services/event_stream_service.py` | 第 21 行：轮询间隔 |
-| `repositories/event_repository.py` | 第 9 行：批量写入 |
-| `modules/execution/step_react_loop.py` | 第 126 行：并行工具 |
-| `modules/execution/nodes.py` | 第 22 行：批量刷库 |
-| `modules/planning/llm.py` | 第 84 行：快速失败 |
-| `core/config.py` | 第 48-94 行：重试配置 |
+| 文件                                     | 优化位置           |
+| -------------------------------------- | -------------- |
+| `services/event_stream_service.py`     | 第 21 行：轮询间隔    |
+| `repositories/event_repository.py`     | 第 9 行：批量写入     |
+| `modules/execution/step_react_loop.py` | 第 126 行：并行工具   |
+| `modules/execution/nodes.py`           | 第 22 行：批量刷库    |
+| `modules/planning/llm.py`              | 第 84 行：快速失败    |
+| `core/config.py`                       | 第 48-94 行：重试配置 |
+
+[settings_service] get_title_from_messages_text: 
+
+
+
+content=
+
+'<think>\nThe user is asking me to explain what a Plan-and-Execute type Agent does in 2-3 sentences. Let me analyze the conversation context:\n\nThe user asked about Plan-and-Execute Agent, and there\'s a plan step showing the approach:\n- Plan阶段：对 
+复杂任务进行目标分解与步骤规划，形成可执行的行动计划\n\nSo I need to generate a title for this conversation. The conversation is about explaining Plan-and-Execute type Agents. Let me generate an appropriate title.\n\nThe title should be:\n- 4-20 characters\n- Summarize the core topic\n- Natural Chinese\n- Could be a question or description\n\nOptions:\n- "Plan-and-Execute Agent 原理说明"\n- "计划执行型 Agent 概念解析"\n- "Plan-and-Execute Agent 解释"\n- "计划与
+执行型 Agent 介绍"\n\nI think "Plan-and-Execute Agent 原理说明" or "计划执行型 Agent 原理" would be good. Let me keep it concise and natural.\n\nActually, 
+let me make it more concise: "计划执行型 Agent 原理解析" or just "Plan-and-Execute Agent 原理"\n\nI think "Plan-and-Execute Agent 原理说明" captures it well - it\'s about explaining the principle/mechanism of this type of agent.\n\nWait, I should reconsider. The user just asked the question and I provided the explanation. The title should reflect that this is about explaining what Plan-and-Execute Agent does.\n\n"Plan-and-Execute Agent 原理解析" seems good - it\'s 10 characters, natural, and captures the essence.\n</think>
+
+
+
+\n\nPlan-and-Execute Agent 原理解析' additional_kwargs={'refusal': None} response_metadata={'token_usage': {'completion_tokens': 333, 'prompt_tokens': 222, 'total_tokens': 555, 'completion_tokens_details': {'accepted_prediction_tokens': None, 'audio_tokens': None, 'reasoning_tokens': 325, 'rejected_prediction_tokens': None}, 'prompt_tokens_details': None, 'total_characters': 0}, 'model_name': 'MiniMax-M2.7-highspeed', 'system_fingerprint': None, 'id': '061dd68ec6c261a476097f997bb4b5fd', 'service_tier': None, 'finish_reason': 'stop', 'logprobs': None} 
+name='MiniMax AI' id='lc_run--019d4f2e-e454-7733-9b42-9ae9074b525a-0' tool_calls=[] invalid_tool_calls=[] usage_metadata={'input_tokens': 222, 'output_tokens': 333, 'total_tokens': 555, 'input_token_details': {}, 'output_token_details': {'reasoning': 325}}
+
+
+
+
+
+Message: 'text:'
+Arguments: (
+
+'<think>\nThe docs/README.md shows the correct file paths. Let me read the actual files that exist:\n- docs/architecture/OVERVIEW.md\n- docs/architecture/TECH_DESIGN.md\n- docs/architecture/ARCH.md\n\nAnd I should also look at the conversation-flow.md and the backend docs to get a complete picture.\n</think>\
+
+n\n
+
+{"thought":"The docs/README.md shows the correct paths. The architecture files are in docs/architecture/. Let me read them along with other key documents.", "actions":[{"action":"read_file","action_input":{"file_path":"docs/architecture/OVERVIEW.md"}},{"action":"read_file","action_input":{"file_path":"docs/architecture/TECH_DESIGN.md"}},{"action":"read_file","action_input":{"file_path":"docs/architecture/ARCH.md"}},{"action":"read_file","action_input":{"file_path":"docs/conversation-flow.md"}},{"action":"list_directory","action_input":{"dir_path":"backend/app"}},{"action":"list_directory","action_input":{"dir_path":"frontend/src"}]}',)
+
+
+step react parse failed task=63040d64-fbeb-4568-b4ee-c7c0c4cca088 step=4 (attempt 1/2)
+
+

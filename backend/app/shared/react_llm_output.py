@@ -223,8 +223,11 @@ def pick_thought(data: dict[str, Any]) -> str | None:
 
 
 def react_payload_has_action_or_answer(data: dict[str, Any]) -> bool:
-    """是否含可提交的终答或可调用工具（含批量）。"""
-    return bool(pick_final_answer(data) or extract_tool_invocations(data))
+    """是否含可提交的终答、可调用工具（含批量）或只有 thought 的纯推理轮次。"""
+    if bool(pick_final_answer(data) or extract_tool_invocations(data)):
+        return True
+    # 只有 thought 的纯推理轮次也是有效的
+    return bool(pick_thought(data))
 
 
 def parse_react_round_json(text: str) -> dict[str, Any] | None:

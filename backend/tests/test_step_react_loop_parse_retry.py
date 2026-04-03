@@ -88,4 +88,4 @@ async def test_step_react_retries_after_parse_fail_then_succeeds() -> None:
     second_call_messages = invoke.await_args_list[1].args[1]
     contents = [str(getattr(m, "content", "")) for m in second_call_messages]
     assert "不是 JSON" in contents
-    assert any("could not be parsed" in c for c in contents)
+    assert any("Invalid JSON" in c for c in contents)

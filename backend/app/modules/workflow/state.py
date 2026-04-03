@@ -1,13 +1,15 @@
-"""LangGraph ``AgentState``：各节点通过合并返回值更新同一 TypedDict。
+"""LangGraph ``AgentState``：Plan-Act-Learn 三角循环状态定义。
 
-黑板条目跨回合保留在会话侧；Planner 再次运行时可消费 Learner 写入的摘要。
+Plan: 获取会话上下文 → 生成步骤
+Act: 每步循环执行 → 收集工具上下文
+Learn: 总结归纳 → 反思 → 判断重规划 or 生成最终回答
 """
 
 from typing import Any, Literal, NotRequired, TypedDict
 
 
 class AgentState(TypedDict, total=False):
-    """单次任务运行时各节点可读写字段的类型并集（入口注入 + 节点回写）。"""
+    """Plan-Act-Learn 三角循环状态。"""
 
     task_id: str
     session_id: str
@@ -20,7 +22,14 @@ class AgentState(TypedDict, total=False):
     current_step_index: int
 
     blackboard_notes: NotRequired[list[str]]
-    actor_tool_trace: NotRequired[list[dict[str, Any]]]
+
+    act_context: NotRequired[dict[str, Any]]
+    act_tool_trace: NotRequired[list[dict[str, Any]]]
+    act_step_results: NotRequired[list[dict[str, Any]]]
+
+    learn_reflection: NotRequired[str]
+    learn_should_replan: NotRequired[bool]
+    learn_final_answer: NotRequired[str]
 
     replan_requested: bool
     outcome: NotRequired[Literal["success", "failed"]]

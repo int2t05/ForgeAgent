@@ -85,21 +85,16 @@ export const useComposerTaskStore = create<ComposerTaskState>()((set) => ({
   lastComposerHadLlmStream: false,
   composerStreamFreeze: null,
   setPending: (taskId, sessionId) =>
-    set((state) => {
-      const restSticky = { ...state.stickyPlansBySession }
-      delete restSticky[sessionId]
-      return {
-        pendingTaskId: taskId,
-        pendingSessionId: sessionId,
-        liveTaskEvents: [],
-        stickyPlansBySession: restSticky,
-        ssePhase: 'idle',
-        sseError: null,
-        lastComposerHadLlmStream: false,
-        detachedComposerPlan: null,
-        composerStreamFreeze: null,
-      }
-    }),
+    set((state) => ({
+      pendingTaskId: taskId,
+      pendingSessionId: sessionId,
+      liveTaskEvents: [],
+      ssePhase: 'idle',
+      sseError: null,
+      lastComposerHadLlmStream: false,
+      detachedComposerPlan: null,
+      composerStreamFreeze: null,
+    })),
   clearPending: (opts) =>
     set((state) => {
       const keepErr = Boolean(opts?.keepSseError)

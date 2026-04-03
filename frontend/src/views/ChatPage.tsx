@@ -53,6 +53,7 @@ import {
   usePendingComposerTaskBusy,
   usePendingComposerTaskMeta,
 } from '@/hooks/usePendingComposerTask'
+import { useTaskCompletionNotification } from '@/hooks/useTaskCompletionNotification'
 import { useComposerTaskStore } from '@/store/composerTaskStore'
 import {
   createSession,
@@ -93,6 +94,8 @@ export function ChatPage() {
   const composerTargetSessionRef = useRef<string | null>(null)
 
   const [workspaceSidebarOpen, setWorkspaceSidebarOpen] = useWorkspaceSidebarOpen()
+
+  useTaskCompletionNotification()
 
   const sessionDetailQuery = useQuery({
     queryKey: ['session', sessionId, 'detail'],
@@ -465,15 +468,15 @@ export function ChatPage() {
 
   /**
    * 规划展示：SSE 实时 > 内存 sticky > 后端持久化（避免刷新后丢失）。
-   * 新一轮 composer 进行中且尚无 SSE 规划时不用 persisted，以免闪现上一轮步骤。
+   * busy 时也保留 sticky 作为 fallback，避免新任务开始瞬间刷掉上一轮步骤。
    */
   const planForComposer = useMemo(() => {
     if (!sessionId) return null
     const fromLive = latestPlanStepsFromEvents(liveTaskEvents)
     if (fromLive?.length) return fromLive
-    if (busy) return null
     const sticky = stickyPlansBySession[sessionId]
     if (sticky?.length) return sticky
+    if (busy) return null
     return persistedPlanSteps
   }, [sessionId, liveTaskEvents, stickyPlansBySession, busy, persistedPlanSteps])
 
@@ -582,42 +585,42 @@ export function ChatPage() {
           sessionTitle={sessionDetailQuery.data?.title}
         />
 
-          {createSessionHeaderMutation.error ? (
-            <div className="mb-2 shrink-0">
-              <ErrorAlert
-                message="创建会话失败"
-                detail={errDetail(createSessionHeaderMutation.error)}
-              />
-            </div>
-          ) : null}
+        {createSessionHeaderMutation.error ? (
+          <div className="mb-2 shrink-0">
+            <ErrorAlert
+              message="创建会话失败"
+              detail={errDetail(createSessionHeaderMutation.error)}
+            />
+          </div>
+        ) : null}
 
-          {!sessionId && (
-            <div className="fa-chat-canvas flex flex-1 flex-col items-center justify-center bg-neutral-100/90 px-8">
-              <div className="fa-reveal max-w-md text-center">
-                <p className="font-display font-semibold text-neutral-800 text-xl tracking-tight">
-                  选择或创建会话
-                </p>
-                <p className="mt-3 text-base text-neutral-500 leading-relaxed">
-                  在左侧边栏「历史对话」中点选会话；悬停行可重命名或删除，双击标题可改名。
-                </p>
-                <Link
-                  to="/tasks"
-                  className="fa-link mt-8 inline-block font-medium text-base"
-                >
-                  查看任务与事件流 →
-                </Link>
-              </div>
+        {!sessionId && (
+          <div className="fa-chat-canvas flex flex-1 flex-col items-center justify-center bg-neutral-100/90 px-8">
+            <div className="fa-reveal max-w-md text-center">
+              <p className="font-display font-semibold text-neutral-800 text-xl tracking-tight">
+                选择或创建会话
+              </p>
+              <p className="mt-3 text-base text-neutral-500 leading-relaxed">
+                在左侧边栏「历史对话」中点选会话；悬停行可重命名或删除，双击标题可改名。
+              </p>
+              <Link
+                to="/tasks"
+                className="fa-link mt-8 inline-block font-medium text-base"
+              >
+                查看任务与事件流 →
+              </Link>
             </div>
-          )}
+          </div>
+        )}
 
-          {sessionId && (
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-1">
-              {(startTaskMutation.error ||
-                stopTaskMutation.error ||
-                sessionLoadError ||
-                messagesQuery.error ||
-                (sseError && !busy) ||
-                lastTaskExecutionFailed) && (
+        {sessionId && (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-1">
+            {(startTaskMutation.error ||
+              stopTaskMutation.error ||
+              sessionLoadError ||
+              messagesQuery.error ||
+              (sseError && !busy) ||
+              lastTaskExecutionFailed) && (
                 <div className="max-h-[min(40vh,20rem)] shrink-0 space-y-2 overflow-y-auto">
                   {startTaskMutation.error ? (
                     <ErrorAlert
@@ -659,18 +662,18 @@ export function ChatPage() {
                 </div>
               )}
 
-              <div className="fa-chat-canvas flex min-h-0 flex-1 min-w-0 flex-col md:flex-row">
-                <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-                  {headerPlanContext ? (
-                    <ChatHeaderPlanTodos
-                      steps={headerPlanContext.steps}
-                      todoProgress={resolvePlanTodoProgress(
-                        headerPlanContext.taskId,
-                        headerPlanContext.steps,
-                      )}
-                    />
-                  ) : null}
-                  <div ref={messagesScrollRef} className="fa-chat-messages">
+            <div className="fa-chat-canvas flex min-h-0 flex-1 min-w-0 flex-col md:flex-row">
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                {headerPlanContext ? (
+                  <ChatHeaderPlanTodos
+                    steps={headerPlanContext.steps}
+                    todoProgress={resolvePlanTodoProgress(
+                      headerPlanContext.taskId,
+                      headerPlanContext.steps,
+                    )}
+                  />
+                ) : null}
+                <div ref={messagesScrollRef} className="fa-chat-messages">
                   {messagesQuery.isLoading && <LoadingSpinner />}
                   {messages.length === 0 && !messagesQuery.isLoading && (
                     <div className="flex flex-1 flex-col items-center justify-center px-4 pb-10 pt-6">
@@ -791,8 +794,8 @@ export function ChatPage() {
                           : stopTaskMutation.isPending
                             ? '正在停止'
                             : isStreamingTask
-                            ? '停止生成'
-                            : '发送'
+                              ? '停止生成'
+                              : '发送'
                       }
                     >
                       {startTaskMutation.isPending || stopTaskMutation.isPending ? (
@@ -808,11 +811,11 @@ export function ChatPage() {
                     </button>
                   </div>
                 </form>
-                </div>
-                {workspaceSidebarOpen ? <ChatWorkspaceSidebar /> : null}
               </div>
+              {workspaceSidebarOpen ? <ChatWorkspaceSidebar /> : null}
             </div>
-          )}
+          </div>
+        )}
       </div>
     </div>
   )

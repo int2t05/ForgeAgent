@@ -1,26 +1,26 @@
-"""记忆域 LangGraph 节点（Learner）：对本回合 Actor 轨迹做反思，写入黑板并决定是否再进 Planner。
+"""Learn 模块：总结归纳 → 反思 → 判断重规划 or 生成最终回答。
 
-反思可由模型 JSON 或确定性摘要生成；与 ``session_blackboard`` 上限策略配合截断历史。
+核心职责：
+1. 根据 Act 收集的上下文进行总结归纳
+2. 反思执行结果
+3. 判断是否需要重规划
+4. 如果不需要重规划，生成最终回答
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
 from app.core.config import get_settings
-from app.core.database import AsyncSessionLocal
+from app.core.database import get_db_session
 from app.core.llm_openai import build_chat_model, is_llm_configured
 from app.core.llm_retry import ainvoke_with_retry
 from app.modules.memory.session_blackboard import cap_blackboard_notes
-from app.modules.prompts.learner_reflection import (
-    LEARNER_REFLECTION_SYSTEM,
-    build_learner_reflection_user_payload,
-)
-from app.modules.prompts.parse_retry import LEARNER_PARSE_RETRY
+from app.modules.prompts import LEARN_REFLECTION_SYSTEM, RETRY_LEARN
 from app.modules.workflow.state import AgentState
 from app.repositories import event_repository
 from app.shared.langchain_content import message_content_text
@@ -28,184 +28,148 @@ from app.shared.llm_json_parse import parse_llm_json_object
 
 logger = logging.getLogger(__name__)
 
+_TK_O = "\u003cthink\u003e"
+_TK_C = "\u003c/think\u003e"
 
-def _synthesize_lesson_lines(state: AgentState) -> list[str]:
-    """由 ``actor_tool_trace`` 与任务终态生成面向黑板的短文行列表（模型不可用时的回退正文素材）。"""
-    lines: list[str] = []
-    trace: list[dict[str, Any]] = list(state.get("actor_tool_trace") or [])
-    replan = bool(state.get("replan_requested"))
-    outcome = state.get("outcome")
 
-    if not trace and replan:
-        lines.append("重规划请求：当前尚无工具轨迹，黑板记录供下一轮 Planner 调整。")
-    for row in trace:
-        sid = row.get("step_id")
-        title = row.get("title") or ""
-        if row.get("skipped_no_tool"):
-            lines.append(f"步骤 {sid} ({title})：未声明工具，已跳过。")
-            continue
-        if row.get("react_loop"):
-            sub = row.get("calls")
-            if isinstance(sub, list):
-                for c in sub:
-                    if not isinstance(c, dict):
-                        continue
-                    tname = c.get("tool")
-                    ok_c = c.get("ok")
-                    err_c = c.get("error")
-                    if ok_c:
-                        lines.append(f"步骤 {sid} ({title})：工具 {tname} 调用成功。")
-                    else:
-                        es = (
-                            err_c
-                            if isinstance(err_c, str) and err_c.strip()
-                            else "失败"
-                        )
-                        lines.append(f"步骤 {sid} ({title})：工具 {tname} 未成功 — {es}")
-            fa = row.get("step_final_answer")
-            if isinstance(fa, str) and fa.strip():
-                st = fa.strip()
-                if len(st) > 120:
-                    lines.append(f"步骤 {sid} ({title})：子步终答 — {st[:120]}…")
+def _build_learn_user_payload(state: AgentState) -> str:
+    """构建 Learn 模块的用户输入。"""
+    user_message = state.get("user_message") or ""
+    plan_steps = state.get("plan_steps") or []
+    act_context = state.get("act_context") or {}
+    step_results = act_context.get("step_results") or []
+    tool_trace = act_context.get("tool_trace") or []
+
+    lines = [
+        "## 用户任务",
+        user_message,
+        "",
+        "## 计划步骤",
+    ]
+
+    for idx, step in enumerate(plan_steps):
+        step_title = step.get("title") or f"步骤 {idx + 1}"
+        lines.append(f"{idx + 1}. {step_title}")
+
+    lines.append("")
+    lines.append("## 执行结果")
+
+    for result in step_results:
+        step_id = result.get("step_id", "")
+        title = result.get("title", "")
+        ok = result.get("ok", False)
+        status = "✓ 成功" if ok else "✗ 失败"
+        lines.append(f"\n### {step_id}: {title} [{status}]")
+
+        calls = result.get("calls", [])
+        if calls:
+            for call in calls:
+                tool_name = call.get("tool", "unknown")
+                call_ok = call.get("ok", False)
+                call_status = "✓" if call_ok else "✗"
+                error = call.get("error")
+                if error:
+                    lines.append(f"  - {call_status} {tool_name}: {error[:100]}")
                 else:
-                    lines.append(f"步骤 {sid} ({title})：子步终答 — {st}")
-            elif not (isinstance(sub, list) and sub):
-                lines.append(f"步骤 {sid} ({title})：ReAct 未正常结束。")
-            continue
-        sub = row.get("calls")
-        if isinstance(sub, list) and sub:
-            for c in sub:
-                if not isinstance(c, dict):
-                    continue
-                tname = c.get("tool")
-                ok_c = c.get("ok")
-                err_c = c.get("error")
-                if ok_c:
-                    lines.append(f"步骤 {sid} ({title})：工具 {tname} 调用成功。")
-                else:
-                    es = (
-                        err_c
-                        if isinstance(err_c, str) and err_c.strip()
-                        else "失败"
-                    )
-                    lines.append(f"步骤 {sid} ({title})：工具 {tname} 未成功 — {es}")
-            continue
-        tool = row.get("tool")
-        ok = row.get("ok")
-        err = row.get("error")
-        if ok:
-            lines.append(f"步骤 {sid} ({title})：工具 {tool} 调用成功。")
-        else:
-            err_s = err if isinstance(err, str) and err.strip() else "失败"
-            lines.append(f"步骤 {sid} ({title})：工具 {tool} 未成功 — {err_s}")
+                    lines.append(f"  - {call_status} {tool_name}")
 
-    if outcome == "success" and trace:
-        lines.append("本回合执行成功，终态摘要已由 Actor 写入。")
-    elif outcome == "success" and not trace and not replan:
-        lines.append("本回合无工具轨迹，Actor 已直接产出答复。")
-    elif outcome == "failed":
-        msg = state.get("error_message") or ""
-        lines.append(f"本回合失败：{msg}" if msg else "本回合失败。")
+        sfa = result.get("step_final_answer")
+        if sfa:
+            lines.append(f"  终答: {sfa[:200]}")
 
-    if replan and trace:
-        lines.append("需重规划：请将上述工具结果与约束反映在更新后的步骤中。")
-
-    return lines
+    return "\n".join(lines)
 
 
-async def learner_node(state: AgentState) -> dict[str, Any]:
-    """追加黑板、写反思事件，并合并 Actor/模型意图得到 ``replan_requested``。"""
-    task_id = state["task_id"]  # type: ignore
+async def learn_node(state: AgentState) -> dict[str, Any]:
+    """Learn 节点：总结归纳 → 反思 → 判断重规划 or 生成最终回答。"""
+    task_id = state["task_id"] # type: ignore
     settings = get_settings()
-    # 1. 读取重规划上限、已重规划次数、Actor 再规划标志与失败标记
-    max_r = max(0, int(state.get("max_replan_attempts") or 0))
+
+    max_replan = max(0, int(state.get("max_replan_attempts") or 0))
     replan_count = int(state.get("replan_count") or 0)
-    can_replan = replan_count < max_r
+    can_replan = replan_count < max_replan
     failed = state.get("outcome") == "failed"
-    actor_replan = bool(state.get("replan_requested"))
 
-    fallback_lines = _synthesize_lesson_lines(state)
     reflection_text = ""
-    llm_request_replan = False
+    should_replan = False
+    final_answer = ""
 
-    # 2. LLM 可用且本回合非失败：请求结构化反思 JSON（解析失败时可多轮纠偏重试）
     if is_llm_configured(settings) and not failed:
         chat = build_chat_model(settings)
-        user_block = build_learner_reflection_user_payload(state)
+        user_block = _build_learn_user_payload(state)
         messages: list[BaseMessage] = [
-            SystemMessage(content=LEARNER_REFLECTION_SYSTEM),
-            HumanMessage(content="【本回合执行材料】\n" + user_block),
+            SystemMessage(content=LEARN_REFLECTION_SYSTEM),
+            HumanMessage(content=user_block),
         ]
-        max_rounds = max(1, int(settings.learner_parse_max_attempts))
-        for attempt in range(max_rounds):
+
+        max_attempts = max(1, int(settings.learner_parse_max_attempts))
+        for attempt in range(max_attempts):
             try:
                 msg = await ainvoke_with_retry(chat, messages, settings)
             except Exception:
                 logger.exception(
-                    "learner reflection LLM failed for task %s (attempt %s/%s)",
+                    "Learn: LLM failed for task=%s attempt=%s/%s",
                     task_id,
                     attempt + 1,
-                    max_rounds,
+                    max_attempts,
                 )
-                if attempt >= max_rounds - 1:
+                if attempt >= max_attempts - 1:
                     break
                 continue
 
             text = message_content_text(msg)
             data = parse_llm_json_object(text)
-            parsed_ok = False
+
             if data:
                 r = data.get("reflection")
                 if isinstance(r, str) and r.strip():
                     reflection_text = r.strip()
-                    raw_rp = data.get("request_replan")
-                    if isinstance(raw_rp, bool):
-                        llm_request_replan = raw_rp
-                    elif raw_rp in (1, "1", "true", "True", "yes"):
-                        llm_request_replan = True
-                    parsed_ok = True
-            if parsed_ok:
+
+                sr = data.get("should_replan")
+                if isinstance(sr, bool):
+                    should_replan = sr
+                elif sr in (1, "1", "true", "True", "yes"):
+                    should_replan = True
+
+                fa = data.get("final_answer")
+                if isinstance(fa, str) and fa.strip():
+                    final_answer = fa.strip()
+
                 break
 
             logger.warning(
-                "learner reflection output not valid JSON or unusable reflection for task %s "
-                "(attempt %s/%s)",
+                "Learn: parse failed for task=%s attempt=%s/%s",
                 task_id,
                 attempt + 1,
-                max_rounds,
+                max_attempts,
             )
-            if attempt < max_rounds - 1:
+            if attempt < max_attempts - 1:
                 messages.append(msg)
-                messages.append(HumanMessage(content=LEARNER_PARSE_RETRY))
+                messages.append(HumanMessage(content=RETRY_LEARN))
 
-    # 3. 若无模型正文则用轨迹摘要拼接；失败或超限则清零模型再规划请求
-    if not reflection_text and fallback_lines:
-        reflection_text = "\n".join(fallback_lines)
     if not reflection_text:
-        reflection_text = "（本回合无可写入黑板的要点）"
+        reflection_text = _synthesize_fallback_reflection(state)
 
     if failed or not can_replan:
-        llm_request_replan = False
+        should_replan = False
 
-    # 4. 在允许再规划且未失败时合并 Actor 与模型的再规划意图
-    wants_replan = (not failed) and can_replan and (actor_replan or llm_request_replan)
+    if not final_answer and not should_replan:
+        final_answer = _generate_fallback_answer(state)
 
-    # 5. 截断黑板、写 ``memory/reflection``、清空本回合 ``actor_tool_trace`` 引用
     notes = list(state.get("blackboard_notes") or [])
     notes.append(reflection_text)
     notes = cap_blackboard_notes(notes, settings.session_blackboard_max_notes)
 
     payload = json.dumps(
         {
-            "outcome": state.get("outcome"),
-            "actor_replan_flag": actor_replan,
-            "llm_request_replan": llm_request_replan,
-            "effective_replan": wants_replan,
             "reflection": reflection_text[:8000],
+            "should_replan": should_replan,
+            "final_answer": final_answer[:4000] if final_answer else None,
         },
         ensure_ascii=False,
     )
-    async with AsyncSessionLocal() as db:
+
+    async with get_db_session() as db:
         async with db.begin():
             await event_repository.append_event(
                 db,
@@ -215,8 +179,87 @@ async def learner_node(state: AgentState) -> dict[str, Any]:
                 payload,
             )
 
+    if final_answer:
+        answer_payload = json.dumps(
+            {"content": final_answer},
+            ensure_ascii=False,
+        )
+        async with get_db_session() as db:
+            async with db.begin():
+                await event_repository.append_event(
+                    db,
+                    task_id,
+                    "execution",
+                    "message",
+                    answer_payload,
+                )
+
+    logger.info(
+        "Learn: task=%s should_replan=%s reflection_len=%d",
+        task_id,
+        should_replan,
+        len(reflection_text),
+    )
+
     return {
+        "learn_reflection": reflection_text,
+        "learn_should_replan": should_replan,
+        "learn_final_answer": final_answer,
         "blackboard_notes": notes,
-        "actor_tool_trace": [],
-        "replan_requested": wants_replan,
+        "replan_requested": should_replan,
+        "summary": final_answer,
     }
+
+
+def _synthesize_fallback_reflection(state: AgentState) -> str:
+    """生成回退反思文本。"""
+    act_context = state.get("act_context") or {}
+    step_results = act_context.get("step_results") or []
+    outcome = state.get("outcome")
+
+    lines: list[str] = []
+
+    if outcome == "failed":
+        lines.append("执行过程中出现失败。")
+    else:
+        all_ok = all(r.get("ok", False) for r in step_results)
+        if all_ok:
+            lines.append("所有步骤执行成功。")
+        else:
+            lines.append("部分步骤执行失败。")
+
+    for result in step_results:
+        step_id = result.get("step_id", "")
+        ok = result.get("ok", False)
+        status = "成功" if ok else "失败"
+        lines.append(f"步骤 {step_id}: {status}")
+
+    return "\n".join(lines)
+
+
+def _generate_fallback_answer(state: AgentState) -> str:
+    """生成回退最终回答。"""
+    act_context = state.get("act_context") or {}
+    step_results = act_context.get("step_results") or []
+    outcome = state.get("outcome")
+
+    if outcome == "failed":
+        return "任务执行过程中遇到问题，请检查后重试。"
+
+    all_ok = all(r.get("ok", False) for r in step_results)
+    if all_ok:
+        return "任务已完成。"
+    else:
+        return "任务部分完成，部分步骤执行失败。"
+
+
+def route_after_learn(state: AgentState) -> Literal["plan", "done"]:
+    """Learn 之后的条件边路由。"""
+    if state.get("outcome") == "failed":
+        return "done"
+    if state.get("replan_requested"):
+        return "plan"
+    return "done"
+
+
+learner_node = learn_node

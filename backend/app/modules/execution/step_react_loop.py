@@ -13,7 +13,7 @@ from typing import Any
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
 from app.core.config import Settings, get_settings
-from app.core.database import AsyncSessionLocal
+from app.core.database import get_db_session
 from app.core.llm_openai import build_chat_model, is_llm_configured
 from app.core.llm_retry import ainvoke_with_retry
 from app.modules.execution.step_react_internals import (
@@ -24,9 +24,7 @@ from app.modules.execution.step_react_internals import (
 )
 from app.modules.execution.tool_runner import run_single_tool_with_retry
 from app.modules.memory.tool_observation_compact import compact_json_for_prompt
-from app.modules.prompts.parse_retry import REACT_PARSE_RETRY
-from app.modules.prompts.react_hints import _SKILL_IMPORT_HUMAN_PREFIX
-from app.modules.prompts.step_react import build_step_react_system_prompt
+from app.modules.prompts import RETRY_REACT, build_react_prompt
 from app.repositories import event_repository
 from app.schemas.tools import ToolItem
 from app.shared.langchain_content import message_content_text
@@ -67,7 +65,7 @@ async def run_step_react_loop(
 
     # 首轮消息（系统提示 + 用户任务 / 步骤 / 历史轨迹摘要）
     chat = build_chat_model(s)
-    sys_text = build_step_react_system_prompt(tools)
+    sys_text = build_react_prompt(tools)
     trace_snippet = compact_json_for_prompt(
         tail_prior_tool_trace(prior_tool_trace),
         obs_cap,
@@ -81,7 +79,9 @@ async def run_step_react_loop(
     messages: list[BaseMessage] = [SystemMessage(content=sys_text)]
     skill_ctx = (skill_import_text or "").strip()
     if skill_ctx:
-        messages.append(HumanMessage(content=_SKILL_IMPORT_HUMAN_PREFIX + skill_ctx))
+        messages.append(
+            HumanMessage(content=f"## Skill Context (this step only)\n{skill_ctx}\n")
+        )
     messages.append(HumanMessage(content=initial))
 
     call_results: list[dict[str, Any]] = []
@@ -108,7 +108,9 @@ async def run_step_react_loop(
         try:
             msg = await ainvoke_with_retry(chat, messages, s)
         except Exception:
-            logger.exception("step react LLM invoke failed task=%s step=%s", task_id, step_id)
+            logger.exception(
+                "step react LLM invoke failed task=%s step=%s", task_id, step_id
+            )
             break
 
         text = message_content_text(msg)
@@ -124,6 +126,7 @@ async def run_step_react_loop(
             messages.append(AIMessage(content=text))
             break
         messages.append(AIMessage(content=text))
+        # logger.warning("%s", text)
         data = parse_react_round_json(text)
         if not data:
             react_parse_failures += 1
@@ -135,7 +138,7 @@ async def run_step_react_loop(
                 max_parse_attempts,
             )
             if react_parse_failures < max_parse_attempts:
-                messages.append(HumanMessage(content=REACT_PARSE_RETRY))
+                messages.append(HumanMessage(content=RETRY_REACT))
                 continue
             break
 
@@ -213,14 +216,19 @@ async def run_step_react_loop(
             closing_thought = thought_round
             break
 
+        # 只有 thought 的纯推理轮次：继续下一轮（不添加 Observation）
+        # 这意味着模型只是在思考，还没决定要做什么
+        logger.warning(
+            "step react 纯推理轮次 task=%s step=%s round=%s (仅 thought，继续)",
+            task_id,
+            step_id,
+            round_num,
+        )
+        continue
+
     all_tool_ok = all(c.get("ok") for c in call_results) if call_results else True
 
-    if (
-        not step_final
-        and call_results
-        and all_tool_ok
-        and is_llm_configured(s)
-    ):
+    if not step_final and call_results and all_tool_ok and is_llm_configured(s):
         fa2, th2, total_tokens_used = await try_react_closing_final_answer(
             chat,
             messages,
@@ -248,12 +256,18 @@ async def run_step_react_loop(
         try:
             payload_obj: dict[str, Any] = {
                 "step_id": str(step_id),
-                "final_answer": True if step_final == _FINAL_ANSWER_TRUE else step_final,
+                "final_answer": (
+                    True if step_final == _FINAL_ANSWER_TRUE else step_final
+                ),
             }
-            ct = closing_thought if (closing_thought and str(closing_thought).strip()) else None
+            ct = (
+                closing_thought
+                if (closing_thought and str(closing_thought).strip())
+                else None
+            )
             if ct:
                 payload_obj["thought"] = str(ct).strip()
-            async with AsyncSessionLocal() as db:
+            async with get_db_session() as db:
                 async with db.begin():
                     await event_repository.append_event(
                         db,
@@ -269,4 +283,8 @@ async def run_step_react_loop(
                 step_id,
             )
 
-    return overall, call_results, ("completed" if step_final == _FINAL_ANSWER_TRUE else step_final)
+    return (
+        overall,
+        call_results,
+        ("completed" if step_final == _FINAL_ANSWER_TRUE else step_final),
+    )

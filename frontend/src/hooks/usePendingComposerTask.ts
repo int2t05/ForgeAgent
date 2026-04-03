@@ -137,7 +137,14 @@ export function usePendingComposerTaskSync() {
             if (cancelled) return
             markLlmStreamIfDelta(e)
             sortedLive = appendOrResortEvents(bySeq, sortedLive, e)
-            scheduleLive()
+            if (
+              e.kind === 'react_turn' &&
+              e.payload?.final_answer === true
+            ) {
+              flushLive()
+            } else {
+              scheduleLive()
+            }
             if (
               e.kind === 'plan_created' ||
               e.kind === 'replan' ||

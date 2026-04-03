@@ -200,4 +200,7 @@ async def run_single_tool_with_retry(
         return final_ok, last_exec, attempt_rows
     finally:
         if _owning_db:
-            await _session.close()
+            try:
+                await _session.close()
+            except Exception:
+                pass

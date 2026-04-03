@@ -10,7 +10,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from app.core.config import Settings
 from app.core.llm_retry import ainvoke_with_retry
 from app.modules.memory.tool_observation_compact import observation_json_for_llm
-from app.modules.prompts.react_hints import CLOSING_FINAL_NUDGE
+from app.modules.prompts import ACT_CLOSING_NUDGE
 from app.shared.langchain_content import message_content_text
 from app.shared.react_llm_output import (
     extract_tool_invocations,
@@ -83,7 +83,7 @@ async def try_react_closing_final_answer(
     """在工具已成功的前提下追加一轮模型调用，争取产出 final_answer。"""
     if token_budget > 0 and total_tokens_used >= token_budget:
         return None, None, total_tokens_used
-    messages.append(HumanMessage(content=CLOSING_FINAL_NUDGE))
+    messages.append(HumanMessage(content=ACT_CLOSING_NUDGE))
     try:
         msg = await ainvoke_with_retry(chat, messages, s)
     except Exception:

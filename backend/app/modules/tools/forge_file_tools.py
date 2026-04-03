@@ -191,11 +191,11 @@ def _write_file_sync(
             with write_path.open("r", encoding="utf-8") as f:
                 lines = f.readlines()
             n = len(lines)
-            if args.start_line > n:
+            if args.start_line > n: # type: ignore
                 return (
                     f"Error: start_line={args.start_line} 超出文件行数 {n}"
                 )
-            lo = args.start_line - 1
+            lo = args.start_line - 1 # type: ignore
             hi_exclusive = min(args.end_line, n)
             repl_lines = args.text.splitlines(keepends=True)
             new_lines = lines[:lo] + repl_lines + lines[hi_exclusive:]

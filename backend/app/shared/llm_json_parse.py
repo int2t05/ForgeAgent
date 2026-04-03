@@ -227,6 +227,22 @@ def try_parse_single_candidate(candidate: str) -> dict[str, Any] | None:
     return None
 
 
+def _strip_think_tags(text: str) -> str:
+    """剥离所有 &lt;think&gt;...&lt;/think&gt; 标签块（包括未闭合的开头），返回剩余文本。"""
+    import re
+    # 模式1：完整的 &lt;think&gt;...&lt;/think&gt; 标签对（不区分大小写，支持中间换行）
+    pattern_complete = re.compile(r"&lt;think&gt;[\s\S]*?&lt;/think&gt;", re.IGNORECASE)
+    # 模式2：未闭合的 &lt;think&gt; 开头（到文本末尾或下一个非空格字符前）
+    pattern_unclosed = re.compile(r"&lt;think&gt;.*$", re.IGNORECASE | re.DOTALL)
+    
+    t = text
+    # 先替换完整的标签对
+    t = pattern_complete.sub("", t)
+    # 再替换未闭合的标签开头
+    t = pattern_unclosed.sub("", t)
+    return t.strip()
+
+
 def collect_json_candidates(text: str) -> list[str]:
     """合并全文与所有围栏块、去重保序。"""
     base = _normalize_llm_text_noise(text).strip()
@@ -240,8 +256,12 @@ def collect_json_candidates(text: str) -> list[str]:
             out.append(s)
 
     add(base)
+    no_think = _strip_think_tags(base)
+    if no_think:
+        add(no_think)
     for body in _iter_markdown_fence_bodies(base):
         add(body)
+        add(_strip_think_tags(body))
     return out
 
 

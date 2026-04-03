@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import (
@@ -100,10 +101,40 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.commit()
         except asyncio.CancelledError:
             try:
-                await session.rollback()
+                await session.invalidate()
+            except Exception:
+                pass
+            try:
+                await session.close()
             except Exception:
                 pass
             raise
         except Exception:
-            await session.rollback()
+            try:
+                await session.rollback()
+            except Exception:
+                pass
+            raise
+
+
+@asynccontextmanager
+async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
+    """Safe short-lived session for non-request contexts (e.g., background tasks).
+
+    Handles CancelledError gracefully to avoid 'no active connection' errors.
+    """
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        except asyncio.CancelledError:
+            try:
+                await session.invalidate()
+            except Exception:
+                pass
+            raise
+        except Exception:
+            try:
+                await session.rollback()
+            except Exception:
+                pass
             raise
