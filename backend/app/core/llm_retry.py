@@ -21,7 +21,7 @@ from openai import APIConnectionError, APIStatusError, APITimeoutError
 
 from app.core.circuit_breaker import CircuitOpenError, get_llm_circuit_breaker
 from app.core.config import Settings
-from app.modules.memory.llm_context_budget import (
+from app.modules.memory.context import (
     is_context_limit_error,
     truncate_chat_messages_to_budget,
 )

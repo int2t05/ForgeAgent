@@ -23,7 +23,7 @@ from app.modules.execution.step_react_internals import (
     try_react_closing_final_answer,
 )
 from app.modules.execution.tool_runner import run_single_tool_with_retry
-from app.modules.memory.tool_observation_compact import compact_json_for_prompt
+from app.shared.tool_observation_compact import compact_json_for_prompt
 from app.modules.prompts import RETRY_REACT, build_react_prompt, THOUGHT_ONLY_NUDGE
 from app.repositories import event_repository
 from app.schemas.tools import ToolItem

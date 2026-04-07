@@ -9,7 +9,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from app.core.config import Settings
 from app.core.llm_retry import ainvoke_with_retry
-from app.modules.memory.tool_observation_compact import observation_json_for_llm
+from app.shared.tool_observation_compact import observation_json_for_llm
 from app.modules.prompts import ACT_CLOSING_NUDGE
 from app.shared.langchain_content import message_content_text
 from app.shared.react_llm_output import (

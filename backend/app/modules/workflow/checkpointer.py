@@ -118,7 +118,7 @@ async def _open_sqlite_checkpointer(db_path: str) -> AsyncSqliteSaver:
 
 
 async def _open_postgres_checkpointer(conn_string: str) -> Any:
-    """Postgres：连接池 + AsyncPostgresSaver；依赖 ``pip install -e .[checkpoint-postgres]``。"""
+    """Postgres：连接池 + AsyncPostgresSaver；依赖 ``pip install -e '.[checkpoint-postgres]'``。"""
     try:
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver  # type: ignore
         from psycopg_pool import AsyncConnectionPool  # type: ignore

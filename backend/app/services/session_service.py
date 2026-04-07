@@ -7,13 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.exceptions import AppHTTPException
 from app.models.message import Message
-from app.modules.memory.checkpointer import delete_checkpoint_threads
+from app.modules.workflow.checkpointer import delete_checkpoint_threads
 from app.models.session import Session as ChatSession
 from app.repositories import message_repository, session_repository, task_repository
 from app.schemas.common import OperationOkResponse
-from app.modules.memory.llm_context_budget import estimate_messages_tokens
-from app.modules.memory.session_blackboard import decode_blackboard_json
-from app.modules.memory.session_context import session_messages_to_chat_messages
+from app.modules.memory.context import estimate_messages_tokens
+from app.shared.blackboard import decode_blackboard_json
+from app.modules.memory.context import session_messages_to_chat_messages
 from app.schemas.session import (
     MessageCreate,
     MessageOut,

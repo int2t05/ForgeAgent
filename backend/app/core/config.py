@@ -103,6 +103,21 @@ class Settings(BaseSettings):
     # --- LLM：无 Chat 实例时用 tiktoken 精确计数（有实例则优先模型自带计数）---
     llm_use_exact_token_count: bool = True
 
+    # --- RAG 知识库 ---
+    rag_enabled: bool = True
+    rag_persist_directory: str | None = None
+    rag_chunk_size: int = 500
+    rag_chunk_overlap: int = 50
+    rag_embedding_model: str | None = None
+    rag_embedding_api_key: str | None = None
+    rag_embedding_base_url: str | None = None
+    rag_reranker_model: str | None = None
+    rag_reranker_api_key: str | None = None
+    rag_reranker_base_url: str | None = None
+    rag_vector_weight: float = 0.5
+    rag_bm25_weight: float = 0.5
+    rag_default_top_k: int = 5
+
     @field_validator("cors_origins")
     @classmethod
     def _strip_cors_origins(cls, v: str) -> str:

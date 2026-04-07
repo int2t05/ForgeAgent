@@ -26,7 +26,7 @@ LearnRoute: TypeAlias = Callable[[AgentState], Literal["plan", "done"]]
 def _default_workflow_nodes() -> tuple[AgentNode, AgentNode, AgentNode, LearnRoute]:
     """惰性加载默认节点，避免循环依赖。"""
     from app.modules.execution.nodes import act_node
-    from app.modules.memory.learner_node import learn_node, route_after_learn
+    from app.modules.memory.learn import learn_node, route_after_learn
     from app.modules.planning.nodes import plan_node
 
     return plan_node, act_node, learn_node, route_after_learn

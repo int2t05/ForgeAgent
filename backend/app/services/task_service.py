@@ -11,7 +11,7 @@ from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
 from app.core.exceptions import AppHTTPException
 from app.shared.payload import payload_json_to_dict
-from app.modules.memory.session_blackboard import (
+from app.shared.blackboard import (
     flush_blackboard_from_graph_checkpoint,
     load_blackboard_seed,
 )

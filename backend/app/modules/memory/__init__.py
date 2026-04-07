@@ -1,21 +1,14 @@
-"""记忆域：会话上下文管理、共享黑板、LLM 上下文预算与对话摘要。
+"""记忆域模块：Learn 节点、LLM 上下文窗口管理、RAG 知识库。
 
-核心能力：
-  - 会话上下文（session_context.py）：消息列表转 LangChain 格式、历史装填
-  - 共享黑板（session_blackboard.py）：跨步骤的键值存储、检查点同步
-  - 上下文预算（llm_context_budget.py）：token 估算、超限截断、错误识别
-  - 对话摘要（conversation_summary.py）：超长会话的 LLM 压缩
-  - Observation 压缩（tool_observation_compact.py）：工具返回值裁剪以控制 prompt 长度
-  - Token 计数（token_counter.py）：tiktoken 本地精确计数
-  - 检查点（checkpointer.py）：LangGraph 状态持久化与清理
-  - 学习者节点（learner_node.py）：执行后反思与经验沉淀
-
-使用场景：
-  - Planner 加载会话历史作为规划上下文
-  - ReAct 循环组装消息列表时应用预算截断
-  - Actor 完成后触发 Learner 反思
+核心组件：
+  - learn.py：Learn 节点（反思、重规划判断、最终回答生成）
+  - context.py：LLM 上下文窗口管理（消息加载、Token 计数、预算截断、对话摘要）
+  - rag.py：RAG 知识库（文档分块、向量化、混合检索、Rerank 重排序）
+  - rag_integration.py：RAG 与 Agent 工作流融合（自动检索注入 Planner 上下文）
 
 使用方式（按需导入以避免循环依赖）：
-  from app.modules.memory.session_context import SessionLLMContextManager
-  from app.modules.memory.llm_context_budget import estimate_messages_tokens
+  from app.modules.memory.learn import learn_node, route_after_learn
+  from app.modules.memory.context import SessionLLMContextManager, estimate_messages_tokens, truncate_chat_messages_to_budget
+  from app.modules.memory.rag import RagKnowledgeBase, get_rag_chain, SearchResult
+  from app.modules.memory.rag_integration import build_rag_context_for_planner, retrieve_rag_context
 """

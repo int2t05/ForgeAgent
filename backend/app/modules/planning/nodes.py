@@ -3,9 +3,10 @@
 核心职责：
 1. 加载会话历史消息
 2. 读取黑板要点
-3. 选择相关技能
-4. 调用 LLM 生成计划步骤
-5. 持久化 plan_created 事件
+3. 检索 RAG 知识库
+4. 选择相关技能
+5. 调用 LLM 生成计划步骤
+6. 持久化 plan_created 事件
 """
 
 from __future__ import annotations
@@ -17,7 +18,8 @@ from langchain_core.messages import HumanMessage
 
 from app.core.config import get_settings
 from app.core.database import get_db_session
-from app.modules.memory.session_context import SessionLLMContextManager
+from app.modules.memory.context import SessionLLMContextManager
+from app.modules.memory.rag_integration import build_rag_context_for_planner
 from app.modules.planning.llm import plan_steps_with_llm, select_skills_for_planner
 from app.modules.tools.skill_sources import skill_import_context_from_paths
 from app.modules.workflow.state import AgentState
@@ -33,10 +35,11 @@ async def plan_node(state: AgentState) -> dict:
     流程：
     1. 如果是重规划，递增计划版本
     2. 加载会话历史消息
-    3. 选择相关技能并注入上下文
-    4. 读取黑板要点
-    5. 调用 LLM 生成步骤
-    6. 持久化事件
+    3. 检索 RAG 知识库（自动获取相关文档）
+    4. 选择相关技能并注入上下文
+    5. 读取黑板要点
+    6. 调用 LLM 生成步骤
+    7. 持久化事件
     """
     task_id = state["task_id"] # type: ignore
     user_message = state.get("user_message") or ""
@@ -74,6 +77,12 @@ async def plan_node(state: AgentState) -> dict:
         )
         configured_skills = (await get_settings_public(db)).skills_paths
 
+    # 3. 检索 RAG 知识库，将相关文档注入上下文
+    rag_messages = await build_rag_context_for_planner(
+        user_message,
+        settings=settings,
+    )
+
     selected_skill_paths: list[str] = []
     if configured_skills:
         selected_skill_paths = await select_skills_for_planner(
@@ -90,6 +99,9 @@ async def plan_node(state: AgentState) -> dict:
                         content="【Skill 上下文】\n\n" + ctx
                     ),
                 ]
+
+    # 注入 RAG 检索结果
+    chat_messages.extend(rag_messages)
 
     notes = state.get("blackboard_notes") or []
     if notes:

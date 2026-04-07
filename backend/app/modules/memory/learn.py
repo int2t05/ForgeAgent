@@ -19,17 +19,17 @@ from app.core.config import get_settings
 from app.core.database import get_db_session
 from app.core.llm_openai import build_chat_model, is_llm_configured
 from app.core.llm_retry import ainvoke_with_retry
-from app.modules.memory.session_blackboard import cap_blackboard_notes
 from app.modules.prompts import LEARN_REFLECTION_SYSTEM, RETRY_LEARN
 from app.modules.workflow.state import AgentState
 from app.repositories import event_repository
+from app.shared.blackboard import cap_blackboard_notes
 from app.shared.langchain_content import message_content_text
 from app.shared.llm_json_parse import parse_llm_json_object
 
 logger = logging.getLogger(__name__)
 
-_TK_O = "\u003cthink\u003e"
-_TK_C = "\u003c/think\u003e"
+_TK_O = "<think>"
+_TK_C = "</think>"
 
 
 def _build_learn_user_payload(state: AgentState) -> str:
@@ -82,7 +82,7 @@ def _build_learn_user_payload(state: AgentState) -> str:
 
 async def learn_node(state: AgentState) -> dict[str, Any]:
     """Learn 节点：总结归纳 → 反思 → 判断重规划 or 生成最终回答。"""
-    task_id = state["task_id"] # type: ignore
+    task_id = state["task_id"]  # type: ignore
     settings = get_settings()
 
     max_replan = max(0, int(state.get("max_replan_attempts") or 0))
@@ -262,4 +262,5 @@ def route_after_learn(state: AgentState) -> Literal["plan", "done"]:
     return "done"
 
 
+# Alias for backwards compatibility
 learner_node = learn_node

@@ -7,15 +7,19 @@
 - 文件读写列举：``read_file`` / ``write_file`` 为工作区封装（支持按行局部读写），``list_directory`` 用 ``langchain_community.tools.file_management``（根目录由 ``Settings.resolved_agent_workspace_path`` 约束）
 - Python 交互执行：``langchain_experimental.tools.PythonREPLTool``（可经 ``AGENT_ENABLE_PYTHON_REPL`` 关闭）
 - Shell：自建 ``StructuredTool``（与文件工具共享工作区根 + 子进程超时；Windows 默认 ``cmd.exe /c``，Unix 常见 ``/bin/sh``）
+- RAG 知识库：``rag_search`` / ``rag_ingest`` 基于 LangChain LCEL 构建，支持混合检索与重排序
 
 另保留 ``list_tools``：查询本进程统一工具注册表元数据，属产品内建能力，无社区替代品。
 
 执行路径仍经 ``BaseTool.ainvoke``（见 ``builtin_executor``），与 LangGraph / Agent 工具调用约定一致。
+
+工具上下文（ToolContext）通过 ``app.shared.tool_context`` 传递用户身份信息。
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import platform
@@ -33,6 +37,8 @@ from app.modules.tools.forge_file_tools import (
     build_forge_write_file_tool,
 )
 from app.schemas.tools import ToolItem
+from app.shared.tool_context import ToolContext, get_current_tool_context, with_tool_context
+from app.shared.tool_validation import get_tool_args_validator, register_tool_schema
 
 logger = logging.getLogger(__name__)
 
@@ -410,9 +416,227 @@ def _build_workspace_tools() -> tuple[BaseTool, ...]:
     return tuple(items)
 
 
+# ============================================================================
+# RAG Knowledge Base Tools
+# ============================================================================
+
+
+class RagSearchInput(BaseModel):
+    """rag_search 入参：知识库检索。"""
+
+    query: str = Field(
+        description="检索查询语句，应清晰描述需要查找的信息"
+    )
+    top_k: int | None = Field(
+        default=None,
+        description="返回的最相关结果数量，默认使用配置值",
+    )
+    include_scores: bool = Field(
+        default=False,
+        description="是否在返回结果中包含相关性分数",
+    )
+
+
+class RagIngestInput(BaseModel):
+    """rag_ingest 入参：知识库文档摄入。"""
+
+    content: str = Field(
+        description="要摄入的文档内容（纯文本）"
+    )
+    source: str | None = Field(
+        default=None,
+        description="文档来源标识（如文件路径、URL 或自定义名称）",
+    )
+    metadata_json: str | None = Field(
+        default=None,
+        description="附加元数据的 JSON 字符串，会被合并到每个分块的 metadata 中",
+    )
+    chunk_size: int | None = Field(
+        default=None,
+        description="分块大小，覆盖配置默认值",
+    )
+    chunk_overlap: int | None = Field(
+        default=None,
+        description="分块重叠大小，覆盖配置默认值",
+    )
+
+
+def _get_rag_knowledge_base():
+    """获取或创建全局 RAG 知识库实例。"""
+    from app.modules.memory.rag import RagKnowledgeBase, RagConfig
+
+    settings = get_settings()
+    if not settings.rag_enabled:
+        return None
+
+    config = RagConfig(
+        persist_directory=settings.rag_persist_directory,
+        chunk_size=settings.rag_chunk_size,
+        chunk_overlap=settings.rag_chunk_overlap,
+        embedding_model=settings.rag_embedding_model,
+        embedding_api_key=settings.rag_embedding_api_key,
+        embedding_base_url=settings.rag_embedding_base_url,
+        reranker_model=settings.rag_reranker_model,
+        reranker_api_key=settings.rag_reranker_api_key,
+        reranker_base_url=settings.rag_reranker_base_url,
+        vector_weight=settings.rag_vector_weight,
+        bm25_weight=settings.rag_bm25_weight,
+        default_top_k=settings.rag_default_top_k,
+    )
+    return RagKnowledgeBase(config)
+
+
+@tool("rag_search", args_schema=RagSearchInput)
+async def rag_search_tool(
+    query: str,
+    top_k: int | None = None,
+    include_scores: bool = False,
+) -> dict[str, Any]:
+    """RAG 知识库检索工具。
+
+    在已摄入的知识库中检索与查询语句最相关的内容块。
+    支持混合检索（向量 + BM25）和 Rerank 重排序。
+
+    适用于：
+    - 查询项目文档、API 文档、技术规范
+    - 检索之前对话中涉及的技术细节
+    - 查找特定功能的使用方法
+
+    注意：需要先使用 rag_ingest 将文档摄入知识库。
+    """
+    rag = _get_rag_knowledge_base()
+    if rag is None:
+        return {
+            "ok": False,
+            "error": "RAG 知识库未启用，请检查配置",
+            "results": [],
+        }
+
+    try:
+        results = await rag.asearch(query, top_k=top_k or get_settings().rag_default_top_k)
+
+        items = []
+        for r in results:
+            item: dict[str, Any] = {
+                "content": r.content,
+                "source": r.metadata.get("source", "unknown"),
+            }
+            if include_scores:
+                item["score"] = r.score
+                item["source_type"] = r.source
+            items.append(item)
+
+        return {
+            "ok": True,
+            "query": query,
+            "count": len(items),
+            "results": items,
+        }
+    except Exception as e:
+        logger.exception("rag_search 失败: %s", e)
+        return {
+            "ok": False,
+            "error": f"RAG 检索失败: {str(e)}",
+            "results": [],
+        }
+
+
+@tool("rag_ingest", args_schema=RagIngestInput)
+async def rag_ingest_tool(
+    content: str,
+    source: str | None = None,
+    metadata_json: str | None = None,
+    chunk_size: int | None = None,
+    chunk_overlap: int | None = None,
+) -> dict[str, Any]:
+    """RAG 知识库文档摄入工具。
+
+    将文档内容分块后存入知识库，支持后续的 rag_search 检索。
+    分块策略：递归字符分割，保留段落边界。
+
+    适用于：
+    - 摄入项目 README、API 文档、设计文档
+    - 添加技术规范、FAQ、常见问题解答
+    - 导入外部知识到 Agent 上下文
+
+    注意：
+    - 大文档会被自动分块
+    - 元数据可包含作者、日期、标签等信息
+    """
+    rag = _get_rag_knowledge_base()
+    if rag is None:
+        return {
+            "ok": False,
+            "error": "RAG 知识库未启用，请检查配置",
+            "chunks": 0,
+        }
+
+    # 解析元数据
+    metadata: dict[str, Any] = {"source": source or "manual"}
+    if metadata_json:
+        try:
+            extra_meta = json.loads(metadata_json)
+            if isinstance(extra_meta, dict):
+                metadata.update(extra_meta)
+        except json.JSONDecodeError:
+            return {
+                "ok": False,
+                "error": f"metadata_json 解析失败: {metadata_json}",
+                "chunks": 0,
+            }
+
+    # 获取工具上下文中的用户信息
+    ctx = get_current_tool_context()
+    if ctx:
+        if ctx.user_id:
+            metadata["ingested_by"] = ctx.user_id
+        if ctx.session_id:
+            metadata["session_id"] = ctx.session_id
+
+    try:
+        chunk_count = await rag.aingest_text(
+            content,
+            metadata=metadata,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+        )
+
+        return {
+            "ok": True,
+            "source": source or "manual",
+            "chunks": chunk_count,
+            "message": f"成功摄入文档，生成了 {chunk_count} 个文本块",
+        }
+    except Exception as e:
+        logger.exception("rag_ingest 失败: %s", e)
+        return {
+            "ok": False,
+            "error": f"RAG 文档摄入失败: {str(e)}",
+            "chunks": 0,
+        }
+
+
+# 注册 RAG 工具 schema 到验证器
+register_tool_schema("rag_search", RagSearchInput)
+register_tool_schema("rag_ingest", RagIngestInput)
+
+
+def _build_rag_tools() -> tuple[BaseTool, ...]:
+    """RAG 知识库工具。"""
+    settings = get_settings()
+    if not settings.rag_enabled:
+        return ()
+    return (rag_search_tool, rag_ingest_tool)
+
+
 def all_builtin_lc_tools() -> tuple[BaseTool, ...]:
     """当前配置下的内置 LangChain 工具；每次调用按最新 Settings 重建。"""
-    return (*_build_community_builtin_tools(), *_build_workspace_tools(), list_tools_tool)
+    return (
+        *_build_community_builtin_tools(),
+        *_build_workspace_tools(),
+        *_build_rag_tools(),
+        list_tools_tool,
+    )
 
 
 def builtin_lc_tools_by_name() -> dict[str, BaseTool]:

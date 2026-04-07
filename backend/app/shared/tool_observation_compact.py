@@ -1,6 +1,6 @@
 """注入 LLM 的 Observation / 轨迹片段压缩：大工具返回只保留前缀 + 截断提示（完整结果仍在事件流）。
 
-与 ``llm_context_budget``、``conversation_summary`` 同属记忆域的上下文整形；由 ReAct 等执行路径调用。
+与 ``context``、``conversation_summary`` 同属上下文整形；由 ReAct 等执行路径调用。
 """
 
 from __future__ import annotations
